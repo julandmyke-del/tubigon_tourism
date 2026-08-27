@@ -226,8 +226,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         return null;
       }
 
-      // Redirect unauthenticated users trying to access protected routes to onboarding login
-      return '/onboarding?page=5&login=true';
+      // Preserve only a validated internal Tourist destination. This covers a
+      // cold deep link as well as Guest browsing, without creating an open
+      // redirect or allowing a Tourist login to enter a privileged portal.
+      final protectedReturnTo = safeTouristReturnRoute(state.uri.toString());
+      return Uri(
+        path: '/onboarding',
+        queryParameters: {
+          'page': '5',
+          'login': 'true',
+          if (protectedReturnTo != null) 'returnTo': protectedReturnTo,
+        },
+      ).toString();
     },
     routes: [
       // ── Splash ──────────────────────────────────────────────────────────

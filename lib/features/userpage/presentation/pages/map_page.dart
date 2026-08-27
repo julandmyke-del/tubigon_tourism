@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -1876,14 +1875,14 @@ class _OfflinePill extends StatelessWidget {
         decoration: const BoxDecoration(
             color: Color(0xFFB45309),
             borderRadius: BorderRadius.vertical(bottom: Radius.circular(14))),
-        child: const Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.offline_bolt_rounded, color: Colors.white, size: 15),
-          SizedBox(width: 6),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.offline_bolt_rounded, color: Colors.white, size: 15),
+          const SizedBox(width: 6),
           Text(
               explicit
                   ? 'Offline Mode • using downloaded Tubigon data'
                   : 'Offline • showing cached locations',
-              style: TextStyle(
+              style: const TextStyle(
                   color: Colors.white,
                   fontSize: 11,
                   fontWeight: FontWeight.w700)),

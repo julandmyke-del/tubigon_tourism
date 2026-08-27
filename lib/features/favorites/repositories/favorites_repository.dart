@@ -4,7 +4,6 @@ import 'package:uuid/uuid.dart';
 import '../../../core/constants/api_endpoints.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/connectivity_provider.dart';
-import '../../../core/services/sync_service.dart';
 import '../../../database/database_helper.dart';
 import '../../authentication/auth_provider.dart';
 

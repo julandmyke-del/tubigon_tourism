@@ -86,8 +86,9 @@ class RouteCacheService {
           calculatedAt: DateTime.now(),
         ),
       );
-    if (routes.length > _maxRoutes)
+    if (routes.length > _maxRoutes) {
       routes.removeRange(_maxRoutes, routes.length);
+    }
     await LocalStorageService.instance.setString(
       _key,
       jsonEncode(routes.map((route) => route.toJson()).toList()),

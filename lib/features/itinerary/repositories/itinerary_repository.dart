@@ -191,7 +191,9 @@ class ItineraryRepository {
 
   List<Map<String, dynamic>> _pendingMutations() {
     final raw = LocalStorageService.instance.getString(_pendingKey);
-    if (raw == null || raw.isEmpty) return [];
+    if (raw == null || raw.isEmpty) {
+      return [];
+    }
     try {
       return (jsonDecode(raw) as List<dynamic>)
           .whereType<Map>()
