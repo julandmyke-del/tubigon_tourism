@@ -1,0 +1,10 @@
+{
+  "description": "Streamline tourism management with a modern dashboard for partners, offering analytics, reservation tracking, and user-friendly tools for enhanced business performance.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

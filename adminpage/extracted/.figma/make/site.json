@@ -1,0 +1,10 @@
+{
+  "description": "Provides a modern, enterprise-level admin dashboard for managing tourism data, users, reservations, and analytics with enhanced UX and visual design.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

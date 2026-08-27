@@ -1,0 +1,176 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&display=swap');
+
+@import 'tailwindcss';
+
+/* ─── Design tokens ─── */
+:root {
+  --bg-void:       #080d1a;
+  --bg-deep:       #0d1526;
+  --bg-navy:       #111d35;
+  --bg-card:       #162040;
+  --bg-elevated:   #1c2a50;
+
+  --accent:        #f97316;
+  --accent-muted:  #c2560f;
+  --accent-glow:   rgba(249,115,22,0.35);
+  --accent-subtle: rgba(249,115,22,0.12);
+
+  --text-primary:  #f1f5f9;
+  --text-secondary:#94a3b8;
+  --text-muted:    #475569;
+
+  --border-subtle: rgba(255,255,255,0.06);
+  --border-card:   rgba(255,255,255,0.09);
+  --glow-navy:     rgba(17,29,53,0.8);
+}
+
+/* ─── Keyframes ─── */
+
+@keyframes bgPulse {
+  0%,100% { opacity: 1; }
+  50%      { opacity: 0.85; }
+}
+
+@keyframes gridScroll {
+  0%   { transform: translateY(0); }
+  100% { transform: translateY(60px); }
+}
+
+@keyframes orbitSpin {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes orbitSpinRev {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(-360deg); }
+}
+
+@keyframes glowPulse {
+  0%,100% { opacity: 0.55; transform: scale(1); }
+  50%      { opacity: 0.9;  transform: scale(1.08); }
+}
+
+@keyframes glowPulse2 {
+  0%,100% { opacity: 0.3; transform: scale(1); }
+  50%      { opacity: 0.6; transform: scale(1.12); }
+}
+
+@keyframes logoIn {
+  0%   { opacity: 0; transform: scale(0.7) translateY(16px); filter: blur(12px); }
+  65%  { opacity: 1; transform: scale(1.03) translateY(-2px); filter: blur(0); }
+  100% { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); }
+}
+
+@keyframes logoFloat {
+  0%,100% { transform: translateY(0); }
+  50%      { transform: translateY(-7px); }
+}
+
+@keyframes logoGlow {
+  0%,100% {
+    filter:
+      drop-shadow(0 0 14px rgba(249,115,22,0.55))
+      drop-shadow(0 0 40px rgba(249,115,22,0.2));
+  }
+  50% {
+    filter:
+      drop-shadow(0 0 28px rgba(249,115,22,0.9))
+      drop-shadow(0 0 70px rgba(249,115,22,0.4));
+  }
+}
+
+@keyframes sweep {
+  0%   { background-position: -300% center; }
+  100% { background-position: 300% center; }
+}
+
+@keyframes titleIn {
+  0%   { opacity: 0; transform: translateY(20px); letter-spacing: 0.45em; }
+  100% { opacity: 1; transform: translateY(0);    letter-spacing: 0.16em; }
+}
+
+@keyframes fadeUp {
+  0%   { opacity: 0; transform: translateY(14px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes barWave {
+  0%,100% { transform: scaleY(0.3); }
+  50%      { transform: scaleY(1); }
+}
+
+@keyframes particleRise {
+  0%         { opacity: 0; transform: translateY(0) translateX(0) scale(0.5); }
+  15%        { opacity: 1; }
+  85%        { opacity: 0.5; }
+  100%       { opacity: 0; transform: translateY(-160px) translateX(var(--dx,12px)) scale(1.2); }
+}
+
+@keyframes sparkle {
+  0%,100% { opacity: 0; transform: scale(0) rotate(0deg); }
+  40%,60% { opacity: 1; transform: scale(1) rotate(20deg); }
+}
+
+@keyframes birdCross {
+  0%   { transform: translateX(-100px) translateY(0); opacity: 0; }
+  8%   { opacity: 0.8; }
+  92%  { opacity: 0.8; }
+  100% { transform: translateX(calc(100vw + 100px)) translateY(-20px); opacity: 0; }
+}
+
+@keyframes fadeInScreen {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes exitFade {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes dotPulse {
+  0%,80%,100% { transform: scale(0.6); opacity: 0.3; }
+  40%         { transform: scale(1);   opacity: 1; }
+}
+
+/* ─── Utilities ─── */
+.font-display { font-family: 'Playfair Display', serif; }
+.font-body    { font-family: 'Outfit', sans-serif; }
+
+.splash-screen {
+  animation: fadeInScreen 0.7s ease-out both;
+}
+
+.logo-animate {
+  animation:
+    logoIn    1.1s cubic-bezier(0.22,1,0.36,1) 0.9s both,
+    logoGlow  2.8s ease-in-out 2.1s infinite,
+    logoFloat 4.2s ease-in-out 2.1s infinite;
+}
+
+.sweep-layer {
+  background: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgba(249,115,22,0.35) 48%,
+    rgba(255,255,255,0.18) 50%,
+    rgba(249,115,22,0.15) 52%,
+    transparent 70%
+  );
+  background-size: 300% 100%;
+  animation: sweep 1.6s ease-in-out 2.0s both;
+}
+
+.title-animate {
+  animation: titleIn 0.9s cubic-bezier(0.22,1,0.36,1) 2.15s both;
+}
+
+.fade-up-1 { animation: fadeUp 0.8s ease-out 2.7s  both; }
+.fade-up-2 { animation: fadeUp 0.7s ease-out 3.05s both; }
+.fade-up-3 { animation: fadeUp 0.7s ease-out 3.3s  both; }
+
+.exit-overlay {
+  animation: exitFade 0.95s cubic-bezier(0.4,0,0.2,1) forwards;
+}

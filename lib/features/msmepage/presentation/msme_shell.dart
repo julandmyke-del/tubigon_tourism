@@ -1,0 +1,118 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
+
+import '../../../core/responsive/responsive_layout.dart';
+import '../../authentication/auth_provider.dart';
+import 'msme_theme.dart';
+
+class MsmeShell extends ConsumerStatefulWidget {
+	const MsmeShell({super.key, required this.child});
+
+	final Widget child;
+
+	@override
+	ConsumerState<MsmeShell> createState() => _MsmeShellState();
+}
+
+class _MsmeShellState extends ConsumerState<MsmeShell> {
+	static const double _sidebarWidth = 260.0;
+
+	static final List<_MsmeNavItem> _navItems = [
+		_MsmeNavItem(id: 'dashboard', label: 'Dashboard', icon: Icons.dashboard_rounded, route: '/msme-portal'),
+		_MsmeNavItem(id: 'profile', label: 'Business Profile', icon: Icons.store_rounded, route: '/msme-portal/profile'),
+		_MsmeNavItem(id: 'listings', label: 'My Listings', icon: Icons.inventory_2_rounded, route: '/msme-portal/listings'),
+		_MsmeNavItem(id: 'gallery', label: 'Gallery Manager', icon: Icons.collections_rounded, route: '/msme-portal/gallery'),
+		_MsmeNavItem(id: 'reservations', label: 'Reservations', icon: Icons.calendar_month_rounded, route: '/msme-portal/reservations', badgeCount: 9),
+		_MsmeNavItem(id: 'reviews', label: 'Customer Reviews', icon: Icons.star_rate_rounded, route: '/msme-portal/reviews'),
+		_MsmeNavItem(id: 'analytics', label: 'Business Analytics', icon: Icons.analytics_rounded, route: '/msme-portal/analytics'),
+		_MsmeNavItem(id: 'promotions', label: 'Promotions & Discounts', icon: Icons.local_offer_rounded, route: '/msme-portal/promotions'),
+		_MsmeNavItem(id: 'notifications', label: 'Notifications', icon: Icons.notifications_rounded, route: '/msme-portal/notifications', badgeCount: 3),
+		_MsmeNavItem(id: 'reports', label: 'Reports & Exports', icon: Icons.assessment_rounded, route: '/msme-portal/reports'),
+		_MsmeNavItem(id: 'availability', label: 'Availability Calendar', icon: Icons.edit_calendar_rounded, route: '/msme-portal/availability'),
+		_MsmeNavItem(id: 'settings', label: 'Settings', icon: Icons.settings_rounded, route: '/msme-portal/settings'),
+		_MsmeNavItem(id: 'help', label: 'Help Center', icon: Icons.help_outline_rounded, route: '/msme-portal/help'),
+		_MsmeNavItem(id: 'map', label: 'Smart Tubigon Map', icon: Icons.map_rounded, route: '/map'),
+	];
+
+	int _getSelectedIndex(String location) {
+		for (int i = _navItems.length - 1; i >= 0; i--) {
+			final route = _navItems[i].route;
+			if (location == route || (i > 0 && location.startsWith(route))) return i;
+		}
+		return 0;
+	}
+
+	@override
+	Widget build(BuildContext context) {
+		final isDesktop = ResponsiveLayout.isDesktop(context);
+		final location = GoRouterState.of(context).matchedLocation;
+		final activeIndex = _getSelectedIndex(location);
+		final activeItem = _navItems[activeIndex];
+		final auth = ref.watch(authProvider);
+
+		return Scaffold(
+			backgroundColor: MsmeTheme.bgDark,
+			drawer: isDesktop ? null : _buildDrawer(context, activeIndex, auth),
+			body: Row(
+				children: [
+					if (isDesktop) _buildSidebar(context, activeIndex, auth),
+					Expanded(
+						child: Column(
+							children: [
+								_buildTopAppBar(context, activeItem, isDesktop),
+								Expanded(child: Container(color: MsmeTheme.bgDark, child: widget.child)),
+							],
+						),
+					),
+				],
+			),
+		);
+	}
+
+	Widget _buildTopAppBar(BuildContext context, _MsmeNavItem activeItem, bool isDesktop) {
+		return Container(
+			height: 72,
+			padding: const EdgeInsets.symmetric(horizontal: 24),
+			decoration: const BoxDecoration(color: Color(0xE6060D1F), border: Border(bottom: BorderSide(color: Color(0x1AFFFFFF), width: 1))),
+			child: Row(
+				children: [
+					if (!isDesktop)
+						IconButton(icon: const Icon(Icons.menu_rounded, color: MsmeTheme.textWhite), onPressed: () => Scaffold.of(context).openDrawer()),
+					Column(
+						mainAxisAlignment: MainAxisAlignment.center,
+						crossAxisAlignment: CrossAxisAlignment.start,
+						children: [
+							Row(children: [Text('MSME Owner Portal', style: GoogleFonts.inter(fontSize: 11, color: MsmeTheme.textDisabled)), const SizedBox(width: 4), const Icon(Icons.chevron_right_rounded, size: 14, color: MsmeTheme.textDisabled), const SizedBox(width: 4), Text(activeItem.label, style: GoogleFonts.inter(fontSize: 11, color: MsmeTheme.primaryOrange, fontWeight: FontWeight.w600))]),
+							const SizedBox(height: 2),
+							Text(activeItem.label, style: GoogleFonts.plusJakartaSans(fontSize: 18, fontWeight: FontWeight.w700, color: MsmeTheme.textWhite)),
+						],
+					),
+					const Spacer(),
+					if (isDesktop)
+						Container(
+							width: 240,
+							height: 38,
+							padding: const EdgeInsets.symmetric(horizontal: 12),
+							decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.04), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white.withValues(alpha: 0.08))),
+							child: Row(children: [const Icon(Icons.search_rounded, size: 18, color: MsmeTheme.textDisabled), const SizedBox(width: 8), Expanded(child: TextField(style: GoogleFonts.inter(fontSize: 13, color: MsmeTheme.textWhite), decoration: InputDecoration(hintText: 'Search portal...', hintStyle: GoogleFonts.inter(fontSize: 13, color: MsmeTheme.textDisabled), border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero))) ]),
+						),
+					const SizedBox(width: 16),
+					IconButton(onPressed: () => context.go('/msme-portal/notifications'), icon: const Badge(label: Text('3'), backgroundColor: MsmeTheme.primaryOrange, child: Icon(Icons.notifications_outlined, color: MsmeTheme.textMuted))),
+				],
+			),
+		);
+	}
+
+	Widget _buildSidebar(BuildContext context, int activeIndex, AuthState auth) { return Container(width: _sidebarWidth, decoration: const BoxDecoration(gradient: MsmeTheme.sidebarGradient, border: Border(right: BorderSide(color: Color(0x1AFFFFFF), width: 1))), child: Column(children: [Padding(padding: const EdgeInsets.fromLTRB(20, 24, 20, 20), child: Column(children: [Row(children: [Container(width: 40, height: 40, decoration: BoxDecoration(gradient: MsmeTheme.orangeGradient, borderRadius: BorderRadius.circular(12), boxShadow: const [BoxShadow(color: Color(0x59F97316), blurRadius: 15, offset: Offset(0, 4))]), child: const Icon(Icons.storefront_rounded, color: Colors.white, size: 22)), const SizedBox(width: 12), Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Tubigon Tourism', style: GoogleFonts.plusJakartaSans(fontSize: 13, fontWeight: FontWeight.w700, color: MsmeTheme.textWhite)), Text('MSME Owner Portal', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w500, color: MsmeTheme.primaryOrange))])]), const SizedBox(height: 16), Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: MsmeTheme.primaryOrange.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10), border: Border.all(color: MsmeTheme.primaryOrange.withValues(alpha: 0.15))), child: Row(children: [CircleAvatar(radius: 16, backgroundColor: MsmeTheme.primaryOrange, child: Text((auth.name ?? 'M')[0].toUpperCase(), style: GoogleFonts.inter(fontWeight: FontWeight.w700, color: Colors.white, fontSize: 13))), const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(auth.name ?? 'Business Owner', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: MsmeTheme.textWhite), maxLines: 1, overflow: TextOverflow.ellipsis), Text('Verified MSME', style: GoogleFonts.inter(fontSize: 11, color: MsmeTheme.textMuted))])), const MsmeBadge(label: 'Verified', type: MsmeBadgeType.green)]))])), const Divider(height: 1, color: Color(0x1AFFFFFF)), Expanded(child: ListView(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16), children: [Padding(padding: const EdgeInsets.only(left: 4, bottom: 8), child: Text('MANAGEMENT MENU', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.w600, color: MsmeTheme.textDisabled, letterSpacing: 1.0))), ...List.generate(_navItems.length, (idx) { final item = _navItems[idx]; final isSelected = idx == activeIndex; return _SidebarTile(item: item, isSelected: isSelected, onTap: () => context.go(item.route)); })])), Padding(padding: const EdgeInsets.all(16), child: Column(children: [InkWell(onTap: () => _showLogoutDialog(context), borderRadius: BorderRadius.circular(10), child: Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), decoration: const BoxDecoration(borderRadius: BorderRadius.all(Radius.circular(10)), color: Colors.transparent), child: Row(children: [const Icon(Icons.logout_rounded, color: MsmeTheme.red, size: 20), const SizedBox(width: 12), Text('Logout', style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: MsmeTheme.red))]))), const SizedBox(height: 12), Text('Tubigon STIMS v2.0 • MSME', style: GoogleFonts.inter(fontSize: 10, color: MsmeTheme.textDisabled))])), ],),); }
+
+	Widget _buildDrawer(BuildContext context, int activeIndex, AuthState auth) { return Drawer(backgroundColor: MsmeTheme.surfaceDark, child: Column(children: [UserAccountsDrawerHeader(decoration: const BoxDecoration(gradient: MsmeTheme.sidebarGradient), currentAccountPicture: CircleAvatar(backgroundColor: MsmeTheme.primaryOrange, child: Text((auth.name ?? 'M')[0].toUpperCase(), style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white))), accountName: Text(auth.name ?? 'Business Owner', style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, color: Colors.white)), accountEmail: Text(auth.email ?? 'msme@tubigontourism.gov.ph', style: GoogleFonts.inter(color: MsmeTheme.textMuted))), Expanded(child: ListView.builder(padding: const EdgeInsets.symmetric(horizontal: 8), itemCount: _navItems.length, itemBuilder: (context, idx) { final item = _navItems[idx]; final isSelected = idx == activeIndex; return ListTile(leading: Icon(item.icon, color: isSelected ? MsmeTheme.primaryOrange : MsmeTheme.textMuted), title: Text(item.label, style: GoogleFonts.inter(color: isSelected ? MsmeTheme.primaryOrange : MsmeTheme.textWhite, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)), selected: isSelected, selectedTileColor: MsmeTheme.primaryOrange.withValues(alpha: 0.1), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), onTap: () { context.pop(); context.go(item.route); },); })), const Divider(color: Color(0x1AFFFFFF)), ListTile(leading: const Icon(Icons.logout_rounded, color: MsmeTheme.red), title: Text('Logout', style: GoogleFonts.inter(color: MsmeTheme.red, fontWeight: FontWeight.bold)), onTap: () { context.pop(); _showLogoutDialog(context); }), const SizedBox(height: 16),],),); }
+
+	void _showLogoutDialog(BuildContext context) { showDialog(context: context, builder: (ctx) => AlertDialog(backgroundColor: MsmeTheme.cardDark, title: Text('Confirm Logout', style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold)), content: Text('Are you sure you want to log out of the MSME Owner Portal?', style: GoogleFonts.inter(color: MsmeTheme.textMuted)), actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: Text('Cancel', style: GoogleFonts.inter(color: MsmeTheme.textMuted))), ElevatedButton(onPressed: () async { Navigator.of(ctx).pop(); await ref.read(authProvider.notifier).signOut(); if (context.mounted) context.go('/onboarding?page=5&login=true'); }, style: ElevatedButton.styleFrom(backgroundColor: MsmeTheme.red), child: Text('Logout', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold)))],)); }
+}
+
+class _MsmeNavItem { final String id; final String label; final IconData icon; final String route; final int? badgeCount; const _MsmeNavItem({required this.id, required this.label, required this.icon, required this.route, this.badgeCount}); }
+
+class _SidebarTile extends StatelessWidget { const _SidebarTile({required this.item, required this.isSelected, required this.onTap}); final _MsmeNavItem item; final bool isSelected; final VoidCallback onTap; @override Widget build(BuildContext context) { return Padding(padding: const EdgeInsets.only(bottom: 4), child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(10), child: AnimatedContainer(duration: const Duration(milliseconds: 200), padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10), decoration: BoxDecoration(color: isSelected ? MsmeTheme.primaryOrange.withValues(alpha: 0.15) : Colors.transparent, borderRadius: BorderRadius.circular(10), border: Border.all(color: isSelected ? MsmeTheme.primaryOrange.withValues(alpha: 0.25) : Colors.transparent)), child: Row(children: [Icon(item.icon, color: isSelected ? MsmeTheme.primaryOrange : MsmeTheme.textMuted, size: 20), const SizedBox(width: 12), Expanded(child: Text(item.label, style: GoogleFonts.inter(fontSize: 13, color: isSelected ? MsmeTheme.primaryOrange : MsmeTheme.textMuted, fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500))), if (item.badgeCount != null) Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: MsmeTheme.primaryOrange, borderRadius: BorderRadius.circular(10)), child: Text('${item.badgeCount}', style: GoogleFonts.inter(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white))),]),)),); } }
+

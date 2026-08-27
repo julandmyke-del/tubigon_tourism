@@ -1,0 +1,10 @@
+{
+  "description": "Explore and manage tourism experiences with a platform that connects users to destinations, services, and local businesses while providing essential travel information.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

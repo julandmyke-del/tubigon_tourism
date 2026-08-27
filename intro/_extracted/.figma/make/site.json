@@ -1,0 +1,10 @@
+{
+  "description": "Discover and plan your journey in Tubigon with a premium tourism platform featuring immersive experiences, local attractions, and eco-friendly practices.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

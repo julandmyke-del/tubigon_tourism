@@ -1,0 +1,10 @@
+{
+  "description": "Streamline municipal tourism management with a professional dashboard for LGU staff, enabling efficient monitoring, reporting, and decision-making.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

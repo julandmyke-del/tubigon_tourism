@@ -1,0 +1,10 @@
+{
+  "description": "Explore breathtaking destinations, plan trips, and support local tourism with a premium application designed for tourists and local businesses.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
