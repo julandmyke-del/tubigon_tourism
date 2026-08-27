@@ -150,8 +150,8 @@ class _MapPageState extends ConsumerState<MapPage> {
     final userLocation = ref.watch(userLocationProvider);
     final navigation = ref.watch(navigationProvider);
     final connectivity = ref.watch(connectivityProvider);
-    final favoriteKeys = ref.watch(favoriteKeysProvider).valueOrNull ??
-        const <FavoriteKey>{};
+    final favoriteKeys =
+        ref.watch(favoriteKeysProvider).valueOrNull ?? const <FavoriteKey>{};
     final isOffline = widget.offlineMode ||
         connectivity.valueOrNull == ConnectivityStatus.offline;
     final searchQuery = ref.watch(mapFilterProvider).searchQuery.trim();
@@ -1111,9 +1111,8 @@ class _MapPageState extends ConsumerState<MapPage> {
     }
     final connectivity = ref.read(connectivityProvider).valueOrNull;
     if (widget.offlineMode || connectivity == ConnectivityStatus.offline) {
-      final cached = ref
-          .read(routeCacheServiceProvider)
-          .latestFor(destination.id);
+      final cached =
+          ref.read(routeCacheServiceProvider).latestFor(destination.id);
       if (cached == null) {
         final straightLine = destination.distanceTo(
           location.latitude!,
@@ -1135,7 +1134,8 @@ class _MapPageState extends ConsumerState<MapPage> {
         etaMinutes: cached.durationMinutes,
       );
       await _fitRoute(_routePoints);
-      _showMessage('Offline cached route • ${cached.distanceKm.toStringAsFixed(1)} km '
+      _showMessage(
+          'Offline cached route • ${cached.distanceKm.toStringAsFixed(1)} km '
           '• ~${cached.durationMinutes} min. Last calculated online: '
           '${cached.calculatedAt.toLocal()}.');
       return;
@@ -1879,9 +1879,10 @@ class _OfflinePill extends StatelessWidget {
         child: const Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(Icons.offline_bolt_rounded, color: Colors.white, size: 15),
           SizedBox(width: 6),
-          Text(explicit
-              ? 'Offline Mode • using downloaded Tubigon data'
-              : 'Offline • showing cached locations',
+          Text(
+              explicit
+                  ? 'Offline Mode • using downloaded Tubigon data'
+                  : 'Offline • showing cached locations',
               style: TextStyle(
                   color: Colors.white,
                   fontSize: 11,

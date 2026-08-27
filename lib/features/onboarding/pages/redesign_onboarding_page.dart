@@ -50,7 +50,8 @@ const _pages = <_PageDef>[
     tag: 'WELCOME',
     headline: 'Welcome to\nTubigon Tourism',
     sub: 'Municipality of Tubigon, Bohol',
-    desc: 'Discover the beauty, culture, and adventures of Tubigon — where pristine beaches, volcanic landmarks, and warm communities await your arrival.',
+    desc:
+        'Discover the beauty, culture, and adventures of Tubigon — where pristine beaches, volcanic landmarks, and warm communities await your arrival.',
     image: AssetPaths.onboarding1,
     accent: Color(0xFFF97316),
   ),
@@ -59,7 +60,8 @@ const _pages = <_PageDef>[
     tag: 'EXPLORE',
     headline: 'Explore\nHidden Gems',
     sub: 'Breathtaking Destinations Await',
-    desc: 'From the majestic volcanic plug to serene sandbars — discover stunning tourist attractions, scenic landscapes, and verified destinations across Tubigon.',
+    desc:
+        'From the majestic volcanic plug to serene sandbars — discover stunning tourist attractions, scenic landscapes, and verified destinations across Tubigon.',
     image: AssetPaths.onboarding2,
     accent: Color(0xFF38BDF8),
     features: [
@@ -74,7 +76,8 @@ const _pages = <_PageDef>[
     tag: 'PLAN',
     headline: 'Plan Your\nPerfect Journey',
     sub: 'Every Great Trip Starts Here',
-    desc: 'Book reservations, check real-time ferry schedules, explore interactive maps, and craft personalized itineraries — everything you need in one platform.',
+    desc:
+        'Book reservations, check real-time ferry schedules, explore interactive maps, and craft personalized itineraries — everything you need in one platform.',
     image: AssetPaths.onboarding3,
     accent: Color(0xFFA78BFA),
     features: [
@@ -89,7 +92,8 @@ const _pages = <_PageDef>[
     tag: 'PROTECT',
     headline: 'Protect &\nPreserve Tubigon',
     sub: 'Responsible Tourism for All',
-    desc: 'Help preserve Tubigon\'s natural beauty by following eco-tourism practices, reporting environmental concerns, and supporting sustainable travel.',
+    desc:
+        'Help preserve Tubigon\'s natural beauty by following eco-tourism practices, reporting environmental concerns, and supporting sustainable travel.',
     image: AssetPaths.onboarding4,
     accent: Color(0xFF34D399),
     features: [
@@ -104,7 +108,8 @@ const _pages = <_PageDef>[
     tag: 'CONNECT',
     headline: 'Support Local\nMSMEs',
     sub: 'Culture, Community & Commerce',
-    desc: 'Explore verified local businesses — artisan galleries, family restaurants, boutique accommodations, and community-led experiences that give back to Tubigon.',
+    desc:
+        'Explore verified local businesses — artisan galleries, family restaurants, boutique accommodations, and community-led experiences that give back to Tubigon.',
     image: AssetPaths.onboarding5,
     accent: Color(0xFFFBBF24),
     categories: [
@@ -121,7 +126,8 @@ const _pages = <_PageDef>[
     tag: 'BEGIN',
     headline: 'Your Adventure\nStarts Now',
     sub: 'Join the Tubigon Tourism Community',
-    desc: 'Experience a smarter way to travel with one complete tourism platform built exclusively for Tubigon, Bohol.',
+    desc:
+        'Experience a smarter way to travel with one complete tourism platform built exclusively for Tubigon, Bohol.',
     image: AssetPaths.onboarding6,
     accent: Color(0xFFF97316),
   ),
@@ -258,9 +264,9 @@ class _OnboardingPageState extends ConsumerState<RedesignOnboardingPage>
     try {
       _markOnboarded();
       await ref.read(authProvider.notifier).signIn(
-        email: _emailCtrl.text.trim(),
-        password: _passwordCtrl.text,
-      );
+            email: _emailCtrl.text.trim(),
+            password: _passwordCtrl.text,
+          );
       if (!mounted) return;
       final auth = ref.read(authProvider);
       context.go(safeTouristReturnRoute(widget.returnTo) ?? auth.homeRoute);
@@ -490,7 +496,8 @@ class _OnboardingPageState extends ConsumerState<RedesignOnboardingPage>
                 child: SafeArea(
                   child: Center(
                     child: SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 24, vertical: 24),
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 720),
                         child: _BottomPanel(
@@ -508,7 +515,8 @@ class _OnboardingPageState extends ConsumerState<RedesignOnboardingPage>
                           emailCtrl: _emailCtrl,
                           passwordCtrl: _passwordCtrl,
                           obscurePassword: _obscurePassword,
-                          onToggleObscure: () => setState(() => _obscurePassword = !_obscurePassword),
+                          onToggleObscure: () => setState(
+                              () => _obscurePassword = !_obscurePassword),
                           isLoading: _isLoading,
                           errorMessage: _errorMessage,
                           onSubmitLogin: _submitLogin,
@@ -546,10 +554,10 @@ class _HeroImageState extends State<_HeroImage>
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(seconds: 12));
-    _scale = Tween(begin: 1.0, end: 1.12).animate(
-        CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+    _ctrl =
+        AnimationController(vsync: this, duration: const Duration(seconds: 12));
+    _scale = Tween(begin: 1.0, end: 1.12)
+        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
     _ctrl.forward();
   }
 
@@ -579,8 +587,8 @@ class _HeroImageState extends State<_HeroImage>
             errorBuilder: (_, __, ___) => Container(
               color: const Color(0xFF0D1E38),
               child: const Center(
-                child: Icon(Icons.image_outlined,
-                    color: Colors.white24, size: 64),
+                child:
+                    Icon(Icons.image_outlined, color: Colors.white24, size: 64),
               ),
             ),
           ),
@@ -649,8 +657,8 @@ class _FloatingOrbState extends State<_FloatingOrb>
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(
-        vsync: this, duration: const Duration(seconds: 8));
+    _ctrl =
+        AnimationController(vsync: this, duration: const Duration(seconds: 8));
     _anim = Tween(begin: 0.0, end: 1.0)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
     _ctrl.repeat(reverse: true);
@@ -1027,8 +1035,7 @@ class _PageContent extends StatelessWidget {
                     ],
                   ),
                 )
-                    .animate(
-                        key: ValueKey('feat_${currentPage}_$i'))
+                    .animate(key: ValueKey('feat_${currentPage}_$i'))
                     .fadeIn(
                         duration: 380.ms,
                         delay: Duration(milliseconds: 120 + i * 60))
@@ -1077,8 +1084,7 @@ class _PageContent extends StatelessWidget {
                       duration: 360.ms,
                       delay: Duration(milliseconds: 100 + i * 55))
                   .scale(
-                      begin: const Offset(0.88, 0.88),
-                      end: const Offset(1, 1));
+                      begin: const Offset(0.88, 0.88), end: const Offset(1, 1));
             }),
           ),
           const SizedBox(height: 16),
@@ -1100,7 +1106,8 @@ class _PageContent extends StatelessWidget {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.arrow_back_ios_rounded, size: 14, color: page.accent),
+                        Icon(Icons.arrow_back_ios_rounded,
+                            size: 14, color: page.accent),
                         const SizedBox(width: 4),
                         Text(
                           'Back',
@@ -1139,15 +1146,19 @@ class _PageContent extends StatelessWidget {
                   Container(
                     width: double.infinity,
                     margin: const EdgeInsets.only(bottom: 14),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
                       color: const Color(0xFFEF4444).withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.4)),
+                      border: Border.all(
+                          color:
+                              const Color(0xFFEF4444).withValues(alpha: 0.4)),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.error_outline_rounded, size: 18, color: Color(0xFFEF4444)),
+                        const Icon(Icons.error_outline_rounded,
+                            size: 18, color: Color(0xFFEF4444)),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
@@ -1160,7 +1171,10 @@ class _PageContent extends StatelessWidget {
                         ),
                       ],
                     ),
-                  ).animate().fadeIn(duration: 300.ms).shake(hz: 2, offset: const Offset(4, 0)),
+                  )
+                      .animate()
+                      .fadeIn(duration: 300.ms)
+                      .shake(hz: 2, offset: const Offset(4, 0)),
 
                 // Email field
                 TextFormField(
@@ -1173,12 +1187,14 @@ class _PageContent extends StatelessWidget {
                       color: Colors.white.withValues(alpha: 0.5),
                       fontSize: 14,
                     ),
-                    prefixIcon: Icon(Icons.email_outlined, color: page.accent.withValues(alpha: 0.7), size: 20),
+                    prefixIcon: Icon(Icons.email_outlined,
+                        color: page.accent.withValues(alpha: 0.7), size: 20),
                     filled: true,
                     fillColor: Colors.white.withValues(alpha: 0.07),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
+                      borderSide: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.12)),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
@@ -1190,13 +1206,17 @@ class _PageContent extends StatelessWidget {
                     ),
                     focusedErrorBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(color: Color(0xFFEF4444), width: 1.5),
+                      borderSide: const BorderSide(
+                          color: Color(0xFFEF4444), width: 1.5),
                     ),
-                    errorStyle: GoogleFonts.outfit(fontSize: 11, color: const Color(0xFFFCA5A5)),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                    errorStyle: GoogleFonts.outfit(
+                        fontSize: 11, color: const Color(0xFFFCA5A5)),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 16),
                   ),
                   validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Please enter your email';
+                    if (v == null || v.trim().isEmpty)
+                      return 'Please enter your email';
                     if (!v.contains('@')) return 'Please enter a valid email';
                     return null;
                   },
@@ -1214,11 +1234,14 @@ class _PageContent extends StatelessWidget {
                       color: Colors.white.withValues(alpha: 0.5),
                       fontSize: 14,
                     ),
-                    prefixIcon: Icon(Icons.lock_outline_rounded, color: page.accent.withValues(alpha: 0.7), size: 20),
+                    prefixIcon: Icon(Icons.lock_outline_rounded,
+                        color: page.accent.withValues(alpha: 0.7), size: 20),
                     suffixIcon: GestureDetector(
                       onTap: onToggleObscure,
                       child: Icon(
-                        obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                        obscurePassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
                         color: Colors.white.withValues(alpha: 0.4),
                         size: 20,
                       ),
@@ -1227,7 +1250,8 @@ class _PageContent extends StatelessWidget {
                     fillColor: Colors.white.withValues(alpha: 0.07),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
+                      borderSide: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.12)),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
@@ -1239,14 +1263,19 @@ class _PageContent extends StatelessWidget {
                     ),
                     focusedErrorBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(color: Color(0xFFEF4444), width: 1.5),
+                      borderSide: const BorderSide(
+                          color: Color(0xFFEF4444), width: 1.5),
                     ),
-                    errorStyle: GoogleFonts.outfit(fontSize: 11, color: const Color(0xFFFCA5A5)),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                    errorStyle: GoogleFonts.outfit(
+                        fontSize: 11, color: const Color(0xFFFCA5A5)),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 16),
                   ),
                   validator: (v) {
-                    if (v == null || v.isEmpty) return 'Please enter your password';
-                    if (v.length < 6) return 'Password must be at least 6 characters';
+                    if (v == null || v.isEmpty)
+                      return 'Please enter your password';
+                    if (v.length < 6)
+                      return 'Password must be at least 6 characters';
                     return null;
                   },
                   onFieldSubmitted: (_) => onSubmitLogin(),
@@ -1279,9 +1308,11 @@ class _PageContent extends StatelessWidget {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFF97316),
                       foregroundColor: Colors.white,
-                      disabledBackgroundColor: const Color(0xFFF97316).withValues(alpha: 0.5),
+                      disabledBackgroundColor:
+                          const Color(0xFFF97316).withValues(alpha: 0.5),
                       elevation: 6,
-                      shadowColor: const Color(0xFFF97316).withValues(alpha: 0.4),
+                      shadowColor:
+                          const Color(0xFFF97316).withValues(alpha: 0.4),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
@@ -1347,10 +1378,7 @@ class _PageContent extends StatelessWidget {
                 ),
               ],
             ),
-          )
-              .animate()
-              .fadeIn(duration: 350.ms)
-              .slideY(begin: 0.08, end: 0),
+          ).animate().fadeIn(duration: 350.ms).slideY(begin: 0.08, end: 0),
         ] else if (isLast) ...[
           // ── Original CTA Buttons (before login form is shown) ───────────
           // Get Started button
@@ -1431,8 +1459,7 @@ class _PageContent extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
-                  side:
-                      BorderSide(color: Colors.white.withValues(alpha: 0.16)),
+                  side: BorderSide(color: Colors.white.withValues(alpha: 0.16)),
                 ),
               ),
               child: isNavigating
@@ -1628,9 +1655,7 @@ class _NavButton extends StatelessWidget {
           border: Border.all(color: Colors.white.withValues(alpha: 0.20)),
         ),
         child: Icon(
-          isNext
-              ? Icons.arrow_forward_rounded
-              : Icons.arrow_back_rounded,
+          isNext ? Icons.arrow_forward_rounded : Icons.arrow_back_rounded,
           color: Colors.white,
           size: 20,
         ),

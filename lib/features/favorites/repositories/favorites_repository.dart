@@ -264,17 +264,18 @@ class FavoriteKey {
 }
 
 class FavoritesNotifier extends StateNotifier<AsyncValue<Set<FavoriteKey>>> {
-  FavoritesNotifier(this._repository)
-      : super(const AsyncValue.loading()) {
+  FavoritesNotifier(this._repository) : super(const AsyncValue.loading()) {
     Future<void>.microtask(reload);
   }
 
   final FavoritesRepository _repository;
   bool _busy = false;
 
-  bool contains(String type, String id) => state.valueOrNull?.contains(
+  bool contains(String type, String id) =>
+      state.valueOrNull?.contains(
         FavoriteKey(FavoritesRepository.normalizeType(type), id),
-      ) ?? false;
+      ) ??
+      false;
 
   Future<void> reload() async {
     try {
@@ -317,8 +318,9 @@ final favoritesRepositoryProvider = Provider<FavoritesRepository>((ref) {
   return FavoritesRepository(apiClient: client, ref: ref);
 });
 
-final favoriteKeysProvider = StateNotifierProvider<FavoritesNotifier,
-    AsyncValue<Set<FavoriteKey>>>((ref) {
+final favoriteKeysProvider =
+    StateNotifierProvider<FavoritesNotifier, AsyncValue<Set<FavoriteKey>>>(
+        (ref) {
   ref.watch(authProvider);
   ref.watch(connectivityProvider);
   return FavoritesNotifier(ref.watch(favoritesRepositoryProvider));

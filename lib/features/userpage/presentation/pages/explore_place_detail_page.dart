@@ -200,7 +200,7 @@ class _ExplorePlaceDetailPageState
                                   onPressed: _favoriteBusy
                                       ? null
                                       : () => _toggleFavorite(item),
-                                   icon: Icon(_favoriteBusy
+                                  icon: Icon(_favoriteBusy
                                       ? Icons.hourglass_top_rounded
                                       : isFavorite
                                           ? Icons.favorite_rounded

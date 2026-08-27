@@ -53,7 +53,8 @@ class OfflineMapState {
   final int mapResourceBytes;
   final String? error;
 
-  bool get isBusy => phase == OfflinePackagePhase.downloadingData ||
+  bool get isBusy =>
+      phase == OfflinePackagePhase.downloadingData ||
       phase == OfflinePackagePhase.downloadingMap ||
       phase == OfflinePackagePhase.deleting;
   bool get canOpen => dataReady;
@@ -111,8 +112,7 @@ class OfflineMapState {
       baseMapReady: baseMapReady,
       regionId: (json['region_id'] as num?)?.toInt(),
       downloadedAt: DateTime.tryParse(json['downloaded_at']?.toString() ?? ''),
-      lastSyncedAt:
-          DateTime.tryParse(json['last_synced_at']?.toString() ?? ''),
+      lastSyncedAt: DateTime.tryParse(json['last_synced_at']?.toString() ?? ''),
       placeCount: (json['place_count'] as num?)?.toInt() ?? 0,
       placeDataBytes: (json['place_data_bytes'] as num?)?.toInt() ?? 0,
       mapResourceBytes: (json['map_resource_bytes'] as num?)?.toInt() ?? 0,
@@ -128,7 +128,8 @@ class OfflineMapNotifier extends StateNotifier<OfflineMapState> {
   static const _metadataKey = 'tubigon_offline_package_metadata_v1';
   final Ref _ref;
 
-  static bool get supportsNativeMapResources => !kIsWeb &&
+  static bool get supportsNativeMapResources =>
+      !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS);
 
@@ -173,23 +174,29 @@ class OfflineMapNotifier extends StateNotifier<OfflineMapState> {
 
       // These repositories use their existing native/user-scoped caches. A
       // failed optional snapshot does not invalidate the essential place data.
-      await _bestEffort(() =>
-          _ref.read(emergencyRepositoryProvider).getEmergencyContacts());
+      await _bestEffort(
+          () => _ref.read(emergencyRepositoryProvider).getEmergencyContacts());
       await _bestEffort(
           () => _ref.read(ferryRepositoryProvider).getFerrySchedules());
       if (auth.isLoggedIn) {
-        await _bestEffort(
-            () => _ref.read(itineraryRepositoryProvider).getItineraries());
+        final trips =
+            await _ref.read(itineraryRepositoryProvider).getItineraries();
+        for (final trip in trips) {
+          await _bestEffort(() =>
+              _ref.read(itineraryRepositoryProvider).getItinerary(trip.id));
+        }
         await _bestEffort(
             () => _ref.read(reservationRepositoryProvider).getReservations());
         await _bestEffort(
             () => _ref.read(favoriteKeysProvider.notifier).reload());
       }
 
-      final dataBytes = utf8.encode(jsonEncode({
-        'places': markers.map((item) => item.toJson()).toList(),
-        'categories': categories.map((item) => item.toJson()).toList(),
-      })).length;
+      final dataBytes = utf8
+          .encode(jsonEncode({
+            'places': markers.map((item) => item.toJson()).toList(),
+            'categories': categories.map((item) => item.toJson()).toList(),
+          }))
+          .length;
       final now = DateTime.now();
       state = state.copyWith(
         dataReady: true,

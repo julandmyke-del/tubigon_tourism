@@ -54,7 +54,10 @@ Future<bool> requireSignedIn(
 String? safeTouristReturnRoute(String? value) {
   if (value == null || value.trim().isEmpty) return null;
   final uri = Uri.tryParse(value.trim());
-  if (uri == null || uri.hasScheme || uri.hasAuthority || !uri.path.startsWith('/')) {
+  if (uri == null ||
+      uri.hasScheme ||
+      uri.hasAuthority ||
+      !uri.path.startsWith('/')) {
     return null;
   }
   const blockedPrefixes = <String>[

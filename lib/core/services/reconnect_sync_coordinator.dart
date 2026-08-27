@@ -56,6 +56,7 @@ Future<void> _syncAfterReconnect(Ref ref) async {
       ReconnectSyncStatus.syncing;
   if (auth.isLoggedIn) {
     await SyncService.instance.triggerSyncAll();
+    await ref.read(itineraryRepositoryProvider).flushPendingMutations();
     await ref.read(favoriteKeysProvider.notifier).reload();
   }
 

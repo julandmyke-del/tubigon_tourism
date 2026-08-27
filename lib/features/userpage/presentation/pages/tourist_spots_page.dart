@@ -43,7 +43,8 @@ class _TouristSpotsPageState extends ConsumerState<TouristSpotsPage> {
   Widget build(BuildContext context) {
     final places = ref.watch(mapMarkersProvider);
     final location = ref.watch(userLocationProvider);
-    final favoriteKeys = ref.watch(favoriteKeysProvider).valueOrNull ?? const {};
+    final favoriteKeys =
+        ref.watch(favoriteKeysProvider).valueOrNull ?? const {};
 
     return Scaffold(
       backgroundColor: const Color(0xFF080F1A),

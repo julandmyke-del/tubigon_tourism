@@ -71,9 +71,11 @@ class OfflineMapsPage extends ConsumerWidget {
             ),
             const SizedBox(height: 10),
             TextButton.icon(
-              onPressed:
-                  package.isBusy ? null : () => _confirmDelete(context, notifier),
-              style: TextButton.styleFrom(foregroundColor: const Color(0xFFF87171)),
+              onPressed: package.isBusy
+                  ? null
+                  : () => _confirmDelete(context, notifier),
+              style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFFF87171)),
               icon: const Icon(Icons.delete_outline_rounded),
               label: const Text('Delete Offline Map'),
             ),
@@ -108,7 +110,8 @@ class OfflineMapsPage extends ConsumerWidget {
           ),
           const SizedBox(width: 13),
           const Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text('Tubigon, Bohol',
                   style: TextStyle(
                       color: Colors.white,
@@ -140,9 +143,8 @@ class OfflineMapsPage extends ConsumerWidget {
         ),
         child: Text(ready ? '✓ Ready' : 'Not Downloaded',
             style: TextStyle(
-                color: ready
-                    ? const Color(0xFF34D399)
-                    : const Color(0xFFCBD5E1),
+                color:
+                    ready ? const Color(0xFF34D399) : const Color(0xFFCBD5E1),
                 fontSize: 12,
                 fontWeight: FontWeight.w800)),
       );
@@ -151,10 +153,12 @@ class OfflineMapsPage extends ConsumerWidget {
         title: 'Included offline',
         child: Column(children: [
           _include('Published locations and place details', package.dataReady),
-          _include('Markers, labels, categories, and local search', package.dataReady),
+          _include('Markers, labels, categories, and local search',
+              package.dataReady),
           _include('GPS and straight-line distance', true),
           _include('Emergency and ferry snapshots', package.dataReady),
-          _include('Saved itinerary and reservation summaries', package.dataReady),
+          _include(
+              'Saved itinerary and reservation summaries', package.dataReady),
           _include(
             OfflineMapNotifier.supportsNativeMapResources
                 ? 'Persistent MapLibre base-map resources'
@@ -209,9 +213,11 @@ class OfflineMapsPage extends ConsumerWidget {
   Widget _storageCard(OfflineMapState package) => _card(
         title: 'Offline storage',
         child: Column(children: [
-          _value('Map resources', package.baseMapReady
-              ? _bytes(package.mapResourceBytes)
-              : 'Not downloaded'),
+          _value(
+              'Map resources',
+              package.baseMapReady
+                  ? _bytes(package.mapResourceBytes)
+                  : 'Not downloaded'),
           _value('Place information', _bytes(package.placeDataBytes)),
           _value('Total measured', _bytes(package.totalBytes)),
           const SizedBox(height: 8),
@@ -227,12 +233,14 @@ class OfflineMapsPage extends ConsumerWidget {
         decoration: BoxDecoration(
           color: const Color(0xFF7F1D1D).withValues(alpha: .35),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFF87171).withValues(alpha: .5)),
+          border:
+              Border.all(color: const Color(0xFFF87171).withValues(alpha: .5)),
         ),
         child: Row(children: [
           const Icon(Icons.error_outline_rounded, color: Color(0xFFF87171)),
           const SizedBox(width: 10),
-          Expanded(child: Text(error, style: const TextStyle(color: Colors.white))),
+          Expanded(
+              child: Text(error, style: const TextStyle(color: Colors.white))),
         ]),
       );
 
@@ -273,21 +281,29 @@ class OfflineMapsPage extends ConsumerWidget {
                     : const Color(0xFF64748B),
           ),
           const SizedBox(width: 9),
-          Expanded(child: Text(label, style: const TextStyle(color: Color(0xFFCBD5E1)))),
+          Expanded(
+              child: Text(label,
+                  style: const TextStyle(color: Color(0xFFCBD5E1)))),
         ]),
       );
 
-  Widget _meta(String label, DateTime? value) =>
-      _value(label, value == null ? 'Not available' : DateFormat.yMMMd().add_jm().format(value.toLocal()));
+  Widget _meta(String label, DateTime? value) => _value(
+      label,
+      value == null
+          ? 'Not available'
+          : DateFormat.yMMMd().add_jm().format(value.toLocal()));
 
   Widget _value(String label, String value) => Padding(
         padding: const EdgeInsets.only(bottom: 7),
         child: Row(children: [
-          Expanded(child: Text(label, style: const TextStyle(color: Color(0xFF94A3B8)))),
+          Expanded(
+              child: Text(label,
+                  style: const TextStyle(color: Color(0xFF94A3B8)))),
           Flexible(
             child: Text(value,
                 textAlign: TextAlign.right,
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w700)),
           ),
         ]),
       );
@@ -312,8 +328,11 @@ class OfflineMapsPage extends ConsumerWidget {
               : 'This downloads public place data and supported snapshots. Full offline base-map resources are not supported in this Web environment.',
         ),
         actions: [
-          TextButton(onPressed: () => context.pop(false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => context.pop(true), child: const Text('Download')),
+          TextButton(
+              onPressed: () => context.pop(false), child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => context.pop(true),
+              child: const Text('Download')),
         ],
       ),
     );
@@ -332,9 +351,11 @@ class OfflineMapsPage extends ConsumerWidget {
           'This removes downloaded map resources and public offline map data. Server-saved Favorites, Itineraries, and Reservations are not deleted.',
         ),
         actions: [
-          TextButton(onPressed: () => context.pop(false), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => context.pop(false), child: const Text('Cancel')),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFDC2626)),
+            style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFDC2626)),
             onPressed: () => context.pop(true),
             child: const Text('Delete'),
           ),

@@ -20,7 +20,8 @@ final placeDetailProvider =
   } catch (_) {
     final cached = await ref.watch(mapMarkersProvider.future);
     return cached.firstWhere(
-      (marker) => marker.mapLocationId == id ||
+      (marker) =>
+          marker.mapLocationId == id ||
           marker.id == id ||
           marker.sourceId == id,
       orElse: () => throw const FormatException(

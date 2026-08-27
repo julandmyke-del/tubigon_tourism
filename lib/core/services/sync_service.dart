@@ -83,8 +83,7 @@ class SyncService {
   Future<void> syncTableToRemote(String tableName) async {
     if (!_isOnline || !DatabaseHelper.isSupported) return;
     final dbHelper = DatabaseHelper.instance;
-    final activeUserId =
-        LocalStorageService.instance.getString('auth_user_id');
+    final activeUserId = LocalStorageService.instance.getString('auth_user_id');
     if (activeUserId == null || activeUserId.isEmpty) return;
 
     try {

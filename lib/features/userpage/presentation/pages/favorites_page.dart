@@ -45,7 +45,8 @@ class FavoritesPage extends ConsumerWidget {
           error: (_, __) => _FavoritesMessage(
             icon: Icons.place_outlined,
             title: 'Favorite places are unavailable',
-            subtitle: 'Previously saved public places will appear when available.',
+            subtitle:
+                'Previously saved public places will appear when available.',
             action: () => ref.invalidate(mapMarkersProvider),
           ),
           data: (allPlaces) {
@@ -82,12 +83,11 @@ class FavoritesPage extends ConsumerWidget {
                     ref,
                     favorites[index],
                   ),
-                  onRemove: () => ref
-                      .read(favoriteKeysProvider.notifier)
-                      .toggle(
-                        favorites[index].favoriteType,
-                        favorites[index].sourceId,
-                      ),
+                  onRemove: () =>
+                      ref.read(favoriteKeysProvider.notifier).toggle(
+                            favorites[index].favoriteType,
+                            favorites[index].sourceId,
+                          ),
                 ),
               ),
             );
@@ -188,7 +188,8 @@ class _FavoritePlaceCard extends StatelessWidget {
             IconButton(
               tooltip: 'Remove Favorite',
               onPressed: onRemove,
-              icon: const Icon(Icons.favorite_rounded, color: Color(0xFFF87171)),
+              icon:
+                  const Icon(Icons.favorite_rounded, color: Color(0xFFF87171)),
             ),
           ]),
         ),

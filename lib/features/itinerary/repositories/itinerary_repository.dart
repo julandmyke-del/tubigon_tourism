@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/api_endpoints.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/network/connectivity_provider.dart';
 import '../../../core/services/local_storage_service.dart';
 import '../../authentication/auth_provider.dart';
 import '../models/itinerary.dart';
@@ -17,6 +18,7 @@ class ItineraryRepository {
   String get _ownerKey => _ref.read(authProvider).userId ?? 'guest';
   String get _listCacheKey => 'itineraries_cache_$_ownerKey';
   String _detailCacheKey(String id) => 'itinerary_detail_${_ownerKey}_$id';
+  String get _pendingKey => 'itinerary_pending_sync_$_ownerKey';
 
   Future<List<Itinerary>> getItineraries() async {
     try {
@@ -114,10 +116,28 @@ class ItineraryRepository {
     String itemId,
     Map<String, dynamic> data,
   ) async {
+    if (!await checkConnectivity()) {
+      final updated = await _applyCachedItemUpdate(itineraryId, itemId, data);
+      final pending = _pendingMutations()
+        ..add({
+          'operation_id': '${DateTime.now().microsecondsSinceEpoch}-$itemId',
+          'owner_id': _ownerKey,
+          'itinerary_id': itineraryId,
+          'item_id': itemId,
+          'payload': data,
+          'created_at': DateTime.now().toIso8601String(),
+          'retry_count': 0,
+        });
+      await LocalStorageService.instance
+          .setString(_pendingKey, jsonEncode(pending));
+      return updated;
+    }
     final response = await _client
         .put(ApiEndpoints.itineraryItem(itineraryId, itemId), data: data);
-    return ItineraryItem.fromJson(
+    final updated = ItineraryItem.fromJson(
         Map<String, dynamic>.from(response.data['data'] as Map));
+    await _applyCachedItemUpdate(itineraryId, itemId, updated.toJson());
+    return updated;
   }
 
   Future<void> removeItem(String itineraryId, String itemId) async {
@@ -143,6 +163,70 @@ class ItineraryRepository {
 
   Future<void> _cacheDetail(Itinerary itinerary) => LocalStorageService.instance
       .setString(_detailCacheKey(itinerary.id), jsonEncode(itinerary.toJson()));
+
+  Future<ItineraryItem> _applyCachedItemUpdate(
+    String itineraryId,
+    String itemId,
+    Map<String, dynamic> update,
+  ) async {
+    final raw =
+        LocalStorageService.instance.getString(_detailCacheKey(itineraryId));
+    if (raw == null) {
+      throw StateError('Download this itinerary before editing it offline.');
+    }
+    final trip = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    final items = (trip['items'] as List<dynamic>? ?? const [])
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+    final index = items.indexWhere((item) => item['id']?.toString() == itemId);
+    if (index < 0)
+      throw StateError('This itinerary stop is unavailable offline.');
+    items[index] = {...items[index], ...update};
+    trip['items'] = items;
+    trip['updated_at'] = DateTime.now().toIso8601String();
+    await LocalStorageService.instance
+        .setString(_detailCacheKey(itineraryId), jsonEncode(trip));
+    return ItineraryItem.fromJson(items[index]);
+  }
+
+  List<Map<String, dynamic>> _pendingMutations() {
+    final raw = LocalStorageService.instance.getString(_pendingKey);
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      return (jsonDecode(raw) as List<dynamic>)
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .where((item) => item['owner_id']?.toString() == _ownerKey)
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<void> flushPendingMutations() async {
+    if (_ownerKey == 'guest' || !await checkConnectivity()) return;
+    final pending = _pendingMutations();
+    if (pending.isEmpty) return;
+    final retained = <Map<String, dynamic>>[];
+    for (final mutation in pending) {
+      try {
+        await _client.put(
+          ApiEndpoints.itineraryItem(
+            mutation['itinerary_id'].toString(),
+            mutation['item_id'].toString(),
+          ),
+          data: Map<String, dynamic>.from(mutation['payload'] as Map),
+        );
+      } catch (_) {
+        retained.add({
+          ...mutation,
+          'retry_count': ((mutation['retry_count'] as num?)?.toInt() ?? 0) + 1,
+        });
+      }
+    }
+    await LocalStorageService.instance
+        .setString(_pendingKey, jsonEncode(retained));
+  }
 }
 
 final itineraryRepositoryProvider = Provider<ItineraryRepository>((ref) {

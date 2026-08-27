@@ -28,18 +28,13 @@ class FavoriteController extends Controller
         ]);
 
         $userId = $request->user()->id;
-        if ($request->favoritable_type === 'map_location') {
-            $available = DB::table('map_locations')
-                ->where('id', $request->favoritable_id)
-                ->where('published', true)
-                ->where('active', true)
-                ->whereNull('deleted_at')
-                ->exists();
-            if (! $available) {
-                throw ValidationException::withMessages([
-                    'favoritable_id' => ['The selected place is not publicly available.'],
-                ]);
-            }
+        if (! $this->isPubliclyAvailable(
+            $request->string('favoritable_type')->toString(),
+            $request->string('favoritable_id')->toString(),
+        )) {
+            throw ValidationException::withMessages([
+                'favoritable_id' => ['The selected place is not publicly available.'],
+            ]);
         }
         return DB::transaction(function () use ($request, $userId) {
             $existing = Favorite::where('user_id', $userId)
@@ -69,5 +64,19 @@ class FavoriteController extends Controller
                 'data' => ['is_favorite' => true, 'favorite' => $favorite],
             ]);
         });
+    }
+
+    private function isPubliclyAvailable(string $type, string $id): bool
+    {
+        $query = match ($type) {
+            'spot' => DB::table('tourist_spots')->where('is_active', true),
+            'msme' => DB::table('msmes')->where('is_verified', true),
+            'tourism_listing' => DB::table('tourism_listings')->where('is_active', true),
+            'map_location' => DB::table('map_locations')
+                ->where('published', true)
+                ->where('active', true),
+        };
+
+        return $query->where('id', $id)->whereNull('deleted_at')->exists();
     }
 }

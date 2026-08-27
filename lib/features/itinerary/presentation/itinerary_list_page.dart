@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../models/itinerary.dart';
 import '../repositories/itinerary_repository.dart';
+import '../../offline_maps/offline_map_provider.dart';
 
 class ItineraryListPage extends ConsumerWidget {
   const ItineraryListPage({super.key});
@@ -63,6 +64,11 @@ class ItineraryListPage extends ConsumerWidget {
                               trip: trip,
                               onTap: () =>
                                   context.push('/itineraries/${trip.id}'),
+                              onOffline: () => _makeOffline(
+                                context,
+                                ref,
+                                trip,
+                              ),
                             ),
                           ),
                         const SizedBox(height: 8),
@@ -73,13 +79,64 @@ class ItineraryListPage extends ConsumerWidget {
       ),
     );
   }
+
+  Future<void> _makeOffline(
+    BuildContext context,
+    WidgetRef ref,
+    Itinerary trip,
+  ) async {
+    final offline = ref.read(offlineMapProvider);
+    if (!offline.dataReady) {
+      final download = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Tubigon offline map required'),
+          content: const Text(
+            'This trip needs downloaded Tubigon place data before it can be used offline.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => context.pop(false),
+              child: const Text('Not Now'),
+            ),
+            FilledButton(
+              onPressed: () => context.pop(true),
+              child: const Text('Download Now'),
+            ),
+          ],
+        ),
+      );
+      if (download == true && context.mounted) context.push('/offline-maps');
+      return;
+    }
+    try {
+      await ref.read(itineraryRepositoryProvider).getItinerary(trip.id);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Trip available offline.')),
+        );
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Unable to save this trip offline right now.')),
+        );
+      }
+    }
+  }
 }
 
 class _TripCard extends StatelessWidget {
-  const _TripCard({required this.trip, required this.onTap});
+  const _TripCard({
+    required this.trip,
+    required this.onTap,
+    required this.onOffline,
+  });
 
   final Itinerary trip;
   final VoidCallback onTap;
+  final VoidCallback onOffline;
 
   @override
   Widget build(BuildContext context) {
@@ -146,6 +203,12 @@ class _TripCard extends StatelessWidget {
                 ],
               ),
             ),
+            IconButton(
+              tooltip: 'Make Available Offline',
+              onPressed: onOffline,
+              icon: const Icon(Icons.offline_pin_outlined,
+                  color: Color(0xFF60A5FA)),
+            ),
             const Icon(Icons.chevron_right_rounded, color: Color(0xFF64748B)),
           ]),
         ),
@@ -205,7 +268,7 @@ class _OfflineNote extends StatelessWidget {
           SizedBox(width: 9),
           Expanded(
               child: Text(
-                  'Saved trip details remain readable offline. Live maps and directions need internet.',
+                  'Downloaded trip details remain readable offline. Road directions use a previously cached route or require internet.',
                   style: TextStyle(color: Color(0xFFBFDBFE), fontSize: 11))),
         ]),
       );

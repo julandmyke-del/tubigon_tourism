@@ -147,6 +147,21 @@ class SyncController extends Controller
                 'favoritable_type' => 'required|in:spot,msme,tourism_listing,map_location',
                 'favoritable_id' => 'required|uuid',
             ])->validate();
+            $available = match ($data['favoritable_type']) {
+                'spot' => DB::table('tourist_spots')->where('is_active', true),
+                'msme' => DB::table('msmes')->where('is_verified', true),
+                'tourism_listing' => DB::table('tourism_listings')->where('is_active', true),
+                'map_location' => DB::table('map_locations')
+                    ->where('published', true)
+                    ->where('active', true),
+            };
+            abort_unless(
+                $available->where('id', $data['favoritable_id'])
+                    ->whereNull('deleted_at')
+                    ->exists(),
+                422,
+                'The selected place is not publicly available.',
+            );
             return array_merge($data, [
                 'user_id' => $userId,
                 'created_at' => now(),

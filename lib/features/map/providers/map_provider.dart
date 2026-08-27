@@ -348,7 +348,8 @@ class MapRepository {
     }
   }
 
-  Future<List<MapPlaceCategory>> getCategories({bool forceOffline = false}) async {
+  Future<List<MapPlaceCategory>> getCategories(
+      {bool forceOffline = false}) async {
     const cacheKey = 'smart_map_categories_cache';
     final storage = LocalStorageService.instance;
     if (!forceOffline && await checkConnectivity()) {

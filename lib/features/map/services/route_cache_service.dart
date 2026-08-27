@@ -28,7 +28,8 @@ class CachedMapRoute {
         'destination_id': destinationId,
         'origin': [origin.latitude, origin.longitude],
         'destination': [destination.latitude, destination.longitude],
-        'points': points.map((point) => [point.latitude, point.longitude]).toList(),
+        'points':
+            points.map((point) => [point.latitude, point.longitude]).toList(),
         'distance_km': distanceKm,
         'duration_minutes': durationMinutes,
         'calculated_at': calculatedAt.toIso8601String(),
@@ -85,7 +86,8 @@ class RouteCacheService {
           calculatedAt: DateTime.now(),
         ),
       );
-    if (routes.length > _maxRoutes) routes.removeRange(_maxRoutes, routes.length);
+    if (routes.length > _maxRoutes)
+      routes.removeRange(_maxRoutes, routes.length);
     await LocalStorageService.instance.setString(
       _key,
       jsonEncode(routes.map((route) => route.toJson()).toList()),
@@ -105,7 +107,8 @@ class RouteCacheService {
     try {
       return (jsonDecode(raw) as List<dynamic>)
           .whereType<Map>()
-          .map((item) => CachedMapRoute.fromJson(Map<String, dynamic>.from(item)))
+          .map((item) =>
+              CachedMapRoute.fromJson(Map<String, dynamic>.from(item)))
           .toList();
     } catch (_) {
       return [];
