@@ -10,3 +10,4 @@ Artisan::command('inspire', function () {
 
 // Uses the existing notifications table and emits at most one reminder per trip/day.
 Schedule::command('itineraries:send-reminders')->dailyAt('08:00');
+Schedule::command('reservations:send-reminders')->dailyAt('08:05');

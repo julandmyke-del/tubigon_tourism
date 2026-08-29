@@ -9,7 +9,7 @@ class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._privateConstructor();
 
   static const String _dbName = 'tubigon_tourism.db';
-  static const int _dbVersion = 5;
+  static const int _dbVersion = 8;
 
   /// Native SQLite is intentionally unavailable in browsers. Repositories
   /// use this single capability boundary to select their Laravel API path.
@@ -85,7 +85,9 @@ class DatabaseHelper {
           uuid TEXT UNIQUE NOT NULL,
           name TEXT NOT NULL,
           slug TEXT UNIQUE,
+          short_description TEXT,
           description TEXT,
+          aliases TEXT,
           category_id INTEGER,
           latitude REAL,
           longitude REAL,
@@ -98,6 +100,25 @@ class DatabaseHelper {
           review_count INTEGER DEFAULT 0,
           is_featured INTEGER DEFAULT 0,
           is_active INTEGER DEFAULT 1,
+          is_published INTEGER DEFAULT 1,
+          is_bookable INTEGER DEFAULT 0,
+          booking_enabled INTEGER DEFAULT 0,
+          booking_unavailable_reason_code TEXT,
+          booking_unavailable_reason TEXT,
+          booking_availability_updated_at TEXT,
+          booking_mode TEXT DEFAULT 'no_reservation',
+          booking_available_days TEXT,
+          booking_time_slots TEXT,
+          max_guests_per_reservation INTEGER,
+          advance_booking_days INTEGER,
+          minimum_notice_hours INTEGER,
+          reservation_fee REAL,
+          fee_configured INTEGER DEFAULT 0,
+          booking_instructions TEXT,
+          cancellation_policy TEXT,
+          contact_information TEXT,
+          visitor_instructions TEXT,
+          amenities TEXT,
           created_at TEXT,
           updated_at TEXT,
           FOREIGN KEY (category_id) REFERENCES spot_categories(id) ON DELETE SET NULL
@@ -160,6 +181,7 @@ class DatabaseHelper {
       await txn.execute('''
         CREATE TABLE reservations (
           id TEXT PRIMARY KEY,
+          public_reference TEXT,
           user_id TEXT NOT NULL,
           partner_id TEXT,
           reservable_type TEXT NOT NULL,
@@ -171,6 +193,14 @@ class DatabaseHelper {
           status TEXT DEFAULT 'pending',
           notes TEXT,
           total_amount REAL DEFAULT 0,
+          reservable_name TEXT,
+          reservable_image TEXT,
+          fee_configured INTEGER DEFAULT 0,
+          booking_instructions TEXT,
+          cancellation_policy TEXT,
+          latitude REAL,
+          longitude REAL,
+          status_history TEXT,
           created_at TEXT,
           updated_at TEXT,
           sync_status TEXT DEFAULT 'synced',
@@ -476,6 +506,78 @@ class DatabaseHelper {
         try {
           await db.execute(
             'ALTER TABLE emergency_contacts ADD COLUMN ${entry.key} ${entry.value}',
+          );
+        } catch (_) {}
+      }
+    }
+    if (oldVersion >= 2 && oldVersion < 6) {
+      const touristSpotColumns = <String, String>{
+        'is_published': 'INTEGER DEFAULT 1',
+        'is_bookable': 'INTEGER DEFAULT 0',
+        'booking_mode': "TEXT DEFAULT 'no_reservation'",
+        'booking_available_days': 'TEXT',
+        'booking_time_slots': 'TEXT',
+        'max_guests_per_reservation': 'INTEGER',
+        'advance_booking_days': 'INTEGER',
+        'minimum_notice_hours': 'INTEGER',
+        'reservation_fee': 'REAL',
+        'fee_configured': 'INTEGER DEFAULT 0',
+        'booking_instructions': 'TEXT',
+        'cancellation_policy': 'TEXT',
+      };
+      for (final entry in touristSpotColumns.entries) {
+        try {
+          await db.execute(
+            'ALTER TABLE tourist_spots ADD COLUMN ${entry.key} ${entry.value}',
+          );
+        } catch (_) {}
+      }
+      const reservationColumns = <String, String>{
+        'public_reference': 'TEXT',
+        'reservable_name': 'TEXT',
+        'reservable_image': 'TEXT',
+        'fee_configured': 'INTEGER DEFAULT 0',
+        'booking_instructions': 'TEXT',
+        'cancellation_policy': 'TEXT',
+        'latitude': 'REAL',
+        'longitude': 'REAL',
+        'status_history': 'TEXT',
+      };
+      for (final entry in reservationColumns.entries) {
+        try {
+          await db.execute(
+            'ALTER TABLE reservations ADD COLUMN ${entry.key} ${entry.value}',
+          );
+        } catch (_) {}
+      }
+    }
+    if (oldVersion < 8) {
+      const availabilityColumns = <String, String>{
+        'booking_enabled': 'INTEGER DEFAULT 0',
+        'booking_unavailable_reason_code': 'TEXT',
+        'booking_unavailable_reason': 'TEXT',
+        'booking_availability_updated_at': 'TEXT',
+        'contact_information': 'TEXT',
+        'visitor_instructions': 'TEXT',
+        'amenities': 'TEXT',
+      };
+      for (final entry in availabilityColumns.entries) {
+        try {
+          await db.execute(
+            'ALTER TABLE tourist_spots ADD COLUMN ${entry.key} ${entry.value}',
+          );
+        } catch (_) {}
+      }
+    }
+    if (oldVersion >= 2 && oldVersion < 7) {
+      const touristSpotContentColumns = <String, String>{
+        'short_description': 'TEXT',
+        'aliases': 'TEXT',
+      };
+      for (final entry in touristSpotContentColumns.entries) {
+        try {
+          await db.execute(
+            'ALTER TABLE tourist_spots ADD COLUMN ${entry.key} ${entry.value}',
           );
         } catch (_) {}
       }

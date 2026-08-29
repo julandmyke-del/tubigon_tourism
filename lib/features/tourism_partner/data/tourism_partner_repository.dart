@@ -1,242 +1,217 @@
 import 'package:dio/dio.dart';
+
+import '../../../core/constants/api_endpoints.dart';
 import '../../../core/network/api_client.dart';
 
-/// Repository for Tourism Partner data operations via Laravel REST API backend.
 class TourismPartnerRepository {
   TourismPartnerRepository({required this.apiClient});
 
   final ApiClient apiClient;
 
-  // ─── Dashboard Stats ────────────────────────────────────────────────────
+  Future<Map<String, dynamic>> getDashboardStats() =>
+      _map(ApiEndpoints.partnerDashboardStats);
 
-  Future<Map<String, dynamic>> getDashboardStats() async {
-    try {
-      final response = await apiClient.get('/partner/dashboard-stats');
-      if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return Map<String, dynamic>.from(response.data['data']);
-      }
-      throw Exception('Failed to fetch dashboard stats');
-    } catch (e) {
-      throw Exception('Failed to fetch dashboard stats: $e');
-    }
+  Future<List<Map<String, dynamic>>> getMyListings() async =>
+      (await _list(ApiEndpoints.partnerListings))
+          .map(_listingDto)
+          .toList(growable: false);
+
+  Future<Map<String, dynamic>> getListingById(String listingId) async =>
+      _listingDto(await _map(ApiEndpoints.partnerListing(listingId)));
+
+  Future<List<Map<String, dynamic>>> getManagedDestinations() =>
+      _list(ApiEndpoints.partnerTouristSpots);
+
+  Future<Map<String, dynamic>> getManagedDestination(String spotId) =>
+      _map(ApiEndpoints.partnerTouristSpot(spotId));
+
+  Future<void> updateManagedDestination(
+    String spotId,
+    Map<String, dynamic> data,
+  ) =>
+      _write(apiClient.patch(
+        ApiEndpoints.partnerTouristSpot(spotId),
+        data: data,
+      ));
+
+  Future<void> updateBookingAvailability(
+    String spotId, {
+    required bool enabled,
+    String? reasonCode,
+    String? reason,
+  }) =>
+      _write(apiClient.patch(
+        ApiEndpoints.partnerTouristSpotBookingAvailability(spotId),
+        data: {
+          'booking_enabled': enabled,
+          if (!enabled) 'reason_code': reasonCode,
+          if (!enabled && reason?.trim().isNotEmpty == true)
+            'reason': reason!.trim(),
+        },
+      ));
+
+  Future<void> createListing(Map<String, dynamic> listingData) =>
+      _write(apiClient.post(ApiEndpoints.partnerListings, data: listingData));
+
+  Future<void> updateListing(
+    String listingId,
+    Map<String, dynamic> listingData,
+  ) =>
+      _write(apiClient.put(
+        ApiEndpoints.partnerListing(listingId),
+        data: listingData,
+      ));
+
+  Future<void> submitListing(String listingId) =>
+      _write(apiClient.post(ApiEndpoints.partnerSubmitListing(listingId)));
+
+  Future<void> deleteListing(String listingId) =>
+      _write(apiClient.delete(ApiEndpoints.partnerListing(listingId)));
+
+  Future<List<Map<String, dynamic>>> getReservations(
+      {String? statusFilter}) async {
+    final rows = await _list(
+      ApiEndpoints.partnerReservations,
+      queryParameters: {
+        if (statusFilter != null && statusFilter.toLowerCase() != 'all')
+          'status_filter': statusFilter.toLowerCase(),
+      },
+    );
+    return rows.map(_reservationDto).toList(growable: false);
   }
 
-  // ─── My Listings ────────────────────────────────────────────────────────
+  Future<Map<String, dynamic>> getReservationById(String reservationId) async =>
+      _reservationDto(
+          await _map(ApiEndpoints.partnerReservation(reservationId)));
 
-  Future<List<Map<String, dynamic>>> getMyListings() async {
-    try {
-      final response = await apiClient.get('/partner/listings');
-      if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return List<Map<String, dynamic>>.from(response.data['data']);
-      }
-      return [];
-    } catch (e) {
-      throw Exception('Failed to fetch listings: $e');
-    }
-  }
+  Future<void> updateReservationStatus(
+    String reservationId,
+    String statusName,
+  ) =>
+      _write(apiClient.put(
+        ApiEndpoints.partnerReservationStatus(reservationId),
+        data: {'status_name': statusName.toLowerCase()},
+      ));
 
-  Future<Map<String, dynamic>> getListingById(String listingId) async {
-    try {
-      final response = await apiClient.get('/partner/listings/$listingId');
-      if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return Map<String, dynamic>.from(response.data['data']);
-      }
-      throw Exception('Listing not found');
-    } catch (e) {
-      throw Exception('Failed to fetch listing: $e');
-    }
-  }
+  Future<List<Map<String, dynamic>>> getNotifications() =>
+      _list(ApiEndpoints.partnerNotifications);
 
-  Future<void> createListing(Map<String, dynamic> listingData) async {
-    try {
-      await apiClient.post('/partner/listings', data: listingData);
-    } catch (e) {
-      throw Exception('Failed to create listing: $e');
-    }
-  }
+  Future<void> markNotificationRead(String notificationId) => _write(
+      apiClient.put(ApiEndpoints.partnerNotificationRead(notificationId)));
 
-  Future<void> updateListing(String listingId, Map<String, dynamic> listingData) async {
-    try {
-      await apiClient.put('/partner/listings/$listingId', data: listingData);
-    } catch (e) {
-      throw Exception('Failed to update listing: $e');
-    }
-  }
+  Future<void> markAllNotificationsRead() =>
+      _write(apiClient.put(ApiEndpoints.partnerNotificationsReadAll));
 
-  Future<void> deleteListing(String listingId) async {
-    try {
-      await apiClient.delete('/partner/listings/$listingId');
-    } catch (e) {
-      throw Exception('Failed to delete listing: $e');
-    }
-  }
-
-  // ─── Reservations ───────────────────────────────────────────────────────
-
-  Future<List<Map<String, dynamic>>> getReservations({String? statusFilter}) async {
-    try {
-      final response = await apiClient.get(
-        '/partner/reservations',
-        queryParameters: {'status_filter': statusFilter},
-      );
-      if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return List<Map<String, dynamic>>.from(response.data['data']);
-      }
-      return [];
-    } catch (e) {
-      throw Exception('Failed to fetch reservations: $e');
-    }
-  }
-
-  Future<Map<String, dynamic>> getReservationById(String reservationId) async {
-    try {
-      final response = await apiClient.get('/reservations/$reservationId');
-      if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return Map<String, dynamic>.from(response.data['data']);
-      }
-      throw Exception('Reservation not found');
-    } catch (e) {
-      throw Exception('Failed to fetch reservation: $e');
-    }
-  }
-
-  Future<void> updateReservationStatus(String reservationId, String statusName) async {
-    try {
-      await apiClient.put(
-        '/partner/reservations/$reservationId/status',
-        data: {'status_name': statusName},
-      );
-    } catch (e) {
-      throw Exception('Failed to update reservation status: $e');
-    }
-  }
-
-  // ─── Notifications ──────────────────────────────────────────────────────
-
-  Future<List<Map<String, dynamic>>> getNotifications() async {
-    try {
-      final response = await apiClient.get('/partner/notifications');
-      if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return List<Map<String, dynamic>>.from(response.data['data']);
-      }
-      return [];
-    } catch (e) {
-      throw Exception('Failed to fetch notifications: $e');
-    }
-  }
-
-  Future<void> markNotificationRead(String notificationId) async {
-    try {
-      await apiClient.put('/partner/notifications/$notificationId/read');
-    } catch (e) {
-      throw Exception('Failed to mark notification as read: $e');
-    }
-  }
-
-  Future<void> markAllNotificationsRead() async {
-    try {
-      await apiClient.put('/partner/notifications/read-all');
-    } catch (e) {
-      throw Exception('Failed to mark all notifications as read: $e');
-    }
-  }
-
-  Future<void> deleteNotification(String notificationId) async {
-    try {
-      await apiClient.delete('/partner/notifications/$notificationId');
-    } catch (e) {
-      throw Exception('Failed to delete notification: $e');
-    }
-  }
-
-  // ─── Reviews ────────────────────────────────────────────────────────────
+  Future<void> deleteNotification(String notificationId) => _write(
+      apiClient.delete(ApiEndpoints.partnerNotification(notificationId)));
 
   Future<List<Map<String, dynamic>>> getListingReviews() async {
-    try {
-      final response = await apiClient.get('/partner/reviews');
-      if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return List<Map<String, dynamic>>.from(response.data['data']);
-      }
-      return [];
-    } catch (e) {
-      throw Exception('Failed to fetch reviews: $e');
-    }
+    final rows = await _list(ApiEndpoints.partnerReviews);
+    return rows.map((row) {
+      final user = row['user'];
+      return {
+        ...row,
+        'reviewer': user is Map ? user['name'] : 'Tourist',
+        'comment': row['content'],
+        'date': row['created_at'],
+      };
+    }).toList(growable: false);
   }
 
-  Future<Map<String, dynamic>> getReviewStats() async {
-    try {
-      final response = await apiClient.get('/partner/review-stats');
-      if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return Map<String, dynamic>.from(response.data['data']);
-      }
-      return {'averageRating': 0.0, 'totalReviews': 0};
-    } catch (e) {
-      throw Exception('Failed to fetch review stats: $e');
-    }
-  }
+  Future<Map<String, dynamic>> getReviewStats() =>
+      _map(ApiEndpoints.partnerReviewStats);
 
-  // ─── Analytics ──────────────────────────────────────────────────────────
+  Future<Map<String, dynamic>> getAnalytics() =>
+      _map(ApiEndpoints.partnerAnalytics);
 
-  Future<Map<String, dynamic>> getAnalytics() async {
-    try {
-      final response = await apiClient.get('/partner/analytics');
-      if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return Map<String, dynamic>.from(response.data['data']);
-      }
-      throw Exception('Failed to fetch analytics');
-    } catch (e) {
-      throw Exception('Failed to fetch analytics: $e');
-    }
-  }
+  Future<Map<String, dynamic>> getProfile() =>
+      _map(ApiEndpoints.partnerProfile);
 
-  // ─── Profile ────────────────────────────────────────────────────────────
+  Future<void> updateProfile(Map<String, dynamic> profileData) =>
+      _write(apiClient.put(ApiEndpoints.partnerProfile, data: profileData));
 
-  Future<Map<String, dynamic>> getProfile() async {
-    try {
-      final response = await apiClient.get('/partner/profile');
-      if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return Map<String, dynamic>.from(response.data['data']);
-      }
-      throw Exception('Profile not found');
-    } catch (e) {
-      throw Exception('Failed to fetch profile: $e');
-    }
-  }
-
-  Future<void> updateProfile(Map<String, dynamic> profileData) async {
-    try {
-      await apiClient.put('/partner/profile', data: profileData);
-    } catch (e) {
-      throw Exception('Failed to update profile: $e');
-    }
-  }
-
-  Future<void> updatePassword(String newPassword) async {
-    try {
-      await apiClient.put('/partner/password', data: {
+  Future<void> updatePassword(String newPassword) =>
+      _write(apiClient.put(ApiEndpoints.partnerPassword, data: {
         'password': newPassword,
         'password_confirmation': newPassword,
-      });
-    } catch (e) {
-      throw Exception('Failed to update password: $e');
+      }));
+
+  Future<String> uploadListingImage(
+      String fileName, List<int> fileBytes) async {
+    final response = await apiClient.post(
+      ApiEndpoints.partnerImageUpload,
+      data: FormData.fromMap({
+        'image': MultipartFile.fromBytes(fileBytes, filename: fileName),
+      }),
+    );
+    _assertSuccess(response);
+    final url = response.data['data']?['url']?.toString();
+    if (url == null || url.isEmpty) {
+      throw const FormatException('Missing image URL.');
     }
+    return url;
   }
 
-  // ─── Image Upload ───────────────────────────────────────────────────────
+  Map<String, dynamic> _listingDto(Map<String, dynamic> row) => {
+        ...row,
+        'name': row['listing_name'],
+        'category': row['listing_type'],
+        'location': row['address'],
+        'status': row['approval_status'] ?? row['status'],
+        'rating': row['average_rating'] ?? 0,
+      };
 
-  Future<String> uploadListingImage(String fileName, List<int> fileBytes) async {
-    try {
-      final formData = FormData.fromMap({
-        'image': MultipartFile.fromBytes(fileBytes, filename: fileName),
-      });
+  Map<String, dynamic> _reservationDto(Map<String, dynamic> row) {
+    final status = row['status'];
+    final user = row['user'];
+    final listing = row['listing'];
+    return {
+      ...row,
+      'status': status is Map ? status['name'] : status,
+      'guest_name': user is Map ? user['name'] : null,
+      'listing_name': row['reservable_name'] ??
+          (listing is Map ? listing['listing_name'] : null),
+      'date': row['reservation_date'],
+      'time': row['start_time'],
+    };
+  }
 
-      final response = await apiClient.post('/partner/images/upload', data: formData);
-      if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return response.data['data']['url'] as String;
-      }
-      throw Exception('Image upload failed');
-    } catch (e) {
-      throw Exception('Failed to upload image: $e');
+  Future<Map<String, dynamic>> _map(String endpoint) async {
+    final response = await apiClient.get(endpoint);
+    _assertSuccess(response);
+    final data = response.data['data'];
+    if (data is! Map) throw const FormatException('Invalid API response.');
+    return Map<String, dynamic>.from(data);
+  }
+
+  Future<List<Map<String, dynamic>>> _list(
+    String endpoint, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    final response =
+        await apiClient.get(endpoint, queryParameters: queryParameters);
+    _assertSuccess(response);
+    final data = response.data['data'];
+    if (data is! List) throw const FormatException('Invalid API response.');
+    return data
+        .whereType<Map>()
+        .map((row) => Map<String, dynamic>.from(row))
+        .toList(growable: false);
+  }
+
+  Future<void> _write(Future<Response<dynamic>> operation) async {
+    _assertSuccess(await operation);
+  }
+
+  void _assertSuccess(Response<dynamic> response) {
+    if (response.statusCode == null ||
+        response.statusCode! < 200 ||
+        response.statusCode! >= 300 ||
+        response.data is! Map ||
+        response.data['status'] != 'success') {
+      throw StateError(response.data is Map
+          ? response.data['message']?.toString() ?? 'Request failed.'
+          : 'Request failed.');
     }
   }
 }

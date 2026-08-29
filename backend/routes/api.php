@@ -15,8 +15,11 @@ use App\Http\Controllers\Api\V1\MapController;
 use App\Http\Controllers\Api\V1\MapLocationCategoryController;
 use App\Http\Controllers\Api\V1\MapLocationController;
 use App\Http\Controllers\Api\V1\MsmeController;
+use App\Http\Controllers\Api\V1\LguTouristSpotBookingAvailabilityController;
 use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\PartnerNotificationController;
+use App\Http\Controllers\Api\V1\PartnerReservationController;
+use App\Http\Controllers\Api\V1\PartnerTouristSpotController;
 use App\Http\Controllers\Api\V1\ReservationController;
 use App\Http\Controllers\Api\V1\ReviewController;
 use App\Http\Controllers\Api\V1\SettingController;
@@ -36,11 +39,14 @@ Route::prefix('v1')->group(function () {
     Route::post('/auth/google', [AuthController::class, 'googleAuth'])->middleware('throttle:10,1');
     Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
     Route::get('/auth/email/verify/{id}/{hash}', [AuthController::class, 'verifyEmail'])->name('verification.verify');
-    Route::post('/auth/email/verification-notification', [AuthController::class, 'resendVerificationEmail'])->middleware('throttle:3,1');
+    Route::post('/auth/verify-email-code', [AuthController::class, 'verifyEmailCode'])->middleware('throttle:10,1');
+    Route::post('/auth/resend-verification-code', [AuthController::class, 'resendVerificationEmail'])->middleware('throttle:3,1');
+    Route::post('/auth/change-unverified-email', [AuthController::class, 'changeUnverifiedEmail'])->middleware('throttle:3,1');
     Route::get('/auth/verification-status', [AuthController::class, 'verificationStatus'])->middleware('throttle:30,1');
 
     Route::get('/tourist-spots', [TouristSpotController::class, 'index']);
     Route::get('/tourist-spots/{id}', [TouristSpotController::class, 'show']);
+    Route::get('/tourist-spots/{id}/availability', [TouristSpotController::class, 'availability']);
     Route::get('/spot-categories', [SpotCategoryController::class, 'index']);
 
     Route::get('/establishments', [EstablishmentController::class, 'index']);
@@ -48,6 +54,8 @@ Route::prefix('v1')->group(function () {
 
     Route::get('/msmes', [MsmeController::class, 'index']);
     Route::get('/msmes/{id}', [MsmeController::class, 'show']);
+    Route::get('/tourism-listings', [TourismListingController::class, 'publicIndex']);
+    Route::get('/tourism-listings/{id}', [TourismListingController::class, 'publicShow']);
 
     Route::get('/ferry-schedules', [FerryScheduleController::class, 'index']);
     Route::get('/eco-tips', [EcoTipController::class, 'index']);
@@ -77,8 +85,10 @@ Route::prefix('v1')->group(function () {
         Route::get('/reservations', [ReservationController::class, 'index']);
         Route::get('/reservations/statuses', [ReservationController::class, 'statuses']);
         Route::get('/reservations/{id}', [ReservationController::class, 'show']);
-        Route::post('/reservations', [ReservationController::class, 'store']);
-        Route::put('/reservations/{id}/cancel', [ReservationController::class, 'cancel']);
+        Route::post('/reservations', [ReservationController::class, 'store'])
+            ->middleware('role:tourist');
+        Route::put('/reservations/{id}/cancel', [ReservationController::class, 'cancel'])
+            ->middleware('role:tourist');
 
         // Tourist itinerary planner. Ownership is enforced again in every controller action.
         Route::get('/itineraries', [ItineraryController::class, 'index']);
@@ -92,16 +102,21 @@ Route::prefix('v1')->group(function () {
         Route::delete('/itineraries/{id}/items/{item}', [ItineraryController::class, 'destroyItem']);
 
         // Reviews
-        Route::post('/reviews', [ReviewController::class, 'store']);
+        Route::post('/reviews', [ReviewController::class, 'store'])
+            ->middleware('role:tourist');
         Route::delete('/reviews/{id}', [ReviewController::class, 'destroy']);
 
         // Favorites
-        Route::get('/favorites', [FavoriteController::class, 'index']);
-        Route::post('/favorites/toggle', [FavoriteController::class, 'toggle']);
+        Route::get('/favorites', [FavoriteController::class, 'index'])
+            ->middleware('role:tourist');
+        Route::post('/favorites/toggle', [FavoriteController::class, 'toggle'])
+            ->middleware('role:tourist');
 
         // Waste Reports
         Route::get('/waste-reports', [WasteReportController::class, 'index']);
-        Route::post('/waste-reports', [WasteReportController::class, 'store']);
+        Route::get('/waste-reports/{id}', [WasteReportController::class, 'show']);
+        Route::post('/waste-reports', [WasteReportController::class, 'store'])
+            ->middleware('role:tourist');
         Route::post('/waste-reports/{id}/images', [WasteReportController::class, 'uploadImages']);
 
         // Notifications
@@ -124,7 +139,20 @@ Route::prefix('v1')->group(function () {
         Route::delete('/images/{id}', [ImageController::class, 'destroy']);
 
         // MSME owner registration
-        Route::post('/msmes', [MsmeController::class, 'store']);
+        Route::post('/msmes', [MsmeController::class, 'store'])
+            ->middleware('role:msme_owner,admin');
+
+        Route::middleware('role:msme_owner,admin')->prefix('msme')->group(function () {
+            Route::get('/dashboard-stats', [MsmeController::class, 'dashboardStats']);
+            Route::get('/profile', [MsmeController::class, 'ownerProfile']);
+            Route::put('/profile', [MsmeController::class, 'updateOwnerProfile']);
+            Route::post('/profile/submit', [MsmeController::class, 'submitOwnerProfile']);
+            Route::get('/reservations', [MsmeController::class, 'reservations']);
+            Route::get('/reservations/{id}', [MsmeController::class, 'showReservation']);
+            Route::put('/reservations/{id}/status', [MsmeController::class, 'updateReservationStatus']);
+            Route::get('/reviews', [MsmeController::class, 'reviews']);
+            Route::get('/analytics', [MsmeController::class, 'analytics']);
+        });
 
         // ─── Tourism Partner Scoped Routes ────────────────────────────────────
         Route::middleware('role:tourism_partner,admin')->prefix('partner')->group(function () {
@@ -134,9 +162,20 @@ Route::prefix('v1')->group(function () {
             Route::post('/listings', [TourismListingController::class, 'store']);
             Route::put('/listings/{id}', [TourismListingController::class, 'update']);
             Route::delete('/listings/{id}', [TourismListingController::class, 'destroy']);
+            Route::post('/listings/{id}/submit', [TourismListingController::class, 'submit']);
 
-            Route::get('/reservations', [TourismListingController::class, 'reservations']);
-            Route::put('/reservations/{id}/status', [TourismListingController::class, 'updateReservationStatus']);
+            Route::get('/tourist-spots', [PartnerTouristSpotController::class, 'index'])
+                ->middleware('role:tourism_partner');
+            Route::get('/tourist-spots/{id}', [PartnerTouristSpotController::class, 'show'])
+                ->middleware('role:tourism_partner');
+            Route::patch('/tourist-spots/{id}', [PartnerTouristSpotController::class, 'update'])
+                ->middleware('role:tourism_partner');
+            Route::patch('/tourist-spots/{id}/booking-availability', [PartnerTouristSpotController::class, 'updateBookingAvailability'])
+                ->middleware('role:tourism_partner');
+
+            Route::get('/reservations', [PartnerReservationController::class, 'index']);
+            Route::get('/reservations/{id}', [PartnerReservationController::class, 'show']);
+            Route::put('/reservations/{id}/status', [PartnerReservationController::class, 'updateStatus']);
 
             Route::get('/reviews', [TourismListingController::class, 'reviews']);
             Route::get('/review-stats', [TourismListingController::class, 'reviewStats']);
@@ -157,6 +196,7 @@ Route::prefix('v1')->group(function () {
         Route::middleware('role:admin')->prefix('admin')->group(function () {
             Route::get('/dashboard-stats', [AnalyticsController::class, 'dashboard']);
             Route::get('/activity-logs', [AnalyticsController::class, 'activityLogs']);
+            Route::get('/reviews', [ReviewController::class, 'managementIndex']);
 
             Route::get('/map-locations', [MapLocationController::class, 'managementIndex']);
             Route::post('/map-locations/duplicates', [MapLocationController::class, 'duplicates']);
@@ -173,16 +213,22 @@ Route::prefix('v1')->group(function () {
 
             // User Management
             Route::get('/users', [UserController::class, 'index']);
+            Route::post('/users', [UserController::class, 'store']);
+            Route::put('/users/{id}', [UserController::class, 'updateManaged']);
             Route::get('/roles', [UserController::class, 'roles']);
             Route::put('/users/{id}/role', [UserController::class, 'updateRole']);
             Route::put('/users/{id}/verify', [UserController::class, 'updateVerification']);
             Route::delete('/users/{id}', [UserController::class, 'destroy']);
 
             // MSME Management
+            Route::get('/msmes', [MsmeController::class, 'managementIndex']);
             Route::put('/msmes/{id}/verify', [MsmeController::class, 'updateVerification']);
             Route::delete('/msmes/{id}', [MsmeController::class, 'destroy']);
+            Route::get('/tourism-listings', [TourismListingController::class, 'managementIndex']);
+            Route::put('/tourism-listings/{id}/review', [TourismListingController::class, 'review']);
 
             // Tourist Spots & Categories Management
+            Route::get('/tourist-spots', [TouristSpotController::class, 'managementIndex']);
             Route::post('/tourist-spots', [TouristSpotController::class, 'store']);
             Route::put('/tourist-spots/{id}', [TouristSpotController::class, 'update']);
             Route::delete('/tourist-spots/{id}', [TouristSpotController::class, 'destroy']);
@@ -221,6 +267,7 @@ Route::prefix('v1')->group(function () {
             Route::put('/waste-reports/{id}/status', [WasteReportController::class, 'updateStatus']);
 
             // Announcements Management
+            Route::get('/announcements', [AnnouncementController::class, 'managementIndex']);
             Route::post('/announcements', [AnnouncementController::class, 'store']);
             Route::put('/announcements/{id}', [AnnouncementController::class, 'update']);
             Route::delete('/announcements/{id}', [AnnouncementController::class, 'destroy']);
@@ -251,7 +298,18 @@ Route::prefix('v1')->group(function () {
             Route::patch('/emergency-contacts/{id}/verify', [EmergencyContactController::class, 'verify']);
             Route::delete('/emergency-contacts/{id}', [EmergencyContactController::class, 'destroy']);
             Route::put('/tourist-spots/{id}/status', [LguController::class, 'updateSpotStatus']);
+            Route::get('/tourist-spots', [TouristSpotController::class, 'managementIndex']);
+            Route::put('/tourist-spots/{id}', [TouristSpotController::class, 'update']);
+            Route::put('/tourist-spots/{id}/booking', [TouristSpotController::class, 'updateBooking']);
+            Route::patch('/tourist-spots/{id}/booking-availability', [LguTouristSpotBookingAvailabilityController::class, 'update'])
+                ->middleware('role:lgu_staff');
+            Route::get('/reservations', [ReservationController::class, 'index']);
+            Route::get('/reservations/{id}', [ReservationController::class, 'show']);
+            Route::put('/reservations/{id}/status', [ReservationController::class, 'updateStatus']);
+            Route::get('/msmes', [MsmeController::class, 'managementIndex']);
             Route::put('/msmes/{id}/verify', [LguController::class, 'verifyMsme']);
+            Route::get('/tourism-listings', [TourismListingController::class, 'managementIndex']);
+            Route::put('/tourism-listings/{id}/review', [TourismListingController::class, 'review']);
             Route::put('/waste-reports/{id}/status', [LguController::class, 'updateWasteStatus']);
             Route::get('/analytics', [LguController::class, 'analytics']);
             Route::get('/reports', [LguController::class, 'reports']);

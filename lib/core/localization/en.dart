@@ -13,13 +13,17 @@ const Map<String, String> enStrings = {
 
   // ── Onboarding ─────────────────────────────────────────────────────────────
   'onboarding_1_title': 'Discover Tubigon',
-  'onboarding_1_desc': 'Explore pristine beaches, lush nature trails, and historical landmarks in the heart of Bohol.',
+  'onboarding_1_desc':
+      'Explore pristine beaches, lush nature trails, and historical landmarks in the heart of Bohol.',
   'onboarding_2_title': 'Plan Your Journey',
-  'onboarding_2_desc': 'Create personalized itineraries and book activities, accommodations, and ferry schedules with ease.',
+  'onboarding_2_desc':
+      'Create personalized itineraries and book activities, accommodations, and ferry schedules with ease.',
   'onboarding_3_title': 'Travel Responsibly',
-  'onboarding_3_desc': 'Follow eco-friendly tips and help keep Tubigon\'s natural beauty alive for future generations.',
+  'onboarding_3_desc':
+      'Follow eco-friendly tips and help keep Tubigon\'s natural beauty alive for future generations.',
   'onboarding_4_title': 'Stay Connected',
-  'onboarding_4_desc': 'Access everything offline, get real-time updates, and connect with local businesses and the LGU.',
+  'onboarding_4_desc':
+      'Access everything offline, get real-time updates, and connect with local businesses and the LGU.',
   'get_started': 'Get Started',
   'skip': 'Skip',
   'next': 'Next',

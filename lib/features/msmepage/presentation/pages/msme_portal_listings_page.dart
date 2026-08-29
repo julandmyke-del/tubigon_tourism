@@ -1,257 +1,87 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../../../../core/theme/app_spacing.dart';
 import '../../providers/msme_portal_providers.dart';
 import '../msme_theme.dart';
 
-class MsmePortalListingsPage extends ConsumerStatefulWidget {
+class MsmePortalListingsPage extends ConsumerWidget {
   const MsmePortalListingsPage({super.key});
-
   @override
-  ConsumerState<MsmePortalListingsPage> createState() =>
-      _MsmePortalListingsPageState();
-}
-
-class _MsmePortalListingsPageState
-    extends ConsumerState<MsmePortalListingsPage> {
-  String _searchQuery = '';
-  String _selectedCategory = 'All';
-
-  @override
-  Widget build(BuildContext context) {
-    final listingsAsync = ref.watch(msmePortalListingsProvider);
-
+  Widget build(BuildContext context, WidgetRef ref) {
+    final businesses = ref.watch(msmePortalListingsProvider);
     return Scaffold(
       backgroundColor: MsmeTheme.bgDark,
       body: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('My Business Listings',
-                        style: MsmeTheme.headingLarge()),
-                    Text(
-                        'Manage products, dining menus, tour packages, and pricing.',
-                        style: MsmeTheme.body(color: MsmeTheme.textMuted)),
-                  ],
-                ),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: MsmeTheme.primaryOrange,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 18, vertical: 12),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                  ),
-                  onPressed: () => context.go('/msme-portal/listings/create'),
-                  icon: const Icon(Icons.add_rounded, size: 18),
-                  label: const Text('Add New Listing',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            Container(
-              decoration: MsmeTheme.cardDecoration(),
-              padding: const EdgeInsets.all(AppSpacing.md),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      onChanged: (val) => setState(() => _searchQuery = val),
-                      style: GoogleFonts.inter(
-                          color: MsmeTheme.textWhite, fontSize: 14),
-                      decoration: InputDecoration(
-                        hintText:
-                            'Search listings by product name or category...',
-                        hintStyle:
-                            GoogleFonts.inter(color: MsmeTheme.textDisabled),
-                        prefixIcon: const Icon(Icons.search_rounded,
-                            color: MsmeTheme.textMuted, size: 20),
-                        filled: true,
-                        fillColor: MsmeTheme.surfaceDark,
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 10),
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide:
-                                const BorderSide(color: MsmeTheme.cardBorder)),
-                        enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide:
-                                const BorderSide(color: MsmeTheme.cardBorder)),
-                        focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: const BorderSide(
-                                color: MsmeTheme.primaryOrange)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-                  DropdownButton<String>(
-                    value: _selectedCategory,
-                    dropdownColor: MsmeTheme.surfaceDark,
-                    underline: const SizedBox.shrink(),
-                    items: [
-                      'All',
-                      'Handicrafts',
-                      'Food & Dining',
-                      'Tour Services',
-                      'Agriculture',
-                      'Accommodation'
-                    ]
-                        .map((c) => DropdownMenuItem(
-                            value: c,
-                            child: Text(c,
-                                style: GoogleFonts.inter(
-                                    color: MsmeTheme.textWhite))))
-                        .toList(),
-                    onChanged: (val) =>
-                        setState(() => _selectedCategory = val ?? 'All'),
-                  ),
-                ],
+        padding: const EdgeInsets.all(24),
+        child: businesses.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, _) => Center(
+              child: OutlinedButton(
+                  onPressed: () => ref.invalidate(msmePortalListingsProvider),
+                  child: Text('Retry: $error'))),
+          data: (items) {
+            if (items.isEmpty) {
+              return Center(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.storefront_rounded,
+                    size: 56, color: MsmeTheme.primaryOrange),
+                Text('No business profile yet.',
+                    style: MsmeTheme.headingLarge()),
+                const SizedBox(height: 12),
+                ElevatedButton(
+                    onPressed: () => context.push('/msme-portal/profile'),
+                    child: const Text('Set up business')),
+              ]));
+            }
+            final business = items.first;
+            final status =
+                business['verification_status']?.toString() ?? 'pending';
+            return ListView(children: [
+              Text('My Business', style: MsmeTheme.headingLarge()),
+              const Text(
+                  'The current schema represents one owned MSME business—not separate fake listings.',
+                  style: TextStyle(color: MsmeTheme.textMuted)),
+              const SizedBox(height: 18),
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: MsmeTheme.cardDecoration(),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(business['name']?.toString() ?? 'Business',
+                          style: MsmeTheme.headingMedium()),
+                      Text(
+                          '${business['category'] ?? 'Uncategorized'} • ${business['address'] ?? 'Location not set'}',
+                          style: const TextStyle(color: MsmeTheme.textMuted)),
+                      const SizedBox(height: 8),
+                      Chip(
+                          label:
+                              Text(status.replaceAll('_', ' ').toUpperCase())),
+                      if ((business['verification_notes']?.toString() ?? '')
+                          .isNotEmpty)
+                        Text(business['verification_notes'].toString(),
+                            style: const TextStyle(color: MsmeTheme.amber)),
+                      const SizedBox(height: 12),
+                      Wrap(spacing: 8, children: [
+                        ElevatedButton.icon(
+                            onPressed: () =>
+                                context.push('/msme-portal/profile'),
+                            icon: const Icon(Icons.edit),
+                            label: const Text('Edit profile')),
+                        OutlinedButton.icon(
+                            onPressed: () => context
+                                .push('/map?marker=msme:${business['id']}'),
+                            icon: const Icon(Icons.visibility),
+                            label: Text(status == 'verified'
+                                ? 'View public marker'
+                                : 'Private preview')),
+                      ]),
+                    ]),
               ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            Expanded(
-              child: listingsAsync.when(
-                loading: () => const Center(
-                    child: CircularProgressIndicator(
-                        color: MsmeTheme.primaryOrange)),
-                error: (err, _) => Center(
-                    child: Text('Error: $err',
-                        style: const TextStyle(color: MsmeTheme.red))),
-                data: (listings) {
-                  final filtered = listings.where((item) {
-                    final name = (item['name'] ?? '').toString().toLowerCase();
-                    final category = (item['category'] ?? '').toString();
-                    final matchesSearch =
-                        name.contains(_searchQuery.toLowerCase());
-                    final matchesCategory = _selectedCategory == 'All' ||
-                        category == _selectedCategory;
-                    return matchesSearch && matchesCategory;
-                  }).toList();
-
-                  if (filtered.isEmpty) {
-                    return Center(
-                        child: Text('No listings found.',
-                            style: MsmeTheme.body(color: MsmeTheme.textMuted)));
-                  }
-
-                  return ListView.separated(
-                    itemCount: filtered.length,
-                    separatorBuilder: (_, __) =>
-                        const SizedBox(height: AppSpacing.md),
-                    itemBuilder: (context, index) {
-                      final listing = filtered[index];
-                      final id = listing['id'].toString();
-                      final name = (listing['name'] ?? '').toString();
-                      final category = (listing['category'] ?? '').toString();
-                      final status = (listing['status'] ?? 'Active').toString();
-
-                      return Container(
-                        decoration: MsmeTheme.cardDecoration(),
-                        padding: const EdgeInsets.all(AppSpacing.md),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 72,
-                              height: 72,
-                              decoration: BoxDecoration(
-                                  color: MsmeTheme.surfaceDark,
-                                  borderRadius: BorderRadius.circular(12)),
-                              child: const Icon(Icons.store_rounded,
-                                  color: MsmeTheme.primaryOrange),
-                            ),
-                            const SizedBox(width: AppSpacing.md),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(name,
-                                      style: GoogleFonts.plusJakartaSans(
-                                          color: MsmeTheme.textWhite,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 16)),
-                                  const SizedBox(height: 4),
-                                  Text(category,
-                                      style: GoogleFonts.inter(
-                                          color: MsmeTheme.textMuted,
-                                          fontSize: 13)),
-                                  const SizedBox(height: 6),
-                                  Text(status,
-                                      style: GoogleFonts.inter(
-                                          color: MsmeTheme.primaryOrange,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 12)),
-                                ],
-                              ),
-                            ),
-                            Column(
-                              children: [
-                                TextButton(
-                                  onPressed: () => context
-                                      .go('/msme-portal/listings/edit/$id'),
-                                  child: const Text('Edit'),
-                                ),
-                                TextButton(
-                                  onPressed: () =>
-                                      _confirmDelete(context, id, name),
-                                  child: const Text('Delete',
-                                      style: TextStyle(color: MsmeTheme.red)),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-          ],
+            ]);
+          },
         ),
-      ),
-    );
-  }
-
-  void _confirmDelete(BuildContext context, String id, String name) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: MsmeTheme.cardDark,
-        title: Text('Delete Listing',
-            style: GoogleFonts.plusJakartaSans(
-                color: Colors.white, fontWeight: FontWeight.bold)),
-        content: Text('Are you sure you want to delete "$name"?',
-            style: GoogleFonts.inter(color: MsmeTheme.textMuted)),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text('Cancel',
-                  style: GoogleFonts.inter(color: MsmeTheme.textMuted))),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: MsmeTheme.red),
-            onPressed: () async {
-              final repo = ref.read(msmePortalRepositoryProvider);
-              await repo.deleteListing(id);
-              if (ctx.mounted) Navigator.pop(ctx);
-              ref.invalidate(msmePortalListingsProvider);
-            },
-            child: const Text('Delete', style: TextStyle(color: Colors.white)),
-          ),
-        ],
       ),
     );
   }

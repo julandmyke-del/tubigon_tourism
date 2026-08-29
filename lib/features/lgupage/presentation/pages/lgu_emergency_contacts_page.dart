@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../emergency/models/emergency_contact.dart';
+import '../../../emergency/repositories/emergency_repository.dart';
+import '../../../map/providers/map_provider.dart';
 import '../../repositories/lgu_repository.dart';
 
 class LguEmergencyContactsPage extends ConsumerStatefulWidget {
@@ -73,9 +76,19 @@ class _LguEmergencyContactsPageState
   ) async {
     if (_saving) return;
     setState(() => _saving = true);
-    final success = await operation();
+    var success = false;
+    try {
+      success = await operation();
+      if (success) {
+        ref.invalidate(emergencyContactsListProvider);
+        ref.invalidate(mapMarkersProvider);
+      }
+    } catch (_) {
+      success = false;
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
     if (!mounted) return;
-    setState(() => _saving = false);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(success
           ? successMessage
@@ -386,6 +399,21 @@ class _ContactFormDialogState extends State<_ContactFormDialog> {
     });
   }
 
+  Future<void> _pickLocation() async {
+    final latitude =
+        double.tryParse(_fields['latitude']!.text.trim()) ?? 9.9515;
+    final longitude =
+        double.tryParse(_fields['longitude']!.text.trim()) ?? 123.9618;
+    final result = await context.push<Map<String, dynamic>>(
+      '/map/pick?mode=place&lat=$latitude&lng=$longitude',
+    );
+    if (!mounted || result == null) return;
+    setState(() {
+      _fields['latitude']!.text = result['latitude']?.toString() ?? '';
+      _fields['longitude']!.text = result['longitude']?.toString() ?? '';
+    });
+  }
+
   @override
   Widget build(BuildContext context) => AlertDialog(
         backgroundColor: const Color(0xFF1C2541),
@@ -413,6 +441,15 @@ class _ContactFormDialogState extends State<_ContactFormDialog> {
                     child: _field('longitude', 'Longitude', numeric: true),
                   ),
                 ]),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: _pickLocation,
+                    icon: const Icon(Icons.map_rounded),
+                    label: const Text('Choose on Map'),
+                  ),
+                ),
+                const SizedBox(height: 10),
                 _field('source', 'Verification source'),
                 _field('source_url', 'Source URL'),
                 DropdownButtonFormField<String>(

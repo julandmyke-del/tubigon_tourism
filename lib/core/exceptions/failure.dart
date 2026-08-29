@@ -13,8 +13,10 @@ sealed class Failure {
     return switch (e) {
       NetworkException() => NetworkFailure(message: e.message),
       AuthException() => AuthFailure(message: e.message),
-      ValidationException() => ValidationFailure(message: e.message, errors: e.errors),
-      ServerException() => ServerFailure(message: e.message, statusCode: e.statusCode),
+      ValidationException() =>
+        ValidationFailure(message: e.message, errors: e.errors),
+      ServerException() =>
+        ServerFailure(message: e.message, statusCode: e.statusCode),
       CacheException() => CacheFailure(message: e.message),
       SyncException() => SyncFailure(message: e.message),
       NotFoundException() => NotFoundFailure(message: e.message),

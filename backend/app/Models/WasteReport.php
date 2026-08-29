@@ -19,12 +19,24 @@ class WasteReport extends Model
         'longitude',
         'images',
         'status',
+        'priority',
+        'assigned_to',
+        'assigned_personnel',
+        'assigned_at',
+        'lgu_notes',
+        'resolution_evidence',
+        'reviewed_at',
+        'resolved_at',
     ];
 
     protected $casts = [
         'images' => 'array',
         'latitude' => 'float',
         'longitude' => 'float',
+        'resolution_evidence' => 'array',
+        'assigned_at' => 'datetime',
+        'reviewed_at' => 'datetime',
+        'resolved_at' => 'datetime',
     ];
 
     public function user()

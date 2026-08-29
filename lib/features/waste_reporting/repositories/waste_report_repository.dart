@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/constants/api_endpoints.dart';
+import '../../../core/exceptions/app_exception.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/sync_service.dart';
 import '../../../database/database_helper.dart';
@@ -119,6 +120,9 @@ class WasteReportRepository {
         }
       } catch (e) {
         debugPrint('Direct waste report sync failed, cached offline: $e');
+        if (e is NetworkException) return false;
+        await dbHelper
+            .delete('waste_reports', where: 'id = ?', whereArgs: [reportId]);
         rethrow;
       }
     }

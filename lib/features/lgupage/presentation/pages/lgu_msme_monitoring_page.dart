@@ -1,208 +1,194 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_spacing.dart';
-import '../../../../core/theme/app_typography.dart';
+import '../../../map/providers/map_provider.dart';
+import '../../../msmepage/repositories/msme_repository.dart';
 import '../../providers/lgu_providers.dart';
 
 class LguMsmeMonitoringPage extends ConsumerStatefulWidget {
   const LguMsmeMonitoringPage({super.key});
-
   @override
-  ConsumerState<LguMsmeMonitoringPage> createState() => _LguMsmeMonitoringPageState();
+  ConsumerState<LguMsmeMonitoringPage> createState() => _State();
 }
 
-class _LguMsmeMonitoringPageState extends ConsumerState<LguMsmeMonitoringPage> {
-  static const _navyDark = Color(0xFF0B132B);
-  static const _cardBg = Color(0xFF1C2541);
-  static const _accentOrange = Color(0xFFF97316);
-
-  String _filterStatus = 'All';
-
-  final List<Map<String, dynamic>> _msmeList = [
-    {'id': '1', 'name': 'Bohol Crafts & Souvenirs', 'owner': 'Maria Santos', 'type': 'Retail', 'status': 'Pending', 'submitted': 'Aug 1, 2026', 'docs': 4},
-    {'id': '2', 'name': 'Island Breeze Restaurant', 'owner': 'Juan dela Cruz', 'type': 'Food & Beverage', 'status': 'Verified', 'submitted': 'Jul 28, 2026', 'docs': 6},
-    {'id': '3', 'name': 'Tubigon Tricycle Cooperative', 'owner': 'Pedro Reyes', 'type': 'Transport', 'status': 'Pending', 'submitted': 'Aug 2, 2026', 'docs': 3},
-    {'id': '4', 'name': 'Sea Breeze Resort', 'owner': 'Ana Gonzales', 'type': 'Accommodation', 'status': 'Rejected', 'submitted': 'Jul 25, 2026', 'docs': 2},
-    {'id': '5', 'name': 'Bohol Dive Center', 'owner': 'Carlos Tan', 'type': 'Tourism Services', 'status': 'Verified', 'submitted': 'Jul 20, 2026', 'docs': 7},
-    {'id': '6', 'name': 'Mangrove Tour Guides', 'owner': 'Rosa Lim', 'type': 'Tour Operator', 'status': 'Pending', 'submitted': 'Aug 3, 2026', 'docs': 5},
-  ];
+class _State extends ConsumerState<LguMsmeMonitoringPage> {
+  String _filter = 'pending';
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _msmeList.where((item) {
-      if (_filterStatus == 'All') return true;
-      return item['status'] == _filterStatus;
-    }).toList();
-
+    final msmes =
+        ref.watch(lguMsmesProvider(_filter == 'all' ? null : _filter));
     return Scaffold(
-      backgroundColor: _navyDark,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'MSME Business Verification',
-              style: AppTypography.headlineSmall.copyWith(
-                color: AppColors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const Text(
-              'Review municipal business permits, verify local MSMEs, and issue tourism compliance credentials',
-              style: TextStyle(color: AppColors.grey400, fontSize: 13),
-            ),
-            const SizedBox(height: AppSpacing.md),
-
-            // Status Filter Chips
-            Row(
-              children: ['All', 'Pending', 'Verified', 'Rejected'].map((status) {
-                final isSelected = _filterStatus == status;
-                return Container(
-                  margin: const EdgeInsets.only(right: 8),
-                  child: FilterChip(
-                    label: Text(status),
-                    selected: isSelected,
-                    selectedColor: _accentOrange,
-                    backgroundColor: _cardBg,
-                    labelStyle: TextStyle(
-                      color: isSelected ? AppColors.white : AppColors.grey300,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+      backgroundColor: const Color(0xFF0B132B),
+      body: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('MSME Verification',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 25,
+                  fontWeight: FontWeight.bold)),
+          const Text(
+              'Review real owner profiles, locations, and submitted information.',
+              style: TextStyle(color: AppColors.grey400)),
+          const SizedBox(height: 14),
+          Wrap(spacing: 8, children: [
+            for (final value in const [
+              'all',
+              'pending',
+              'verified',
+              'needs_changes',
+              'suspended'
+            ])
+              ChoiceChip(
+                  label: Text(value.replaceAll('_', ' ')),
+                  selected: _filter == value,
+                  onSelected: (_) => setState(() => _filter = value)),
+          ]),
+          const SizedBox(height: 14),
+          Expanded(
+              child: msmes.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, _) => Center(
+                child: OutlinedButton(
+              onPressed: () => ref.invalidate(lguMsmesProvider),
+              child: Text('Retry: $error'),
+            )),
+            data: (items) => items.isEmpty
+                ? const Center(
+                    child: Text('No MSMEs in this review state.',
+                        style: TextStyle(color: AppColors.grey400)))
+                : RefreshIndicator(
+                    onRefresh: () async => ref.refresh(
+                        lguMsmesProvider(_filter == 'all' ? null : _filter)
+                            .future),
+                    child: ListView.separated(
+                      itemCount: items.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) => _card(items[index]),
                     ),
-                    onSelected: (_) => setState(() => _filterStatus = status),
                   ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: AppSpacing.md),
-
-            // Business Cards
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: filtered.length,
-              itemBuilder: (context, index) {
-                final item = filtered[index];
-                final status = item['status'];
-                final isPending = status == 'Pending';
-                final isVerified = status == 'Verified';
-
-                return Container(
-                  margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-                  padding: const EdgeInsets.all(AppSpacing.md),
-                  decoration: BoxDecoration(
-                    color: _cardBg,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppColors.white.withValues(alpha: 0.08)),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: isVerified
-                              ? AppColors.success.withValues(alpha: 0.15)
-                              : (isPending ? AppColors.warning.withValues(alpha: 0.15) : AppColors.error.withValues(alpha: 0.15)),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Icon(
-                          Icons.storefront_rounded,
-                          color: isVerified ? AppColors.success : (isPending ? AppColors.warning : AppColors.error),
-                          size: 24,
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.md),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              item['name'],
-                              style: const TextStyle(color: AppColors.white, fontWeight: FontWeight.bold, fontSize: 15),
-                            ),
-                            const SizedBox(height: 4),
-                            Text('Owner: ${item['owner']} • Category: ${item['type']}', style: const TextStyle(color: AppColors.grey400, fontSize: 12)),
-                            Text('Submitted: ${item['submitted']} • ${item['docs']} documents attached', style: const TextStyle(color: AppColors.grey500, fontSize: 11)),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: isVerified
-                              ? AppColors.success.withValues(alpha: 0.2)
-                              : (isPending ? AppColors.warning.withValues(alpha: 0.2) : AppColors.error.withValues(alpha: 0.2)),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          status,
-                          style: TextStyle(
-                            color: isVerified ? AppColors.success : (isPending ? AppColors.warning : AppColors.error),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.sm),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _accentOrange,
-                          foregroundColor: AppColors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                        onPressed: () => _showVerifyModal(context, item),
-                        child: const Text('Review', style: TextStyle(fontSize: 12)),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
+          )),
+        ]),
       ),
     );
   }
 
-  void _showVerifyModal(BuildContext context, Map<String, dynamic> item) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: _cardBg,
-        title: Text('Review ${item['name']}', style: const TextStyle(color: AppColors.white)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _card(Map<String, dynamic> item) {
+    final profile = item['profile'];
+    final status = item['verification_status']?.toString() ??
+        (item['is_verified'] == true ? 'verified' : 'pending');
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+          color: const Color(0xFF1C2541),
+          borderRadius: BorderRadius.circular(14)),
+      child: Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          runSpacing: 10,
           children: [
-            Text('Owner: ${item['owner']}', style: const TextStyle(color: AppColors.grey300)),
-            Text('Category: ${item['type']}', style: const TextStyle(color: AppColors.grey300)),
-            Text('Documents: ${item['docs']} files verified', style: const TextStyle(color: AppColors.grey400)),
-            const SizedBox(height: 16),
-            const Text('Action:', style: TextStyle(color: AppColors.white, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              setState(() => item['status'] = 'Rejected');
-              ref.read(lguRepositoryProvider).verifyMsme(item['id'], false, status: 'Rejected');
-              Navigator.pop(context);
-            },
-            child: const Text('Reject', style: TextStyle(color: AppColors.error)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.success),
-            onPressed: () {
-              setState(() => item['status'] = 'Verified');
-              ref.read(lguRepositoryProvider).verifyMsme(item['id'], true, status: 'Verified');
-              Navigator.pop(context);
-            },
-            child: const Text('Approve & Verify', style: TextStyle(color: AppColors.white)),
-          ),
-        ],
-      ),
+            SizedBox(
+                width: 520,
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(item['name']?.toString() ?? 'Business',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold)),
+                      Text(
+                          'Owner: ${profile is Map ? profile['name'] ?? 'Owner' : 'Owner'} • ${item['category'] ?? 'Uncategorized'}',
+                          style: const TextStyle(color: AppColors.grey400)),
+                      Text(
+                          '${item['address'] ?? 'Address not supplied'}\n${item['phone'] ?? 'Contact not supplied'}',
+                          style: const TextStyle(color: AppColors.grey400)),
+                      Text(
+                          'Coordinates: ${item['latitude'] ?? '—'}, ${item['longitude'] ?? '—'}',
+                          style: const TextStyle(color: AppColors.grey400)),
+                      Chip(label: Text(status.toUpperCase())),
+                      if ((item['verification_notes']?.toString() ?? '')
+                          .isNotEmpty)
+                        Text(item['verification_notes'].toString(),
+                            style: const TextStyle(color: AppColors.warning)),
+                    ])),
+            ElevatedButton.icon(
+                onPressed: () => _review(item),
+                icon: const Icon(Icons.fact_check_rounded),
+                label: const Text('Review')),
+          ]),
     );
+  }
+
+  Future<void> _review(Map<String, dynamic> item) async {
+    final notes = TextEditingController();
+    String decision = 'verified';
+    final approved = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+              builder: (context, setDialogState) => AlertDialog(
+                title: Text('Review ${item['name'] ?? 'MSME'}'),
+                content: Column(mainAxisSize: MainAxisSize.min, children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: decision,
+                    items: const [
+                      DropdownMenuItem(
+                          value: 'verified', child: Text('Verified')),
+                      DropdownMenuItem(
+                          value: 'needs_changes', child: Text('Needs changes')),
+                      DropdownMenuItem(
+                          value: 'suspended', child: Text('Suspended')),
+                    ],
+                    onChanged: (value) =>
+                        setDialogState(() => decision = value ?? 'verified'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                      controller: notes,
+                      maxLines: 3,
+                      decoration:
+                          const InputDecoration(labelText: 'Reason / notes')),
+                ]),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(dialogContext, false),
+                      child: const Text('Cancel')),
+                  ElevatedButton(
+                      onPressed: () => Navigator.pop(dialogContext, true),
+                      child: const Text('Save decision')),
+                ],
+              ),
+            ));
+    if (approved != true) return;
+    if (decision != 'verified' && notes.text.trim().isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Notes are required for this decision.')));
+      }
+      return;
+    }
+    try {
+      await ref.read(lguRepositoryProvider).verifyMsme(
+            item['id'].toString(),
+            decision == 'verified',
+            status: decision,
+            notes: notes.text.trim().isEmpty ? null : notes.text.trim(),
+          );
+      ref.invalidate(lguMsmesProvider);
+      ref.invalidate(lguDashboardStatsProvider);
+      ref.invalidate(msmeListProvider);
+      ref.invalidate(mapMarkersProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            backgroundColor: AppColors.success,
+            content: Text('MSME review saved.')));
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            backgroundColor: AppColors.error, content: Text(error.toString())));
+      }
+    }
   }
 }

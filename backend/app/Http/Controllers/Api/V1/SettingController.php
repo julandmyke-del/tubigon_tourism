@@ -8,6 +8,7 @@ use App\Models\Setting;
 use App\Models\ActivityLog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class SettingController extends Controller
 {
@@ -65,13 +66,14 @@ class SettingController extends Controller
             'privacy_policy' => 'nullable|string',
             'terms_of_service' => 'nullable|string',
         ]);
-        $settings->update($validated);
-
-        ActivityLog::create([
-            'user_id' => $request->user()->id,
-            'action' => 'System Settings updated',
-            'details' => 'Updated global application settings',
-        ]);
+        DB::transaction(function () use ($request, $settings, $validated): void {
+            $settings->update($validated);
+            ActivityLog::create([
+                'user_id' => $request->user()->id,
+                'action' => 'System Settings updated',
+                'details' => 'Updated global application settings',
+            ]);
+        });
 
         return response()->json(['status' => 'success', 'data' => $settings]);
     }

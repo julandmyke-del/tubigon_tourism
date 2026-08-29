@@ -113,8 +113,10 @@ class _MsmePortalReservationsPageState
                       child: CircularProgressIndicator(
                           color: MsmeTheme.primaryOrange)),
                   error: (err, _) => Center(
-                      child: Text('Error: $err',
-                          style: const TextStyle(color: MsmeTheme.red))),
+                      child: OutlinedButton(
+                          onPressed: () => ref.invalidate(
+                              msmePortalReservationsProvider(_statusFilter)),
+                          child: Text('Retry: $err'))),
                   data: (reservations) {
                     final filtered = reservations.where((r) {
                       final guest =
@@ -147,6 +149,20 @@ class _MsmePortalReservationsPageState
                                 .toString();
                         final status =
                             (reservation['status'] ?? 'pending').toString();
+                        final allowed = switch (status) {
+                          'pending' => const [
+                              'confirmed',
+                              'rejected',
+                              'cancelled'
+                            ],
+                          'approved' => const [
+                              'confirmed',
+                              'completed',
+                              'cancelled'
+                            ],
+                          'confirmed' => const ['completed', 'cancelled'],
+                          _ => const <String>[],
+                        };
 
                         return Container(
                           padding: const EdgeInsets.all(AppSpacing.md),
@@ -179,26 +195,48 @@ class _MsmePortalReservationsPageState
                                   ],
                                 ),
                               ),
-                              PopupMenuButton<String>(
-                                onSelected: (value) async {
-                                  final repo =
-                                      ref.read(msmePortalRepositoryProvider);
-                                  await repo.updateReservationStatus(id, value);
-                                  ref.invalidate(msmePortalReservationsProvider(
-                                      _statusFilter));
-                                },
-                                itemBuilder: (_) => const [
-                                  PopupMenuItem(
-                                      value: 'confirmed',
-                                      child: Text('Confirm')),
-                                  PopupMenuItem(
-                                      value: 'completed',
-                                      child: Text('Complete')),
-                                  PopupMenuItem(
-                                      value: 'cancelled',
-                                      child: Text('Cancel')),
-                                ],
-                              ),
+                              if (allowed.isNotEmpty)
+                                PopupMenuButton<String>(
+                                  onSelected: (value) async {
+                                    try {
+                                      final repo = ref
+                                          .read(msmePortalRepositoryProvider);
+                                      await repo.updateReservationStatus(
+                                          id, value);
+                                      ref.invalidate(
+                                          msmePortalReservationsProvider(
+                                              _statusFilter));
+                                      ref.invalidate(
+                                          msmePortalDashboardStatsProvider);
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                              backgroundColor: MsmeTheme.green,
+                                              content:
+                                                  Text('Reservation $value.')),
+                                        );
+                                      }
+                                    } catch (error) {
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                              backgroundColor: MsmeTheme.red,
+                                              content: Text(error.toString())),
+                                        );
+                                      }
+                                    }
+                                  },
+                                  itemBuilder: (_) => allowed
+                                      .map((value) => PopupMenuItem(
+                                            value: value,
+                                            child: Text(value.replaceFirst(
+                                                value[0],
+                                                value[0].toUpperCase())),
+                                          ))
+                                      .toList(),
+                                ),
                             ],
                           ),
                         );

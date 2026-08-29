@@ -81,6 +81,11 @@ dev_dependencies:
   riverpod_generator: ^2.4.3
   json_serializable: ^6.8.0
 
+# 7.2.17 fails Android compilation with the current Flutter plugin toolchain
+# because its generated ResultUtilsKt bridge is not available to javac.
+dependency_overrides:
+  google_sign_in_android: 7.2.16
+
 flutter:
   uses-material-design: true
 

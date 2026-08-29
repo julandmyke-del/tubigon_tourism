@@ -57,7 +57,8 @@ class SplashPage extends ConsumerStatefulWidget {
   ConsumerState<SplashPage> createState() => _SplashPageState();
 }
 
-class _SplashPageState extends ConsumerState<SplashPage> with TickerProviderStateMixin {
+class _SplashPageState extends ConsumerState<SplashPage>
+    with TickerProviderStateMixin {
   late final AnimationController _gridController;
   late final AnimationController _orbitController;
   late final AnimationController _glowController;
@@ -68,8 +69,32 @@ class _SplashPageState extends ConsumerState<SplashPage> with TickerProviderStat
   late final List<_ParticleData> _particles;
   late final List<_SparkleData> _sparkles;
 
-  static const _barDelays = [0.0, 0.11, 0.22, 0.33, 0.44, 0.55, 0.44, 0.33, 0.22, 0.11, 0.0];
-  static const _barHeights = [6.0, 10.0, 16.0, 22.0, 28.0, 32.0, 28.0, 22.0, 16.0, 10.0, 6.0];
+  static const _barDelays = [
+    0.0,
+    0.11,
+    0.22,
+    0.33,
+    0.44,
+    0.55,
+    0.44,
+    0.33,
+    0.22,
+    0.11,
+    0.0
+  ];
+  static const _barHeights = [
+    6.0,
+    10.0,
+    16.0,
+    22.0,
+    28.0,
+    32.0,
+    28.0,
+    22.0,
+    16.0,
+    10.0,
+    6.0
+  ];
 
   @override
   void initState() {
@@ -150,7 +175,8 @@ class _SplashPageState extends ConsumerState<SplashPage> with TickerProviderStat
       await ref.read(authProvider.notifier).reloadProfile().timeout(
         const Duration(milliseconds: 1500),
         onTimeout: () {
-          debugPrint('[SPLASH] reloadProfile timed out — using local auth state');
+          debugPrint(
+              '[SPLASH] reloadProfile timed out — using local auth state');
         },
       );
     } catch (e) {
@@ -161,7 +187,8 @@ class _SplashPageState extends ConsumerState<SplashPage> with TickerProviderStat
     _navigated = true;
 
     final authState = ref.read(authProvider);
-    debugPrint('[SPLASH] Navigating: isAuthenticated=${authState.isAuthenticated}, role=${authState.role}');
+    debugPrint(
+        '[SPLASH] Navigating: isAuthenticated=${authState.isAuthenticated}, role=${authState.role}');
 
     if (authState.isAuthenticated) {
       context.go(authState.homeRoute);
@@ -367,7 +394,8 @@ class _SplashPageState extends ConsumerState<SplashPage> with TickerProviderStat
               builder: (context, child) {
                 final progress = _birdController.value;
                 final bird1X = (progress * (screenSize.width + 200)) - 100;
-                final bird2X = (((progress + 0.4) % 1.0) * (screenSize.width + 200)) - 100;
+                final bird2X =
+                    (((progress + 0.4) % 1.0) * (screenSize.width + 200)) - 100;
 
                 return Stack(
                   children: [
@@ -430,7 +458,8 @@ class _SplashPageState extends ConsumerState<SplashPage> with TickerProviderStat
                             height: 136,
                             child: CustomPaint(
                               painter: _CompassLogoPainter(
-                                orbitAngle: _orbitController.value * 2 * math.pi,
+                                orbitAngle:
+                                    _orbitController.value * 2 * math.pi,
                               ),
                             ),
                           );
@@ -466,7 +495,11 @@ class _SplashPageState extends ConsumerState<SplashPage> with TickerProviderStat
                       )
                           .animate()
                           .fadeIn(duration: 800.ms, delay: 400.ms)
-                          .slideY(begin: 0.3, end: 0, duration: 800.ms, curve: Curves.easeOutCubic),
+                          .slideY(
+                              begin: 0.3,
+                              end: 0,
+                              duration: 800.ms,
+                              curve: Curves.easeOutCubic),
 
                       const SizedBox(height: 4),
 
@@ -487,7 +520,11 @@ class _SplashPageState extends ConsumerState<SplashPage> with TickerProviderStat
                       )
                           .animate()
                           .fadeIn(duration: 800.ms, delay: 600.ms)
-                          .slideY(begin: 0.3, end: 0, duration: 800.ms, curve: Curves.easeOutCubic),
+                          .slideY(
+                              begin: 0.3,
+                              end: 0,
+                              duration: 800.ms,
+                              curve: Curves.easeOutCubic),
 
                       const SizedBox(height: 16),
 
@@ -565,16 +602,19 @@ class _SplashPageState extends ConsumerState<SplashPage> with TickerProviderStat
                                     vertical: 5,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: const Color.fromRGBO(249, 115, 22, 0.06),
+                                    color: const Color.fromRGBO(
+                                        249, 115, 22, 0.06),
                                     borderRadius: BorderRadius.circular(20),
                                     border: Border.all(
-                                      color: const Color.fromRGBO(249, 115, 22, 0.22),
+                                      color: const Color.fromRGBO(
+                                          249, 115, 22, 0.22),
                                     ),
                                   ),
                                   child: Text(
                                     label.toUpperCase(),
                                     style: GoogleFonts.outfit(
-                                      color: const Color.fromRGBO(148, 163, 184, 0.85),
+                                      color: const Color.fromRGBO(
+                                          148, 163, 184, 0.85),
                                       fontSize: 10,
                                       fontWeight: FontWeight.w500,
                                       letterSpacing: 1.5,
@@ -600,30 +640,37 @@ class _SplashPageState extends ConsumerState<SplashPage> with TickerProviderStat
                                 final targetHeight = _barHeights[idx];
 
                                 final waveVal = math.sin(
-                                  (_waveController.value * 2 * math.pi) - (delay * 4),
+                                  (_waveController.value * 2 * math.pi) -
+                                      (delay * 4),
                                 );
-                                final scaleY = 0.35 + (0.65 * (waveVal + 1) / 2);
+                                final scaleY =
+                                    0.35 + (0.65 * (waveVal + 1) / 2);
                                 final h = targetHeight * scaleY;
 
                                 final barColor = idx == 5
                                     ? const Color(0xFFF97316)
                                     : (idx == 4 || idx == 6)
-                                        ? const Color.fromRGBO(249, 115, 22, 0.75)
+                                        ? const Color.fromRGBO(
+                                            249, 115, 22, 0.75)
                                         : (idx == 3 || idx == 7)
-                                            ? const Color.fromRGBO(249, 115, 22, 0.50)
-                                            : const Color.fromRGBO(249, 115, 22, 0.28);
+                                            ? const Color.fromRGBO(
+                                                249, 115, 22, 0.50)
+                                            : const Color.fromRGBO(
+                                                249, 115, 22, 0.28);
 
                                 return Container(
                                   width: 3,
                                   height: h,
-                                  margin: const EdgeInsets.symmetric(horizontal: 2),
+                                  margin:
+                                      const EdgeInsets.symmetric(horizontal: 2),
                                   decoration: BoxDecoration(
                                     color: barColor,
                                     borderRadius: BorderRadius.circular(3),
                                     boxShadow: (idx >= 4 && idx <= 6)
                                         ? [
                                             BoxShadow(
-                                              color: const Color(0xFFF97316).withValues(alpha: 0.6),
+                                              color: const Color(0xFFF97316)
+                                                  .withValues(alpha: 0.6),
                                               blurRadius: 8,
                                             ),
                                           ]
@@ -700,8 +747,10 @@ class _SkylinePainter extends CustomPainter {
     final buildingPaint1 = Paint()..color = const Color(0xFF1C2A50);
     final buildingPaint2 = Paint()..color = const Color(0xFF162040);
     final buildingPaint3 = Paint()..color = const Color(0xFF111D35);
-    final windowPaint = Paint()..color = const Color.fromRGBO(249, 115, 22, 0.50);
-    final antennaPaint = Paint()..color = const Color.fromRGBO(249, 115, 22, 0.80);
+    final windowPaint = Paint()
+      ..color = const Color.fromRGBO(249, 115, 22, 0.50);
+    final antennaPaint = Paint()
+      ..color = const Color.fromRGBO(249, 115, 22, 0.80);
 
     void drawBldg(double x, double y, double w, double h, Paint p) {
       canvas.drawRect(
@@ -805,9 +854,12 @@ class _CompassLogoPainter extends CustomPainter {
     canvas.drawCircle(center, 58, faintPaint);
 
     // 2. Orbit Rings (Dashed Circles)
-    _drawDashedCircle(canvas, center, 52, 12, 8, const Color.fromRGBO(249, 115, 22, 0.25), orbitAngle);
-    _drawDashedCircle(canvas, center, 46, 6, 14, const Color.fromRGBO(56, 189, 248, 0.20), -orbitAngle * 1.4);
-    _drawDashedCircle(canvas, center, 38, 3, 9, const Color.fromRGBO(249, 115, 22, 0.18), orbitAngle * 0.8);
+    _drawDashedCircle(canvas, center, 52, 12, 8,
+        const Color.fromRGBO(249, 115, 22, 0.25), orbitAngle);
+    _drawDashedCircle(canvas, center, 46, 6, 14,
+        const Color.fromRGBO(56, 189, 248, 0.20), -orbitAngle * 1.4);
+    _drawDashedCircle(canvas, center, 38, 3, 9,
+        const Color.fromRGBO(249, 115, 22, 0.18), orbitAngle * 0.8);
 
     // 3. Inner Dark Disc
     final discBgPaint = Paint()
@@ -825,17 +877,25 @@ class _CompassLogoPainter extends CustomPainter {
     final axisPaint = Paint()
       ..color = const Color.fromRGBO(249, 115, 22, 0.28)
       ..strokeWidth = 0.8;
-    canvas.drawLine(Offset(center.dx, center.dy - 30), Offset(center.dx, center.dy + 30), axisPaint);
-    canvas.drawLine(Offset(center.dx - 30, center.dy), Offset(center.dx + 30, center.dy), axisPaint);
+    canvas.drawLine(Offset(center.dx, center.dy - 30),
+        Offset(center.dx, center.dy + 30), axisPaint);
+    canvas.drawLine(Offset(center.dx - 30, center.dy),
+        Offset(center.dx + 30, center.dy), axisPaint);
 
     // 5. Outer Tick Marks
-    final tickMajorPaint = Paint()..color = const Color.fromRGBO(249, 115, 22, 0.55)..strokeWidth = 1.0;
-    final tickMinorPaint = Paint()..color = const Color.fromRGBO(249, 115, 22, 0.18)..strokeWidth = 0.6;
+    final tickMajorPaint = Paint()
+      ..color = const Color.fromRGBO(249, 115, 22, 0.55)
+      ..strokeWidth = 1.0;
+    final tickMinorPaint = Paint()
+      ..color = const Color.fromRGBO(249, 115, 22, 0.18)
+      ..strokeWidth = 0.6;
     for (int i = 0; i < 24; i++) {
       final ang = (i * 15 * math.pi) / 180;
       final r1 = i % 6 == 0 ? 54.0 : (i % 3 == 0 ? 55.0 : 56.0);
-      final p1 = Offset(center.dx + math.cos(ang) * r1, center.dy + math.sin(ang) * r1);
-      final p2 = Offset(center.dx + math.cos(ang) * 58.0, center.dy + math.sin(ang) * 58.0);
+      final p1 = Offset(
+          center.dx + math.cos(ang) * r1, center.dy + math.sin(ang) * r1);
+      final p2 = Offset(
+          center.dx + math.cos(ang) * 58.0, center.dy + math.sin(ang) * 58.0);
       canvas.drawLine(p1, p2, i % 6 == 0 ? tickMajorPaint : tickMinorPaint);
     }
 
@@ -851,7 +911,8 @@ class _CompassLogoPainter extends CustomPainter {
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    textPainterN.paint(canvas, Offset(center.dx - textPainterN.width / 2, center.dy - 44));
+    textPainterN.paint(
+        canvas, Offset(center.dx - textPainterN.width / 2, center.dy - 44));
 
     final textPainterE = TextPainter(
       text: TextSpan(
@@ -863,7 +924,8 @@ class _CompassLogoPainter extends CustomPainter {
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    textPainterE.paint(canvas, Offset(center.dx + 40, center.dy - textPainterE.height / 2));
+    textPainterE.paint(
+        canvas, Offset(center.dx + 40, center.dy - textPainterE.height / 2));
 
     final textPainterS = TextPainter(
       text: TextSpan(
@@ -875,7 +937,8 @@ class _CompassLogoPainter extends CustomPainter {
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    textPainterS.paint(canvas, Offset(center.dx - textPainterS.width / 2, center.dy + 38));
+    textPainterS.paint(
+        canvas, Offset(center.dx - textPainterS.width / 2, center.dy + 38));
 
     final textPainterW = TextPainter(
       text: TextSpan(
@@ -887,15 +950,20 @@ class _CompassLogoPainter extends CustomPainter {
       ),
       textDirection: TextDirection.ltr,
     )..layout();
-    textPainterW.paint(canvas, Offset(center.dx - 45, center.dy - textPainterW.height / 2));
+    textPainterW.paint(
+        canvas, Offset(center.dx - 45, center.dy - textPainterW.height / 2));
 
     // 7. Location Pin Marker
     final pinPath = Path();
     pinPath.moveTo(center.dx, center.dy - 16);
-    pinPath.cubicTo(center.dx - 12, center.dy - 16, center.dx - 12, center.dy - 6, center.dx - 12, center.dy - 4);
-    pinPath.cubicTo(center.dx - 12, center.dy + 4, center.dx, center.dy + 16, center.dx, center.dy + 16);
-    pinPath.cubicTo(center.dx, center.dy + 16, center.dx + 12, center.dy + 4, center.dx + 12, center.dy - 4);
-    pinPath.cubicTo(center.dx + 12, center.dy - 6, center.dx + 12, center.dy - 16, center.dx, center.dy - 16);
+    pinPath.cubicTo(center.dx - 12, center.dy - 16, center.dx - 12,
+        center.dy - 6, center.dx - 12, center.dy - 4);
+    pinPath.cubicTo(center.dx - 12, center.dy + 4, center.dx, center.dy + 16,
+        center.dx, center.dy + 16);
+    pinPath.cubicTo(center.dx, center.dy + 16, center.dx + 12, center.dy + 4,
+        center.dx + 12, center.dy - 4);
+    pinPath.cubicTo(center.dx + 12, center.dy - 6, center.dx + 12,
+        center.dy - 16, center.dx, center.dy - 16);
     pinPath.close();
 
     final pinPaint = Paint()..color = const Color(0xFFF97316);
@@ -905,7 +973,8 @@ class _CompassLogoPainter extends CustomPainter {
     canvas.drawCircle(Offset(center.dx, center.dy - 4), 5, innerDotPaint);
   }
 
-  void _drawDashedCircle(Canvas canvas, Offset center, double radius, double dashWidth, double dashSpace, Color color, double angleOffset) {
+  void _drawDashedCircle(Canvas canvas, Offset center, double radius,
+      double dashWidth, double dashSpace, Color color, double angleOffset) {
     final paint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
@@ -973,7 +1042,8 @@ class _RisingParticleWidget extends StatefulWidget {
   State<_RisingParticleWidget> createState() => _RisingParticleWidgetState();
 }
 
-class _RisingParticleWidgetState extends State<_RisingParticleWidget> with SingleTickerProviderStateMixin {
+class _RisingParticleWidgetState extends State<_RisingParticleWidget>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
   @override
@@ -981,10 +1051,13 @@ class _RisingParticleWidgetState extends State<_RisingParticleWidget> with Singl
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: Duration(milliseconds: (widget.particle.durationSeconds * 1000).toInt()),
+      duration: Duration(
+          milliseconds: (widget.particle.durationSeconds * 1000).toInt()),
     );
 
-    Future.delayed(Duration(milliseconds: (widget.particle.delaySeconds * 1000).toInt()), () {
+    Future.delayed(
+        Duration(milliseconds: (widget.particle.delaySeconds * 1000).toInt()),
+        () {
       if (mounted) {
         _controller.repeat();
       }
@@ -1047,7 +1120,8 @@ class _SparkleWidget extends StatefulWidget {
   State<_SparkleWidget> createState() => _SparkleWidgetState();
 }
 
-class _SparkleWidgetState extends State<_SparkleWidget> with SingleTickerProviderStateMixin {
+class _SparkleWidgetState extends State<_SparkleWidget>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
   @override
@@ -1055,10 +1129,13 @@ class _SparkleWidgetState extends State<_SparkleWidget> with SingleTickerProvide
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: Duration(milliseconds: (widget.sparkle.durationSeconds * 1000).toInt()),
+      duration: Duration(
+          milliseconds: (widget.sparkle.durationSeconds * 1000).toInt()),
     );
 
-    Future.delayed(Duration(milliseconds: (widget.sparkle.delaySeconds * 1000).toInt()), () {
+    Future.delayed(
+        Duration(milliseconds: (widget.sparkle.delaySeconds * 1000).toInt()),
+        () {
       if (mounted) {
         _controller.repeat();
       }

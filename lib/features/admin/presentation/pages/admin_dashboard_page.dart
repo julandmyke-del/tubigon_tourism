@@ -18,10 +18,10 @@ class AdminDashboardPage extends ConsumerWidget {
       backgroundColor: AdminColors.navy950,
       body: statsAsync.when(
         data: (stats) {
-          final totalUsers = stats['totalUsers'] ?? 1247;
-          final totalSpots = stats['totalSpots'] ?? 48;
-          final totalMsmes = stats['totalMsmes'] ?? 134;
-          final totalReservations = stats['totalReservations'] ?? 23;
+          final totalUsers = stats['totalUsers'] ?? 0;
+          final totalSpots = stats['totalSpots'] ?? 0;
+          final totalMsmes = stats['totalMsmes'] ?? 0;
+          final totalReservations = stats['totalReservations'] ?? 0;
           final List<dynamic> activities = stats['recentActivities'] ?? [];
 
           return RefreshIndicator(
@@ -51,8 +51,9 @@ class AdminDashboardPage extends ConsumerWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Welcome back, System Administrator — here\'s what\'s happening in Tubigon today.',
-                            style: AppTypography.bodyMedium.copyWith(color: AdminColors.textSecondary),
+                            'Current operational totals for Tubigon tourism services.',
+                            style: AppTypography.bodyMedium
+                                .copyWith(color: AdminColors.textSecondary),
                           ),
                         ],
                       ),
@@ -61,8 +62,10 @@ class AdminDashboardPage extends ConsumerWidget {
                           backgroundColor: AdminColors.cardBg,
                           side: const BorderSide(color: AdminColors.cardBorder),
                         ),
-                        onPressed: () => ref.invalidate(adminDashboardStatsProvider),
-                        icon: const Icon(Icons.refresh_rounded, color: AdminColors.orange),
+                        onPressed: () =>
+                            ref.invalidate(adminDashboardStatsProvider),
+                        icon: const Icon(Icons.refresh_rounded,
+                            color: AdminColors.orange),
                         tooltip: 'Refresh Stats',
                       ),
                     ],
@@ -93,38 +96,38 @@ class AdminDashboardPage extends ConsumerWidget {
                           _StatCard(
                             label: 'Total Registered Users',
                             value: '$totalUsers',
-                            sub: '+12% this month',
-                            isUp: true,
+                            sub: 'Current total',
+                            isUp: null,
                             icon: Icons.people_rounded,
                             color: AdminColors.info,
-                            onTap: () => context.go('/admin/users'),
+                            onTap: () => context.push('/admin/users'),
                           ),
                           _StatCard(
-                            label: 'Active Tourism Spots',
+                            label: 'Tourist Spots',
                             value: '$totalSpots',
-                            sub: '+3 this month',
-                            isUp: true,
+                            sub: 'Current total',
+                            isUp: null,
                             icon: Icons.landscape_rounded,
                             color: AdminColors.success,
-                            onTap: () => context.go('/admin/tourism'),
+                            onTap: () => context.push('/admin/tourism'),
                           ),
                           _StatCard(
                             label: 'MSME Registrations',
                             value: '$totalMsmes',
-                            sub: '8 pending review',
+                            sub: 'Current total',
                             isUp: null,
                             icon: Icons.store_rounded,
                             color: AdminColors.orange,
-                            onTap: () => context.go('/admin/msmes'),
+                            onTap: () => context.push('/admin/msmes'),
                           ),
                           _StatCard(
-                            label: 'Reservations Today',
+                            label: 'Reservations',
                             value: '$totalReservations',
-                            sub: '-4% vs yesterday',
-                            isUp: false,
+                            sub: 'Current total',
+                            isUp: null,
                             icon: Icons.calendar_month_rounded,
                             color: AdminColors.purple,
-                            onTap: () => context.go('/admin/reservations'),
+                            onTap: () => context.push('/admin/reservations'),
                           ),
                         ],
                       );
@@ -135,7 +138,9 @@ class AdminDashboardPage extends ConsumerWidget {
                   // Quick Action Shortcuts Grid
                   Text(
                     'Quick Municipal Actions',
-                    style: AppTypography.titleMedium.copyWith(color: AdminColors.textPrimary, fontWeight: FontWeight.bold),
+                    style: AppTypography.titleMedium.copyWith(
+                        color: AdminColors.textPrimary,
+                        fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   Wrap(
@@ -145,27 +150,27 @@ class AdminDashboardPage extends ConsumerWidget {
                       _QuickActionButton(
                         icon: Icons.person_add_rounded,
                         label: 'Manage Users',
-                        onTap: () => context.go('/admin/users'),
+                        onTap: () => context.push('/admin/users'),
                       ),
                       _QuickActionButton(
                         icon: Icons.verified_user_rounded,
                         label: 'Verify MSMEs',
-                        onTap: () => context.go('/admin/msmes'),
+                        onTap: () => context.push('/admin/msmes'),
                       ),
                       _QuickActionButton(
                         icon: Icons.add_location_alt_rounded,
                         label: 'Update Spots',
-                        onTap: () => context.go('/admin/tourism'),
+                        onTap: () => context.push('/admin/tourism'),
                       ),
                       _QuickActionButton(
                         icon: Icons.campaign_rounded,
                         label: 'Post Bulletin',
-                        onTap: () => context.go('/admin/announcements'),
+                        onTap: () => context.push('/admin/announcements'),
                       ),
                       _QuickActionButton(
                         icon: Icons.analytics_rounded,
                         label: 'View Analytics',
-                        onTap: () => context.go('/admin/analytics'),
+                        onTap: () => context.push('/admin/analytics'),
                       ),
                     ],
                   ),
@@ -189,19 +194,23 @@ class AdminDashboardPage extends ConsumerWidget {
                               ),
                             ),
                             TextButton(
-                              onPressed: () => context.go('/admin/logs'),
-                              child: const Text('View All Logs →', style: TextStyle(color: AdminColors.orange)),
+                              onPressed: () => context.push('/admin/logs'),
+                              child: const Text('View All Logs →',
+                                  style: TextStyle(color: AdminColors.orange)),
                             ),
                           ],
                         ),
-                        const Divider(color: AdminColors.cardBorder, height: 24),
+                        const Divider(
+                            color: AdminColors.cardBorder, height: 24),
                         if (activities.isEmpty)
                           const Padding(
-                            padding: EdgeInsets.symmetric(vertical: AppSpacing.lg),
+                            padding:
+                                EdgeInsets.symmetric(vertical: AppSpacing.lg),
                             child: Center(
                               child: Text(
                                 'No recent activity logs available.',
-                                style: TextStyle(color: AdminColors.textSecondary),
+                                style:
+                                    TextStyle(color: AdminColors.textSecondary),
                               ),
                             ),
                           )
@@ -209,12 +218,19 @@ class AdminDashboardPage extends ConsumerWidget {
                           ListView.separated(
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
-                            itemCount: activities.length > 5 ? 5 : activities.length,
-                            separatorBuilder: (_, __) => const Divider(color: AdminColors.cardBorder, height: 16),
+                            itemCount:
+                                activities.length > 5 ? 5 : activities.length,
+                            separatorBuilder: (_, __) => const Divider(
+                                color: AdminColors.cardBorder, height: 16),
                             itemBuilder: (context, idx) {
-                              final item = activities[idx] as Map<String, dynamic>;
-                              final action = item['action'] ?? item['description'] ?? 'System Event';
-                              final time = item['created_at'] ?? item['time'] ?? 'Just now';
+                              final item =
+                                  activities[idx] as Map<String, dynamic>;
+                              final action = item['action'] ??
+                                  item['description'] ??
+                                  'System Event';
+                              final time = item['created_at'] ??
+                                  item['time'] ??
+                                  'Just now';
 
                               return ListTile(
                                 contentPadding: EdgeInsets.zero,
@@ -225,15 +241,19 @@ class AdminDashboardPage extends ConsumerWidget {
                                     color: AdminColors.orangeDim,
                                     borderRadius: BorderRadius.circular(8),
                                   ),
-                                  child: const Icon(Icons.history_rounded, color: AdminColors.orange, size: 18),
+                                  child: const Icon(Icons.history_rounded,
+                                      color: AdminColors.orange, size: 18),
                                 ),
                                 title: Text(
                                   action,
-                                  style: AppTypography.titleSmall.copyWith(color: AdminColors.textPrimary, fontWeight: FontWeight.w600),
+                                  style: AppTypography.titleSmall.copyWith(
+                                      color: AdminColors.textPrimary,
+                                      fontWeight: FontWeight.w600),
                                 ),
                                 subtitle: Text(
                                   time,
-                                  style: AppTypography.labelSmall.copyWith(color: AdminColors.textSecondary),
+                                  style: AppTypography.labelSmall.copyWith(
+                                      color: AdminColors.textSecondary),
                                 ),
                               );
                             },
@@ -246,19 +266,24 @@ class AdminDashboardPage extends ConsumerWidget {
             ),
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator(color: AdminColors.orange)),
+        loading: () => const Center(
+            child: CircularProgressIndicator(color: AdminColors.orange)),
         error: (err, _) => Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.error_outline_rounded, color: AdminColors.danger, size: 48),
+              const Icon(Icons.error_outline_rounded,
+                  color: AdminColors.danger, size: 48),
               const SizedBox(height: AppSpacing.md),
-              Text('Failed to load dashboard data: $err', style: const TextStyle(color: AdminColors.textSecondary)),
+              const Text('Unable to load dashboard data.',
+                  style: TextStyle(color: AdminColors.textSecondary)),
               const SizedBox(height: AppSpacing.md),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: AdminColors.orange),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: AdminColors.orange),
                 onPressed: () => ref.invalidate(adminDashboardStatsProvider),
-                child: const Text('Retry', style: TextStyle(color: Colors.white)),
+                child:
+                    const Text('Retry', style: TextStyle(color: Colors.white)),
               ),
             ],
           ),
@@ -314,25 +339,34 @@ class _StatCard extends StatelessWidget {
                     child: Icon(icon, color: color, size: 20),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: isUp == true
                           ? AdminColors.successBg
-                          : (isUp == false ? AdminColors.dangerBg : AdminColors.cardBorder),
+                          : (isUp == false
+                              ? AdminColors.dangerBg
+                              : AdminColors.cardBorder),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (isUp == true) const Icon(Icons.trending_up_rounded, color: AdminColors.success, size: 12),
-                        if (isUp == false) const Icon(Icons.trending_down_rounded, color: AdminColors.danger, size: 12),
+                        if (isUp == true)
+                          const Icon(Icons.trending_up_rounded,
+                              color: AdminColors.success, size: 12),
+                        if (isUp == false)
+                          const Icon(Icons.trending_down_rounded,
+                              color: AdminColors.danger, size: 12),
                         if (isUp != null) const SizedBox(width: 4),
                         Text(
                           sub,
                           style: TextStyle(
                             color: isUp == true
                                 ? AdminColors.success
-                                : (isUp == false ? AdminColors.danger : AdminColors.textSecondary),
+                                : (isUp == false
+                                    ? AdminColors.danger
+                                    : AdminColors.textSecondary),
                             fontSize: 11,
                             fontWeight: FontWeight.bold,
                           ),
@@ -357,7 +391,8 @@ class _StatCard extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     label,
-                    style: const TextStyle(color: AdminColors.textSecondary, fontSize: 12),
+                    style: const TextStyle(
+                        color: AdminColors.textSecondary, fontSize: 12),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -394,7 +429,8 @@ class _QuickActionButton extends StatelessWidget {
       ),
       onPressed: onTap,
       icon: Icon(icon, color: AdminColors.orange, size: 18),
-      label: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+      label: Text(label,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
     );
   }
 }

@@ -7,6 +7,7 @@ import '../../../core/theme/admin_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../authentication/auth_provider.dart';
+import '../providers/admin_providers.dart';
 
 class AdminShell extends ConsumerWidget {
   const AdminShell({super.key, required this.child});
@@ -60,13 +61,21 @@ class AdminShell extends ConsumerWidget {
         icon: Icons.add_location_alt_rounded,
         label: 'Map Locations',
         route: '/admin/map-locations'),
+    _AdminMenuItem(
+        icon: Icons.emergency_rounded,
+        label: 'Emergency Contacts',
+        route: '/admin/emergency-contacts'),
     _AdminMenuItem(icon: Icons.map_rounded, label: 'Smart Map', route: '/map'),
   ];
 
   int _currentIndex(BuildContext context) {
     final location = GoRouterState.of(context).matchedLocation;
     for (int i = 0; i < _menuItems.length; i++) {
-      if (location == _menuItems[i].route) return i;
+      final route = _menuItems[i].route;
+      if (location == route ||
+          (route != '/admin' && location.startsWith('$route/'))) {
+        return i;
+      }
     }
     return 0;
   }
@@ -76,6 +85,7 @@ class AdminShell extends ConsumerWidget {
     final isDesktop = ResponsiveLayout.isDesktop(context);
     final auth = ref.watch(authProvider);
     final activeIndex = _currentIndex(context);
+    final location = GoRouterState.of(context).matchedLocation;
 
     // Sidebar View
     final sidebar = Container(
@@ -151,7 +161,10 @@ class AdminShell extends ConsumerWidget {
                   isSelected: isSelected,
                   onTap: () {
                     if (!isDesktop) Navigator.of(context).pop();
-                    context.go(item.route);
+                    if (GoRouterState.of(context).matchedLocation !=
+                        item.route) {
+                      context.push(item.route);
+                    }
                   },
                 );
               },
@@ -197,9 +210,26 @@ class AdminShell extends ConsumerWidget {
                 );
 
                 if (confirm == true) {
+                  ref.invalidate(adminDashboardStatsProvider);
+                  ref.invalidate(adminUsersProvider);
+                  ref.invalidate(adminRolesProvider);
+                  ref.invalidate(adminMsmesProvider);
+                  ref.invalidate(adminSpotsProvider);
+                  ref.invalidate(adminCategoriesProvider);
+                  ref.invalidate(adminFerryProvider);
+                  ref.invalidate(adminEmergencyProvider);
+                  ref.invalidate(adminEcoTipsProvider);
+                  ref.invalidate(adminReservationsProvider);
+                  ref.invalidate(adminReservationStatusesProvider);
+                  ref.invalidate(adminReviewsProvider);
+                  ref.invalidate(adminWasteReportsProvider);
+                  ref.invalidate(adminAnnouncementsProvider);
+                  ref.invalidate(adminSettingsProvider);
+                  ref.invalidate(adminActivityLogsProvider);
                   await ref.read(authProvider.notifier).logout();
-                  if (context.mounted)
+                  if (context.mounted) {
                     context.go('/onboarding?page=5&login=true');
+                  }
                 }
               },
             ),
@@ -257,23 +287,10 @@ class AdminShell extends ConsumerWidget {
           const Spacer(),
           // Notification Bell Icon
           IconButton(
-            onPressed: () => context.go('/admin/announcements'),
-            icon: Stack(
-              children: [
-                const Icon(Icons.notifications_none_rounded,
-                    color: AdminColors.textSecondary, size: 22),
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                        color: AdminColors.orange, shape: BoxShape.circle),
-                  ),
-                ),
-              ],
-            ),
+            tooltip: 'Announcements',
+            onPressed: () => context.push('/admin/announcements'),
+            icon: const Icon(Icons.notifications_none_rounded,
+                color: AdminColors.textSecondary, size: 22),
           ),
           const SizedBox(width: AppSpacing.md),
           // User Badge
@@ -303,8 +320,11 @@ class AdminShell extends ConsumerWidget {
                           fontSize: 13,
                           fontWeight: FontWeight.bold),
                     ),
-                    const Text('Super Admin',
-                        style: TextStyle(
+                    Text(
+                        auth.role.name == 'admin'
+                            ? 'Administrator'
+                            : auth.role.name,
+                        style: const TextStyle(
                             color: AdminColors.textSecondary, fontSize: 11)),
                   ],
                 ),
@@ -314,22 +334,30 @@ class AdminShell extends ConsumerWidget {
       ),
     );
 
-    return Scaffold(
-      backgroundColor: AdminColors.navy950,
-      drawer: isDesktop ? null : Drawer(child: sidebar),
-      body: Row(
-        children: [
-          if (isDesktop) sidebar,
-          Expanded(
-            child: Column(
-              children: [
-                topBar,
-                Expanded(child: child),
-              ],
+    final scaffold = Scaffold(
+        backgroundColor: AdminColors.navy950,
+        drawer: isDesktop ? null : Drawer(child: sidebar),
+        body: Row(
+          children: [
+            if (isDesktop) sidebar,
+            Expanded(
+              child: Column(
+                children: [
+                  topBar,
+                  Expanded(child: child),
+                ],
+              ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ));
+
+    final isAdminHome = location == '/admin';
+    return PopScope(
+      canPop: context.canPop() || isAdminHome,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && !isAdminHome) context.go('/admin');
+      },
+      child: scaffold,
     );
   }
 }

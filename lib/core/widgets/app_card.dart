@@ -34,8 +34,7 @@ class AppCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final radius =
-        borderRadius ?? BorderRadius.circular(AppSpacing.radiusXl);
+    final radius = borderRadius ?? BorderRadius.circular(AppSpacing.radiusXl);
 
     final inner = Container(
       decoration: BoxDecoration(
@@ -53,7 +52,8 @@ class AppCard extends StatelessWidget {
       child: ClipRRect(
         borderRadius: radius,
         clipBehavior: clipBehavior,
-        child: padding != null ? Padding(padding: padding!, child: child) : child,
+        child:
+            padding != null ? Padding(padding: padding!, child: child) : child,
       ),
     );
 
@@ -69,7 +69,8 @@ class AppCard extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: borderRadius ?? BorderRadius.circular(AppSpacing.radiusXl),
+        borderRadius:
+            borderRadius ?? BorderRadius.circular(AppSpacing.radiusXl),
         child: inner,
       ),
     );

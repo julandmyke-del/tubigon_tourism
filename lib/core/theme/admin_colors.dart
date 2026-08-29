@@ -13,7 +13,8 @@ abstract final class AdminColors {
   static const Color sidebarBg = Color(0xFF080F1E);
   static const Color topbarBg = Color(0xDA080F1E);
   static const Color cardBg = Color(0xB20F1932); // rgba(15, 25, 50, 0.7)
-  static const Color cardBorder = Color(0x12FFFFFF); // rgba(255, 255, 255, 0.07)
+  static const Color cardBorder =
+      Color(0x12FFFFFF); // rgba(255, 255, 255, 0.07)
   static const Color border = Color(0x12FFFFFF);
 
   // Accent Orange & Glows
@@ -21,7 +22,8 @@ abstract final class AdminColors {
   static const Color orangeHover = Color(0xFFEA6C00);
   static const Color orangeDim = Color(0x26F97316); // rgba(249, 115, 22, 0.15)
   static const Color orangeGlow = Color(0x40F97316); // rgba(249, 115, 22, 0.25)
-  static const Color borderActive = Color(0x80F97316); // rgba(249, 115, 22, 0.5)
+  static const Color borderActive =
+      Color(0x80F97316); // rgba(249, 115, 22, 0.5)
 
   // Typography
   static const Color textPrimary = Color(0xFFF0F4FF);
@@ -42,7 +44,8 @@ abstract final class AdminColors {
 
   // Card Decoration Helper
   static BoxDecoration glassDecoration({
-    BorderRadiusGeometry borderRadius = const BorderRadius.all(Radius.circular(12)),
+    BorderRadiusGeometry borderRadius =
+        const BorderRadius.all(Radius.circular(12)),
     Color? borderColor,
   }) {
     return BoxDecoration(

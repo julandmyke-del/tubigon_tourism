@@ -38,4 +38,19 @@ class Profile extends Model
     {
         return $this->belongsTo(User::class, 'id');
     }
+
+    public function touristSpotAssignments()
+    {
+        return $this->hasMany(TouristSpotPartnerAssignment::class, 'partner_profile_id');
+    }
+
+    public function managedTouristSpots()
+    {
+        return $this->belongsToMany(
+            TouristSpot::class,
+            'tourist_spot_partner_assignments',
+            'partner_profile_id',
+            'tourist_spot_id',
+        )->withPivot(['is_primary', 'assigned_by', 'assigned_at'])->withTimestamps();
+    }
 }

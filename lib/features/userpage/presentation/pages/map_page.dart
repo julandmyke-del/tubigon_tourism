@@ -462,6 +462,12 @@ class _MapPageState extends ConsumerState<MapPage> {
                 onFavorite:
                     _favoriteLoading ? null : () => _toggleFavorite(selected),
                 onDetails: () => _openDetails(selected),
+                onBook: selected.category == MapMarkerCategory.touristSpot &&
+                        selected.canAcceptBookings &&
+                        (auth.role == UserRole.tourist ||
+                            auth.role == UserRole.guest)
+                    ? () => _bookMarker(selected)
+                    : null,
                 onAddToItinerary: selected.isItineraryEligible &&
                         (auth.role == UserRole.tourist ||
                             auth.role == UserRole.guest)
@@ -715,7 +721,8 @@ class _MapPageState extends ConsumerState<MapPage> {
     final fingerprint = items
         .map((item) => '${item.id}:${item.latitude}:${item.longitude}:'
             '${item.name}:${item.categoryIcon}:${item.markerColor}:'
-            '${item.isFeatured}')
+            '${item.isFeatured}:${item.isBookable}:${item.bookingEnabled}:'
+            '${item.bookingUnavailableReasonCode}:${item.bookingUnavailableReason}')
         .join('|');
     if (_renderedMarkerFingerprint == fingerprint) {
       await _selectPendingMarker();
@@ -1379,6 +1386,10 @@ class _MapPageState extends ConsumerState<MapPage> {
       context.push('/explore/place/${marker.mapLocationId}');
       return;
     }
+    if (marker.category == MapMarkerCategory.tourismListing) {
+      context.push('/explore/listing/${marker.sourceId}');
+      return;
+    }
     final id = marker.sourceIntegerId;
     if (id == null) {
       _showMessage('More details are not available for this location yet.');
@@ -1391,6 +1402,15 @@ class _MapPageState extends ConsumerState<MapPage> {
     } else {
       _showMessage('More details are not available for this location yet.');
     }
+  }
+
+  Future<void> _bookMarker(MapMarker marker) async {
+    final target =
+        '/reservations/create?spot=${Uri.encodeQueryComponent(marker.sourceId)}';
+    if (!await requireSignedIn(context, ref, returnTo: target) || !mounted) {
+      return;
+    }
+    context.push(target);
   }
 
   void _showMessage(String message) {
@@ -1554,6 +1574,7 @@ class _LocationCard extends StatelessWidget {
     required this.onDirections,
     required this.onFavorite,
     required this.onDetails,
+    required this.onBook,
     required this.onAddToItinerary,
     required this.onCall,
     required this.onFerry,
@@ -1570,6 +1591,7 @@ class _LocationCard extends StatelessWidget {
   final VoidCallback? onDirections;
   final VoidCallback? onFavorite;
   final VoidCallback onDetails;
+  final VoidCallback? onBook;
   final VoidCallback? onAddToItinerary;
   final VoidCallback? onCall;
   final VoidCallback? onFerry;
@@ -1580,7 +1602,7 @@ class _LocationCard extends StatelessWidget {
         ? marker.distanceTo(userLocation.latitude!, userLocation.longitude!)
         : null;
     return Container(
-      constraints: const BoxConstraints(maxHeight: 250),
+      constraints: const BoxConstraints(maxHeight: 290),
       padding: const EdgeInsets.all(14),
       decoration: _glassDecoration(radius: 22),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1688,6 +1710,22 @@ class _LocationCard extends StatelessWidget {
                           fontSize: 10,
                           fontWeight: FontWeight.w900)),
               ]),
+              if (marker.category == MapMarkerCategory.touristSpot &&
+                  marker.isBookable &&
+                  !marker.bookingEnabled) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Booking temporarily unavailable — ${marker.bookingUnavailableLabel}'
+                  '${marker.bookingUnavailableReason?.trim().isNotEmpty == true ? ': ${marker.bookingUnavailableReason}' : ''}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFFFCA5A5),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
               const SizedBox(height: 10),
               Wrap(spacing: 6, runSpacing: 6, children: [
                 if (canFavorite)
@@ -1726,10 +1764,17 @@ class _LocationCard extends StatelessWidget {
                   ),
                 if (marker.category == MapMarkerCategory.touristSpot ||
                     marker.category == MapMarkerCategory.msme ||
+                    marker.category == MapMarkerCategory.tourismListing ||
                     marker.category == MapMarkerCategory.mapLocation) ...[
                   TextButton(
                       onPressed: onDetails, child: const Text('Details')),
                 ],
+                if (onBook != null)
+                  FilledButton.tonalIcon(
+                    onPressed: onBook,
+                    icon: const Icon(Icons.event_available_rounded, size: 18),
+                    label: const Text('Book'),
+                  ),
                 if (canNavigate) ...[
                   ElevatedButton.icon(
                     onPressed: onDirections,

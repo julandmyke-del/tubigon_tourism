@@ -1,219 +1,379 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_spacing.dart';
-import '../../../../core/theme/app_typography.dart';
+import '../../../map/providers/map_provider.dart';
+import '../../../tourist_spots/repositories/tourist_spot_repository.dart';
+import '../../providers/lgu_providers.dart';
+import '../../../../core/widgets/tourist_spot_booking_dialog.dart';
 
-class LguTouristSpotsPage extends ConsumerStatefulWidget {
+class LguTouristSpotsPage extends ConsumerWidget {
   const LguTouristSpotsPage({super.key});
-
   @override
-  ConsumerState<LguTouristSpotsPage> createState() => _LguTouristSpotsPageState();
-}
-
-class _LguTouristSpotsPageState extends ConsumerState<LguTouristSpotsPage> {
-  static const _navyDark = Color(0xFF0B132B);
-  static const _cardBg = Color(0xFF1C2541);
-  static const _accentOrange = Color(0xFFF97316);
-
-  String _searchQuery = '';
-  String _selectedCategory = 'All';
-
-  final List<Map<String, dynamic>> _spots = [
-    {'id': '1', 'name': 'Canigao Island', 'category': 'Beach', 'status': 'Active', 'visitors': 1240, 'rating': 4.8},
-    {'id': '2', 'name': 'Tubigon Public Market', 'category': 'Market', 'status': 'Active', 'visitors': 3820, 'rating': 4.2},
-    {'id': '3', 'name': 'Bohol Heritage Shrine', 'category': 'Heritage', 'status': 'Active', 'visitors': 980, 'rating': 4.6},
-    {'id': '4', 'name': 'Mangrove Eco Park', 'category': 'Eco', 'status': 'Maintenance', 'visitors': 420, 'rating': 4.4},
-    {'id': '5', 'name': 'Sipatan Falls', 'category': 'Nature', 'status': 'Active', 'visitors': 680, 'rating': 4.7},
-    {'id': '6', 'name': 'Tubigon Wharf Port', 'category': 'Port', 'status': 'Active', 'visitors': 5100, 'rating': 4.0},
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final filteredSpots = _spots.where((spot) {
-      final matchesCat = _selectedCategory == 'All' || spot['category'] == _selectedCategory;
-      final matchesSearch = spot['name'].toString().toLowerCase().contains(_searchQuery.toLowerCase());
-      return matchesCat && matchesSearch;
-    }).toList();
-
+  Widget build(BuildContext context, WidgetRef ref) {
+    final spots = ref.watch(lguTouristSpotsProvider);
     return Scaffold(
-      backgroundColor: _navyDark,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Tourism Spot Monitoring',
-                      style: AppTypography.headlineSmall.copyWith(
-                        color: AppColors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const Text(
-                      'Oversee active, maintenance, and capacity status of registered destinations',
-                      style: TextStyle(color: AppColors.grey400, fontSize: 13),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.md),
-
-            // Filter & Search Controls
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    onChanged: (val) => setState(() => _searchQuery = val),
-                    style: const TextStyle(color: AppColors.white),
-                    decoration: InputDecoration(
-                      hintText: 'Search tourist destination...',
-                      hintStyle: const TextStyle(color: AppColors.grey500),
-                      prefixIcon: const Icon(Icons.search, color: AppColors.grey400),
-                      filled: true,
-                      fillColor: _cardBg,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: AppColors.white.withValues(alpha: 0.1)),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.sm),
-                DropdownButton<String>(
-                  value: _selectedCategory,
-                  dropdownColor: _cardBg,
-                  style: const TextStyle(color: AppColors.white),
-                  items: ['All', 'Beach', 'Heritage', 'Eco', 'Nature', 'Port', 'Market']
-                      .map((cat) => DropdownMenuItem(value: cat, child: Text(cat)))
-                      .toList(),
-                  onChanged: (val) => setState(() => _selectedCategory = val ?? 'All'),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.md),
-
-            // Spot Table Cards
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: filteredSpots.length,
-              itemBuilder: (context, index) {
-                final item = filteredSpots[index];
-                final isMaintenance = item['status'] == 'Maintenance';
-
-                return Container(
-                  margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-                  padding: const EdgeInsets.all(AppSpacing.md),
-                  decoration: BoxDecoration(
-                    color: _cardBg,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppColors.white.withValues(alpha: 0.08)),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: _accentOrange.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(Icons.place_rounded, color: _accentOrange, size: 24),
-                      ),
-                      const SizedBox(width: AppSpacing.md),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+      backgroundColor: const Color(0xFF0B132B),
+      body: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Tourist Spot Monitoring',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 25,
+                  fontWeight: FontWeight.bold)),
+          const Text(
+              'LGU staff can activate, place under maintenance, or archive existing spots.',
+              style: TextStyle(color: AppColors.grey400)),
+          const SizedBox(height: 14),
+          Expanded(
+              child: spots.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, _) => Center(
+                child: OutlinedButton(
+                    onPressed: () => ref.invalidate(lguTouristSpotsProvider),
+                    child: Text('Retry: $error'))),
+            data: (items) => items.isEmpty
+                ? const Center(
+                    child: Text('No tourist spots configured.',
+                        style: TextStyle(color: AppColors.grey400)))
+                : ListView.separated(
+                    itemCount: items.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      final item = items[index];
+                      final active =
+                          item['is_active'] == true || item['is_active'] == 1;
+                      final bookingEnabled = item['booking_enabled'] == true ||
+                          item['booking_enabled'] == 1;
+                      final actor = item['booking_availability_updated_by'];
+                      final reason = _reasonLabel(
+                          item['booking_unavailable_reason_code']?.toString());
+                      return ListTile(
+                        tileColor: const Color(0xFF1C2541),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
+                        leading: Icon(Icons.place_rounded,
+                            color:
+                                active ? AppColors.success : AppColors.warning),
+                        title: Text(item['name']?.toString() ?? 'Tourist spot',
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold)),
+                        subtitle: Text(
+                            '${item['address'] ?? 'No address'} • ${active ? 'Active' : 'Inactive'}\n'
+                            'Booking: ${bookingEnabled ? 'Accepting reservations' : 'Unavailable — $reason'}'
+                            '${actor is Map ? '\nSet by: ${actor['name'] ?? 'Authorized user'}' : ''}',
+                            style: const TextStyle(color: AppColors.grey400)),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              item['name'],
-                              style: const TextStyle(color: AppColors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                            IconButton(
+                              tooltip: 'Edit destination descriptions',
+                              onPressed: () => _edit(context, ref, item),
+                              icon: const Icon(Icons.edit_note_rounded,
+                                  color: AppColors.info),
                             ),
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                Text('Category: ${item['category']}', style: const TextStyle(color: AppColors.grey400, fontSize: 12)),
-                                const SizedBox(width: 12),
-                                const Icon(Icons.star_rounded, color: Colors.amber, size: 14),
-                                Text(' ${item['rating']}', style: const TextStyle(color: AppColors.white, fontSize: 12)),
-                                const SizedBox(width: 12),
-                                Text('${item['visitors']} visitors/mo', style: const TextStyle(color: AppColors.grey400, fontSize: 12)),
+                            IconButton(
+                              tooltip: 'Configure booking',
+                              onPressed: () => _booking(context, ref, item),
+                              icon: Icon(
+                                Icons.event_available_rounded,
+                                color: item['is_bookable'] == true ||
+                                        item['is_bookable'] == 1
+                                    ? AppColors.success
+                                    : AppColors.grey400,
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Manage live booking availability',
+                              onPressed: () => _availability(
+                                  context, ref, item, bookingEnabled),
+                              icon: Icon(
+                                bookingEnabled
+                                    ? Icons.toggle_on_rounded
+                                    : Icons.toggle_off_rounded,
+                                color: bookingEnabled
+                                    ? AppColors.success
+                                    : AppColors.warning,
+                              ),
+                            ),
+                            PopupMenuButton<String>(
+                              onSelected: (status) => _update(
+                                  context, ref, item['id'].toString(), status),
+                              itemBuilder: (_) => const [
+                                PopupMenuItem(
+                                    value: 'active', child: Text('Activate')),
+                                PopupMenuItem(
+                                    value: 'maintenance',
+                                    child: Text('Maintenance')),
+                                PopupMenuItem(
+                                    value: 'archived', child: Text('Archive')),
                               ],
                             ),
                           ],
                         ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: isMaintenance ? AppColors.warning.withValues(alpha: 0.2) : AppColors.success.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          item['status'],
-                          style: TextStyle(
-                            color: isMaintenance ? AppColors.warning : AppColors.success,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.sm),
-                      IconButton(
-                        icon: const Icon(Icons.edit_note_rounded, color: AppColors.grey400),
-                        onPressed: () => _showStatusDialog(context, item),
-                      ),
-                    ],
+                      );
+                    },
                   ),
-                );
-              },
-            ),
-          ],
-        ),
+          )),
+        ]),
       ),
     );
   }
 
-  void _showStatusDialog(BuildContext context, Map<String, dynamic> item) {
-    showDialog(
+  Future<void> _update(
+      BuildContext context, WidgetRef ref, String id, String status) async {
+    try {
+      await ref.read(lguRepositoryProvider).updateSpotStatus(id, status);
+      ref.invalidate(lguTouristSpotsProvider);
+      ref.invalidate(lguDashboardStatsProvider);
+      ref.invalidate(touristSpotsListProvider);
+      ref.invalidate(bookableTouristSpotsProvider);
+      ref.invalidate(mapMarkersProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            backgroundColor: AppColors.success,
+            content: Text('Tourist spot set to $status.')));
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            backgroundColor: AppColors.error, content: Text(error.toString())));
+      }
+    }
+  }
+
+  Future<void> _booking(
+      BuildContext context, WidgetRef ref, Map<String, dynamic> spot) async {
+    final configuration = await showTouristSpotBookingDialog(context, spot);
+    if (configuration == null) return;
+    try {
+      await ref.read(lguRepositoryProvider).updateTouristSpotBooking(
+            spot['id'].toString(),
+            configuration,
+          );
+      ref.invalidate(lguTouristSpotsProvider);
+      ref.invalidate(touristSpotsListProvider);
+      ref.invalidate(bookableTouristSpotsProvider);
+      ref.invalidate(mapMarkersProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Booking configuration updated.'),
+        ));
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    }
+  }
+
+  Future<void> _availability(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> spot,
+    bool currentlyEnabled,
+  ) async {
+    var reasonCode = 'weather_conditions';
+    final detail = TextEditingController(
+        text: spot['booking_unavailable_reason']?.toString() ?? '');
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: _cardBg,
-        title: Text('Update ${item['name']} Status', style: const TextStyle(color: AppColors.white)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: const Text('Active', style: TextStyle(color: AppColors.white)),
-              onTap: () {
-                setState(() => item['status'] = 'Active');
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              title: const Text('Maintenance', style: TextStyle(color: AppColors.warning)),
-              onTap: () {
-                setState(() => item['status'] = 'Maintenance');
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              title: const Text('Inactive', style: TextStyle(color: AppColors.error)),
-              onTap: () {
-                setState(() => item['status'] = 'Inactive');
-                Navigator.pop(context);
-              },
-            ),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(currentlyEnabled
+              ? 'Disable Booking?'
+              : 'Resume accepting reservations?'),
+          content: currentlyEnabled
+              ? Column(mainAxisSize: MainAxisSize.min, children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: reasonCode,
+                    decoration: const InputDecoration(labelText: 'Reason'),
+                    items: _reasonCodes
+                        .map((code) => DropdownMenuItem(
+                            value: code, child: Text(_reasonLabel(code))))
+                        .toList(),
+                    onChanged: (value) =>
+                        setDialogState(() => reasonCode = value!),
+                  ),
+                  TextField(
+                    controller: detail,
+                    maxLines: 3,
+                    decoration:
+                        const InputDecoration(labelText: 'Details (optional)'),
+                  ),
+                ])
+              : const Text(
+                  'This destination will accept new reservations again.'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text(currentlyEnabled ? 'Disable' : 'Enable')),
           ],
         ),
       ),
     );
+    final detailText = detail.text;
+    detail.dispose();
+    if (confirmed != true || !context.mounted) return;
+    try {
+      await ref
+          .read(lguRepositoryProvider)
+          .updateTouristSpotBookingAvailability(
+            spot['id'].toString(),
+            enabled: !currentlyEnabled,
+            reasonCode: currentlyEnabled ? reasonCode : null,
+            reason: currentlyEnabled ? detailText : null,
+          );
+      ref.invalidate(lguTouristSpotsProvider);
+      ref.invalidate(touristSpotsListProvider);
+      ref.invalidate(bookableTouristSpotsProvider);
+      ref.invalidate(mapMarkersProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: AppColors.success,
+          content: Text(currentlyEnabled
+              ? 'Booking disabled with a public reason.'
+              : 'Booking enabled.'),
+        ));
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: AppColors.error,
+          content: Text(error.toString()),
+        ));
+      }
+    }
+  }
+
+  static const _reasonCodes = [
+    'weather_conditions',
+    'maintenance',
+    'fully_booked',
+    'temporarily_closed',
+    'unsafe_sea_conditions',
+    'private_event',
+    'seasonal_closure',
+    'capacity_reached',
+    'site_rehabilitation',
+    'other',
+  ];
+
+  static String _reasonLabel(String? code) {
+    final value = code?.trim();
+    if (value == null || value.isEmpty) return 'Temporarily unavailable';
+    return value
+        .split('_')
+        .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+        .join(' ');
+  }
+
+  Future<void> _edit(
+      BuildContext context, WidgetRef ref, Map<String, dynamic> spot) async {
+    final shortDescription = TextEditingController(
+        text: spot['short_description']?.toString() ?? '');
+    final description =
+        TextEditingController(text: spot['description']?.toString() ?? '');
+    final aliases = TextEditingController(
+      text: spot['aliases'] is List ? (spot['aliases'] as List).join(', ') : '',
+    );
+    final formKey = GlobalKey<FormState>();
+
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF1C2541),
+        title: Text('Edit ${spot['name'] ?? 'destination'}',
+            style: const TextStyle(color: Colors.white)),
+        content: SizedBox(
+          width: 560,
+          child: Form(
+            key: formKey,
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                TextFormField(
+                  controller: shortDescription,
+                  maxLength: 500,
+                  maxLines: 2,
+                  style: const TextStyle(color: Colors.white),
+                  decoration:
+                      const InputDecoration(labelText: 'Short description'),
+                ),
+                TextFormField(
+                  controller: description,
+                  maxLines: 5,
+                  style: const TextStyle(color: Colors.white),
+                  decoration:
+                      const InputDecoration(labelText: 'Full description'),
+                ),
+                TextFormField(
+                  controller: aliases,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                      labelText: 'Search aliases (comma-separated)'),
+                ),
+              ]),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () {
+                if (formKey.currentState?.validate() ?? false) {
+                  Navigator.pop(dialogContext, true);
+                }
+              },
+              child: const Text('Save')),
+        ],
+      ),
+    );
+    if (save != true) {
+      shortDescription.dispose();
+      description.dispose();
+      aliases.dispose();
+      return;
+    }
+
+    try {
+      await ref.read(lguRepositoryProvider).updateTouristSpot(
+        spot['id'].toString(),
+        {
+          'short_description': shortDescription.text.trim(),
+          'description': description.text.trim(),
+          'aliases': aliases.text
+              .split(',')
+              .map((value) => value.trim())
+              .where((value) => value.isNotEmpty)
+              .toSet()
+              .toList(),
+        },
+      );
+      ref.invalidate(lguTouristSpotsProvider);
+      ref.invalidate(touristSpotsListProvider);
+      ref.invalidate(mapMarkersProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Destination descriptions updated.'),
+        ));
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    } finally {
+      shortDescription.dispose();
+      description.dispose();
+      aliases.dispose();
+    }
   }
 }

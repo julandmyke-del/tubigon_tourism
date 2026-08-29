@@ -33,31 +33,22 @@ class TouristSpotRepository {
             response.data['status'] == 'success') {
           final remoteData = response.data['data'] as List<dynamic>;
 
+          // Replace the public cache so inactive/archived spots cannot remain
+          // visible after an Admin publication change.
+          await dbHelper.delete(
+            'tourist_spots',
+            where: '1 = 1',
+            whereArgs: const [],
+          );
+
           for (final item in remoteData) {
             final row = item as Map<String, dynamic>;
-            final uuid = row['id'] as String;
             final integerId = (row['integer_id'] as int?) ?? 1;
-
-            final localSpotResult = await dbHelper.query(
-              'tourist_spots',
-              where: 'uuid = ?',
-              whereArgs: [uuid],
-            );
 
             final parsedSpot = TouristSpot.fromJson(row);
             final spotJson = parsedSpot.toJson();
             spotJson['id'] = integerId;
-
-            if (localSpotResult.isEmpty) {
-              await dbHelper.insert('tourist_spots', spotJson);
-            } else {
-              await dbHelper.update(
-                'tourist_spots',
-                spotJson,
-                where: 'uuid = ?',
-                whereArgs: [uuid],
-              );
-            }
+            await dbHelper.insert('tourist_spots', spotJson);
           }
 
           final updatedLocal = await dbHelper.query('tourist_spots',
@@ -90,31 +81,20 @@ class TouristSpotRepository {
             response.data['status'] == 'success') {
           final remoteData = response.data['data'] as List<dynamic>;
 
+          await dbHelper.delete(
+            'spot_categories',
+            where: '1 = 1',
+            whereArgs: const [],
+          );
+
           for (final item in remoteData) {
             final row = item as Map<String, dynamic>;
-            final uuid = row['id'] as String;
             final integerId = (row['integer_id'] as int?) ?? 1;
-
-            final localCat = await dbHelper.query(
-              'spot_categories',
-              where: 'uuid = ?',
-              whereArgs: [uuid],
-            );
 
             final parsedCat = SpotCategory.fromJson(row);
             final catJson = parsedCat.toJson();
             catJson['id'] = integerId;
-
-            if (localCat.isEmpty) {
-              await dbHelper.insert('spot_categories', catJson);
-            } else {
-              await dbHelper.update(
-                'spot_categories',
-                catJson,
-                where: 'uuid = ?',
-                whereArgs: [uuid],
-              );
-            }
+            await dbHelper.insert('spot_categories', catJson);
           }
 
           final updatedLocal = await dbHelper.query('spot_categories');
@@ -127,6 +107,29 @@ class TouristSpotRepository {
     }
 
     return categories;
+  }
+
+  Future<Map<String, dynamic>> getAvailability(
+      String spotId, String date) async {
+    final response = await apiClient.get(
+      ApiEndpoints.touristSpotAvailability(spotId),
+      queryParameters: {'date': date},
+    );
+    if (response.statusCode != 200 || response.data['status'] != 'success') {
+      throw Exception('Availability could not be verified.');
+    }
+    return Map<String, dynamic>.from(response.data['data'] as Map);
+  }
+
+  /// Booking must use live, authoritative publication and booking state.
+  /// General destination browsing remains offline-first, but this method
+  /// deliberately propagates API failures instead of turning them into a
+  /// misleading "no destinations" result.
+  Future<List<TouristSpot>> getBookableSpots() async {
+    final spots = await _fetchRemoteSpots(bookingCapableOnly: true);
+    return spots
+        .where((spot) => spot.isActive && spot.isPublished && spot.isBookable)
+        .toList(growable: false);
   }
 
   /// Fetches a single spot details by integer ID.
@@ -151,8 +154,13 @@ class TouristSpotRepository {
     return null;
   }
 
-  Future<List<TouristSpot>> _fetchRemoteSpots() async {
-    final response = await apiClient.get(ApiEndpoints.touristSpots);
+  Future<List<TouristSpot>> _fetchRemoteSpots(
+      {bool bookingCapableOnly = false}) async {
+    final response = await apiClient.get(
+      ApiEndpoints.touristSpots,
+      queryParameters:
+          bookingCapableOnly ? {'booking_capable_only': true} : null,
+    );
     if (response.statusCode != 200 || response.data['status'] != 'success') {
       throw const FormatException('Invalid tourist spot response.');
     }
@@ -194,7 +202,21 @@ final touristSpotsListProvider = FutureProvider<List<TouristSpot>>((ref) async {
   return repo.getSpots();
 });
 
+final bookableTouristSpotsProvider =
+    FutureProvider<List<TouristSpot>>((ref) async {
+  final repo = ref.watch(touristSpotRepositoryProvider);
+  return repo.getBookableSpots();
+});
+
 final spotCategoriesProvider = FutureProvider<List<SpotCategory>>((ref) async {
   final repo = ref.watch(touristSpotRepositoryProvider);
   return repo.getCategories();
+});
+
+final touristSpotAvailabilityProvider = FutureProvider.autoDispose
+    .family<Map<String, dynamic>, ({String spotId, String date})>(
+        (ref, query) async {
+  return ref
+      .watch(touristSpotRepositoryProvider)
+      .getAvailability(query.spotId, query.date);
 });

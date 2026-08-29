@@ -20,6 +20,7 @@ class SlideAnimation extends StatefulWidget {
   final Duration duration;
   final Duration delay;
   final Curve curve;
+
   /// Fractional offset (0.0–1.0) for the slide distance.
   final double offset;
 

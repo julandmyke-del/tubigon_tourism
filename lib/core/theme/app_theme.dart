@@ -59,7 +59,8 @@ abstract final class AppTheme {
           color: AppColors.white,
           fontWeight: FontWeight.w700,
         ),
-        iconTheme: const IconThemeData(color: AppColors.white, size: AppSpacing.iconMd),
+        iconTheme: const IconThemeData(
+            color: AppColors.white, size: AppSpacing.iconMd),
       ),
 
       // Bottom Navigation Bar Theme
@@ -99,7 +100,8 @@ abstract final class AppTheme {
           backgroundColor: AppColors.primary,
           foregroundColor: AppColors.white,
           minimumSize: const Size.fromHeight(AppSpacing.buttonHeight),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           elevation: 2,
           shadowColor: AppColors.black.withValues(alpha: 0.4),
           textStyle: AppTypography.buttonText.copyWith(
@@ -119,7 +121,8 @@ abstract final class AppTheme {
           backgroundColor: AppColors.darkSurface,
           foregroundColor: AppColors.white,
           minimumSize: const Size.fromHeight(AppSpacing.buttonHeight),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           side: const BorderSide(color: AppColors.accent, width: 1.5),
           textStyle: AppTypography.buttonText.copyWith(
             fontWeight: FontWeight.w600,
@@ -136,7 +139,8 @@ abstract final class AppTheme {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: AppColors.accent,
-          textStyle: AppTypography.buttonText.copyWith(fontWeight: FontWeight.w600),
+          textStyle:
+              AppTypography.buttonText.copyWith(fontWeight: FontWeight.w600),
           padding: const EdgeInsets.symmetric(
             horizontal: AppSpacing.md,
             vertical: AppSpacing.sm,
@@ -207,7 +211,8 @@ abstract final class AppTheme {
       // SnackBar Theme
       snackBarTheme: SnackBarThemeData(
         backgroundColor: AppColors.cardBg,
-        contentTextStyle: AppTypography.bodyMedium.copyWith(color: AppColors.white),
+        contentTextStyle:
+            AppTypography.bodyMedium.copyWith(color: AppColors.white),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         behavior: SnackBarBehavior.floating,
         elevation: 6,

@@ -31,7 +31,8 @@ class LocationService {
 
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      return LocationDenied('Location services are disabled. Please enable GPS.');
+      return LocationDenied(
+          'Location services are disabled. Please enable GPS.');
     }
 
     permission = await Geolocator.checkPermission();

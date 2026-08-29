@@ -179,8 +179,9 @@ class ItineraryRepository {
         .map((item) => Map<String, dynamic>.from(item as Map))
         .toList();
     final index = items.indexWhere((item) => item['id']?.toString() == itemId);
-    if (index < 0)
+    if (index < 0) {
       throw StateError('This itinerary stop is unavailable offline.');
+    }
     items[index] = {...items[index], ...update};
     trip['items'] = items;
     trip['updated_at'] = DateTime.now().toIso8601String();

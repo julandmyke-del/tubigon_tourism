@@ -1,118 +1,215 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_spacing.dart';
-import '../../../../core/theme/app_typography.dart';
+
+import '../../providers/lgu_providers.dart';
 
 class LguReservationMonitoringPage extends ConsumerStatefulWidget {
   const LguReservationMonitoringPage({super.key});
 
   @override
-  ConsumerState<LguReservationMonitoringPage> createState() => _LguReservationMonitoringPageState();
+  ConsumerState<LguReservationMonitoringPage> createState() =>
+      _LguReservationMonitoringPageState();
 }
 
-class _LguReservationMonitoringPageState extends ConsumerState<LguReservationMonitoringPage> {
-  static const _navyDark = Color(0xFF0B132B);
-  static const _cardBg = Color(0xFF1C2541);
-  static const _accentOrange = Color(0xFFF97316);
-
-  final List<Map<String, dynamic>> _reservations = [
-    {'id': '1', 'tourist': 'Kim Reyes', 'spot': 'Canigao Island Day Tour', 'date': 'Aug 5, 2026', 'party': 4, 'status': 'Confirmed', 'amount': '₱2,400'},
-    {'id': '2', 'tourist': 'Jake Morales', 'spot': 'Mangrove Eco Tour', 'date': 'Aug 6, 2026', 'party': 2, 'status': 'Pending', 'amount': '₱800'},
-    {'id': '3', 'tourist': 'Lea Santos', 'spot': 'Bohol Heritage Walk', 'date': 'Aug 4, 2026', 'party': 6, 'status': 'Confirmed', 'amount': '₱1,800'},
-    {'id': '4', 'tourist': 'Mark Villanueva', 'spot': 'Island Hopping Package', 'date': 'Aug 7, 2026', 'party': 8, 'status': 'Cancelled', 'amount': '₱6,400'},
-    {'id': '5', 'tourist': 'Grace Tan', 'spot': 'Sipatan Falls Trek', 'date': 'Aug 8, 2026', 'party': 3, 'status': 'Pending', 'amount': '₱900'},
-  ];
+class _LguReservationMonitoringPageState
+    extends ConsumerState<LguReservationMonitoringPage> {
+  String _query = '';
+  String _status = 'all';
 
   @override
   Widget build(BuildContext context) {
+    final reservations = ref.watch(lguReservationsProvider);
+    final statuses = ref.watch(lguReservationStatusesProvider).valueOrNull ??
+        const <Map<String, dynamic>>[];
     return Scaffold(
-      backgroundColor: _navyDark,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Reservation & Booking Monitoring',
-              style: AppTypography.headlineSmall.copyWith(
-                color: AppColors.white,
-                fontWeight: FontWeight.bold,
+      backgroundColor: const Color(0xFF0B132B),
+      appBar: AppBar(
+        title: const Text('Municipal Spot Reservations'),
+        actions: [
+          IconButton(
+            onPressed: () => ref.invalidate(lguReservationsProvider),
+            icon: const Icon(Icons.refresh_rounded),
+          ),
+        ],
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(children: [
+          Row(children: [
+            Expanded(
+              child: TextField(
+                decoration: const InputDecoration(
+                    labelText: 'Search reference, tourist, or destination'),
+                onChanged: (value) =>
+                    setState(() => _query = value.toLowerCase()),
               ),
             ),
-            const Text(
-              'Monitor tourist bookings, visitor party sizes, and municipal destination reservations',
-              style: TextStyle(color: AppColors.grey400, fontSize: 13),
+            const SizedBox(width: 12),
+            DropdownButton<String>(
+              value: _status,
+              items: [
+                const DropdownMenuItem(
+                    value: 'all', child: Text('All statuses')),
+                ...statuses.map((item) => DropdownMenuItem(
+                      value: item['name'].toString(),
+                      child: Text(_label(item['name'].toString())),
+                    )),
+              ],
+              onChanged: (value) => setState(() => _status = value ?? 'all'),
             ),
-            const SizedBox(height: AppSpacing.lg),
-
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _reservations.length,
-              itemBuilder: (context, index) {
-                final item = _reservations[index];
-                final isConfirmed = item['status'] == 'Confirmed';
-                final isPending = item['status'] == 'Pending';
-
-                return Container(
-                  margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-                  padding: const EdgeInsets.all(AppSpacing.md),
-                  decoration: BoxDecoration(
-                    color: _cardBg,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppColors.white.withValues(alpha: 0.08)),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: _accentOrange.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(12),
+          ]),
+          const SizedBox(height: 14),
+          Expanded(
+            child: reservations.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, _) => Center(child: Text(error.toString())),
+              data: (items) {
+                final filtered = items.where((item) {
+                  final status = _statusName(item);
+                  final user = item['user'] is Map
+                      ? Map<String, dynamic>.from(item['user'])
+                      : const <String, dynamic>{};
+                  final haystack = [
+                    item['public_reference'],
+                    item['reservable_name'],
+                    user['name'],
+                  ].join(' ').toLowerCase();
+                  return (_status == 'all' || status == _status) &&
+                      haystack.contains(_query);
+                }).toList();
+                if (filtered.isEmpty) {
+                  return const Center(
+                    child: Text('No municipal spot reservations found.',
+                        style: TextStyle(color: Color(0xFF94A3B8))),
+                  );
+                }
+                return ListView.separated(
+                  itemCount: filtered.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final item = filtered[index];
+                    return Card(
+                      color: const Color(0xFF1C2541),
+                      child: ListTile(
+                        onTap: () => _showDetail(item, statuses),
+                        leading: const Icon(Icons.event_note_rounded,
+                            color: Color(0xFFF59E0B)),
+                        title: Text(
+                            item['reservable_name']?.toString() ??
+                                'Destination',
+                            style: const TextStyle(color: Colors.white)),
+                        subtitle: Text(
+                          '${item['public_reference'] ?? item['id']} · ${item['reservation_date'] ?? ''} · ${item['guests']} guests',
+                          style: const TextStyle(color: Color(0xFFCBD5E1)),
                         ),
-                        child: const Icon(Icons.calendar_month_rounded, color: _accentOrange, size: 24),
+                        trailing: Text(_label(_statusName(item)),
+                            style: const TextStyle(color: Color(0xFFF59E0B))),
                       ),
-                      const SizedBox(width: AppSpacing.md),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              item['spot'],
-                              style: const TextStyle(color: AppColors.white, fontWeight: FontWeight.bold, fontSize: 15),
-                            ),
-                            const SizedBox(height: 4),
-                            Text('Tourist: ${item['tourist']} • Party of ${item['party']}', style: const TextStyle(color: AppColors.grey400, fontSize: 12)),
-                            Text('Date: ${item['date']} • Fee: ${item['amount']}', style: const TextStyle(color: AppColors.grey500, fontSize: 11)),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: isConfirmed
-                              ? AppColors.success.withValues(alpha: 0.2)
-                              : (isPending ? AppColors.warning.withValues(alpha: 0.2) : AppColors.error.withValues(alpha: 0.2)),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          item['status'],
-                          style: TextStyle(
-                            color: isConfirmed ? AppColors.success : (isPending ? AppColors.warning : AppColors.error),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                    );
+                  },
                 );
               },
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _showDetail(Map<String, dynamic> reservation,
+      List<Map<String, dynamic>> statuses) async {
+    var selected = _statusName(reservation);
+    final allowedTransitions =
+        (reservation['allowed_transitions'] as List? ?? const [])
+            .map((item) => item.toString())
+            .toSet();
+    final selectableStatuses = statuses
+        .where((item) => allowedTransitions.contains(item['name']?.toString()))
+        .toList(growable: false);
+    final nextStatusId = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text(
+              reservation['public_reference']?.toString() ?? 'Reservation'),
+          content: SizedBox(
+            width: 440,
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              _row('Destination', reservation['reservable_name']),
+              _row('Date', reservation['reservation_date']),
+              _row('Time', reservation['start_time'] ?? 'Date only'),
+              _row('Guests', reservation['guests']),
+              _row('Notes', reservation['notes'] ?? 'None'),
+              DropdownButtonFormField<String>(
+                initialValue: null,
+                decoration: InputDecoration(
+                  labelText: selectableStatuses.isEmpty
+                      ? 'No further status transitions'
+                      : 'Next status',
+                ),
+                items: selectableStatuses
+                    .map((item) => DropdownMenuItem(
+                          value: item['name'].toString(),
+                          child: Text(_label(item['name'].toString())),
+                        ))
+                    .toList(),
+                onChanged: (value) =>
+                    setState(() => selected = value ?? selected),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Close')),
+            FilledButton(
+              onPressed: selectableStatuses.isEmpty ||
+                      !allowedTransitions.contains(selected)
+                  ? null
+                  : () {
+                      final match = selectableStatuses.where(
+                          (item) => item['name']?.toString() == selected);
+                      Navigator.pop(dialogContext,
+                          match.isEmpty ? null : match.first['id']?.toString());
+                    },
+              child: const Text('Update Status'),
             ),
           ],
         ),
       ),
     );
+    if (nextStatusId == null) return;
+    try {
+      await ref.read(lguRepositoryProvider).updateSpotReservationStatus(
+            reservation['id'].toString(),
+            nextStatusId,
+          );
+      ref.invalidate(lguReservationsProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Reservation status updated.')));
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    }
   }
+
+  Widget _row(String label, dynamic value) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(width: 100, child: Text(label)),
+          Expanded(child: Text(value?.toString() ?? '—')),
+        ]),
+      );
+
+  String _statusName(Map<String, dynamic> item) => item['status'] is Map
+      ? (item['status'] as Map)['name']?.toString() ?? 'pending'
+      : item['status']?.toString() ?? 'pending';
+
+  static String _label(String value) => value.isEmpty
+      ? value
+      : '${value[0].toUpperCase()}${value.substring(1).replaceAll('_', ' ')}';
 }

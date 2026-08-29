@@ -1,14 +1,21 @@
 /// Typed exception hierarchy for the Tubigon Smart Tourism App.
 /// All exceptions extend [AppException] for consistent catch blocks.
 sealed class AppException implements Exception {
-  const AppException({required this.message, this.code, this.statusCode});
+  const AppException({
+    required this.message,
+    this.code,
+    this.statusCode,
+    this.responseData,
+  });
 
   final String message;
   final String? code;
   final int? statusCode;
+  final Map<String, dynamic>? responseData;
 
   @override
-  String toString() => '$runtimeType(message: $message, code: $code, statusCode: $statusCode)';
+  String toString() =>
+      '$runtimeType(message: $message, code: $code, statusCode: $statusCode)';
 }
 
 /// Thrown when there is no internet connectivity or request times out.
@@ -17,6 +24,7 @@ final class NetworkException extends AppException {
     super.message = 'No internet connection. Please check your network.',
     super.code,
     super.statusCode,
+    super.responseData,
     this.isTimeout = false,
   });
 
@@ -29,6 +37,7 @@ final class AuthException extends AppException {
     super.message = 'Authentication failed. Please log in again.',
     super.code,
     super.statusCode,
+    super.responseData,
     this.isExpired = false,
     this.isUnauthorized = false,
   });
@@ -43,6 +52,7 @@ final class ValidationException extends AppException {
     super.message = 'Please check the information you entered.',
     super.code,
     super.statusCode,
+    super.responseData,
     this.errors = const {},
   });
 
@@ -58,6 +68,7 @@ final class ServerException extends AppException {
     super.message = 'Server error. Please try again later.',
     super.code,
     super.statusCode,
+    super.responseData,
   });
 }
 
@@ -66,6 +77,7 @@ final class CacheException extends AppException {
   const CacheException({
     super.message = 'Local data error. Try clearing the cache.',
     super.code,
+    super.responseData,
   });
 }
 
@@ -86,6 +98,7 @@ final class NotFoundException extends AppException {
     super.message = 'The requested resource was not found.',
     super.code,
     super.statusCode = 404,
+    super.responseData,
   });
 }
 
@@ -95,6 +108,7 @@ final class UnknownException extends AppException {
     super.message = 'An unexpected error occurred. Please try again.',
     super.code,
     super.statusCode,
+    super.responseData,
     this.originalError,
   });
 

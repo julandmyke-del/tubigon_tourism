@@ -26,6 +26,17 @@ class TourismListing extends Model
         'is_active',
         'average_rating',
         'review_count',
+        'approval_status',
+        'submitted_at',
+        'reviewed_at',
+        'reviewed_by',
+        'review_notes',
+        'published_at',
+        'price',
+        'capacity',
+        'duration_minutes',
+        'available_days',
+        'booking_cutoff_hours',
     ];
 
     protected $casts = [
@@ -35,6 +46,14 @@ class TourismListing extends Model
         'is_active' => 'boolean',
         'average_rating' => 'float',
         'review_count' => 'integer',
+        'price' => 'float',
+        'capacity' => 'integer',
+        'duration_minutes' => 'integer',
+        'available_days' => 'array',
+        'booking_cutoff_hours' => 'integer',
+        'submitted_at' => 'datetime',
+        'reviewed_at' => 'datetime',
+        'published_at' => 'datetime',
     ];
 
     public function owner()

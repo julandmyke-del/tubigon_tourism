@@ -159,10 +159,10 @@ class TouristDashboardPage extends ConsumerWidget {
                                   border: Border.all(
                                       color: const Color(0xFFF59E0B), width: 2),
                                 ),
-                                child: CircleAvatar(
+                                child: const CircleAvatar(
                                   radius: 20,
-                                  backgroundColor: const Color(0xFF1E293B),
-                                  child: const Icon(
+                                  backgroundColor: Color(0xFF1E293B),
+                                  child: Icon(
                                     Icons.person_rounded,
                                     color: Colors.white,
                                     size: 22,
@@ -190,12 +190,12 @@ class TouristDashboardPage extends ConsumerWidget {
                 const SizedBox(height: 24),
 
                 // Quick actions section
-                _SectionHeader(
+                const _SectionHeader(
                   title: 'Quick Actions',
                   onSeeAll: null,
                 ).animate().fadeIn(duration: 350.ms),
                 const SizedBox(height: 14),
-                _QuickActionsRow(actions: _quickActions),
+                const _QuickActionsRow(actions: _quickActions),
                 const SizedBox(height: 28),
 
                 // Featured spots section header
@@ -211,7 +211,7 @@ class TouristDashboardPage extends ConsumerWidget {
           // Featured spots carousel
           SliverToBoxAdapter(
             child: SizedBox(
-              height: 220,
+              height: 252,
               child: spotsAsync.when(
                 loading: () => ListView.separated(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -513,7 +513,11 @@ class _SpotCard extends StatelessWidget {
                             Border.all(color: catColor.withValues(alpha: 0.5)),
                       ),
                       child: Text(
-                        category,
+                        spot.canAcceptBookings
+                            ? '$category · Reservations'
+                            : spot.isBookable
+                                ? '$category · Unavailable: ${spot.bookingUnavailableLabel}'
+                                : category,
                         style: TextStyle(
                           color: catColor,
                           fontSize: 10,
@@ -541,7 +545,7 @@ class _SpotCard extends StatelessWidget {
                         Text(
                           spot.averageRating > 0
                               ? spot.averageRating.toStringAsFixed(1)
-                              : '4.8',
+                              : 'New',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 12,
@@ -551,7 +555,7 @@ class _SpotCard extends StatelessWidget {
                         const Spacer(),
                         Text(
                           spot.entranceFee == 0
-                              ? 'Free'
+                              ? 'Fee not listed'
                               : '₱${spot.entranceFee.toStringAsFixed(0)}',
                           style: const TextStyle(
                             color: Color(0xFF94A3B8),
@@ -561,6 +565,22 @@ class _SpotCard extends StatelessWidget {
                         ),
                       ],
                     ),
+                    if (spot.canAcceptBookings) ...[
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 32,
+                        child: FilledButton.icon(
+                          onPressed: () => context.go(
+                            '/reservations/create?spot=${Uri.encodeQueryComponent(spot.uuid)}',
+                          ),
+                          icon: const Icon(Icons.event_available_rounded,
+                              size: 15),
+                          label: const Text('Book',
+                              style: TextStyle(fontSize: 11)),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -638,8 +658,8 @@ class _BookingPreviewCard extends StatelessWidget {
               ),
             ],
           ),
-          error: (_, __) => Row(
-            children: const [
+          error: (_, __) => const Row(
+            children: [
               Icon(Icons.calendar_today_rounded, color: Color(0xFFF59E0B)),
               SizedBox(width: 12),
               Text('My Bookings',
@@ -666,10 +686,10 @@ class _BookingPreviewCard extends StatelessWidget {
                         color: Color(0xFFF59E0B), size: 24),
                   ),
                   const SizedBox(width: 14),
-                  Expanded(
+                  const Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
+                      children: [
                         Text(
                           'No upcoming bookings',
                           style: TextStyle(
@@ -775,14 +795,14 @@ class _EcoBanner extends StatelessWidget {
             ),
           ],
         ),
-        child: Row(
+        child: const Row(
           children: [
-            const Icon(Icons.eco_rounded, color: Colors.white, size: 36),
-            const SizedBox(width: 14),
+            Icon(Icons.eco_rounded, color: Colors.white, size: 36),
+            SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
+                children: [
                   Text(
                     'Travel Green 🌿',
                     style: TextStyle(
@@ -798,8 +818,7 @@ class _EcoBanner extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(Icons.arrow_forward_rounded,
-                color: Colors.white, size: 20),
+            Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 20),
           ],
         ),
       ),

@@ -1,10 +1,105 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:go_router/go_router.dart';
 
-import '../../../../core/theme/app_spacing.dart';
 import '../../providers/msme_portal_providers.dart';
 import '../msme_theme.dart';
 
-class MsmePortalNotificationsPage extends ConsumerWidget { const MsmePortalNotificationsPage({super.key}); @override Widget build(BuildContext context, WidgetRef ref) { final notificationsAsync = ref.watch(msmePortalNotificationsProvider); return Scaffold(backgroundColor: MsmeTheme.bgDark, body: Padding(padding: const EdgeInsets.all(AppSpacing.lg), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('System Notifications', style: MsmeTheme.headingLarge()), Text('New reservation alerts, reviews, and LGU municipal notices.', style: MsmeTheme.body(color: MsmeTheme.textMuted))]), TextButton.icon(onPressed: () => ref.invalidate(msmePortalNotificationsProvider), icon: const Icon(Icons.done_all_rounded, color: MsmeTheme.primaryOrange, size: 18), label: Text('Mark All Read', style: GoogleFonts.inter(color: MsmeTheme.primaryOrange, fontWeight: FontWeight.bold)))]), const SizedBox(height: AppSpacing.lg), Expanded(child: notificationsAsync.when(data: (notifications) { return ListView.builder(itemCount: notifications.length, itemBuilder: (context, index) { final n = notifications[index]; final title = (n['title'] ?? 'Notification').toString(); final body = (n['body'] ?? '').toString(); final time = (n['time'] ?? '').toString(); final type = (n['type'] ?? 'system').toString(); final isRead = n['is_read'] == true; IconData icon; Color iconColor; switch (type) { case 'reservation': icon = Icons.calendar_month_rounded; iconColor = MsmeTheme.amber; break; case 'review': icon = Icons.star_rounded; iconColor = MsmeTheme.green; break; default: icon = Icons.campaign_rounded; iconColor = MsmeTheme.blue; } return Container(margin: const EdgeInsets.only(bottom: AppSpacing.md), padding: const EdgeInsets.all(AppSpacing.lg), decoration: MsmeTheme.cardDecoration(bg: isRead ? MsmeTheme.cardDark.withValues(alpha: 0.5) : MsmeTheme.primaryOrange.withValues(alpha: 0.08)), child: Row(children: [Container(width: 42, height: 42, decoration: BoxDecoration(color: iconColor.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: iconColor, size: 20)), const SizedBox(width: 14), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: GoogleFonts.inter(color: MsmeTheme.textWhite, fontWeight: FontWeight.bold, fontSize: 14)), const SizedBox(height: 2), Text(body, style: GoogleFonts.inter(color: MsmeTheme.textMuted, fontSize: 13))])), Text(time, style: GoogleFonts.inter(color: MsmeTheme.textSubtle, fontSize: 11))])); }); }, loading: () => const Center(child: CircularProgressIndicator(color: MsmeTheme.primaryOrange)), error: (err, _) => Center(child: Text('Error: $err', style: const TextStyle(color: MsmeTheme.red))))),],),),); } }
+class MsmePortalNotificationsPage extends ConsumerWidget {
+  const MsmePortalNotificationsPage({super.key});
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final value = ref.watch(msmePortalNotificationsProvider);
+    return Scaffold(
+      backgroundColor: MsmeTheme.bgDark,
+      body: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Wrap(alignment: WrapAlignment.spaceBetween, children: [
+            Text('Notifications', style: MsmeTheme.headingLarge()),
+            TextButton.icon(
+                onPressed: () => _markAll(context, ref),
+                icon: const Icon(Icons.done_all),
+                label: const Text('Mark all read')),
+          ]),
+          const SizedBox(height: 12),
+          Expanded(
+              child: value.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, _) => Center(
+                child: OutlinedButton(
+                    onPressed: () =>
+                        ref.invalidate(msmePortalNotificationsProvider),
+                    child: Text('Retry: $error'))),
+            data: (items) => items.isEmpty
+                ? const Center(
+                    child: Text('No notifications yet.',
+                        style: TextStyle(color: MsmeTheme.textMuted)))
+                : ListView.separated(
+                    itemCount: items.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final item = items[index];
+                      final unread =
+                          item['is_read'] != true && item['is_read'] != 1;
+                      return ListTile(
+                        tileColor: unread
+                            ? MsmeTheme.primaryOrange.withValues(alpha: .08)
+                            : MsmeTheme.cardDark,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        leading: Icon(
+                            unread
+                                ? Icons.notifications_active
+                                : Icons.notifications_none,
+                            color: MsmeTheme.primaryOrange),
+                        title: Text(item['title']?.toString() ?? 'Update',
+                            style: const TextStyle(color: Colors.white)),
+                        subtitle: Text(
+                            '${item['body'] ?? ''}\n${item['created_at'] ?? ''}',
+                            style: const TextStyle(color: MsmeTheme.textMuted)),
+                        isThreeLine: true,
+                        onTap: () => _open(context, ref, item),
+                      );
+                    },
+                  ),
+          )),
+        ]),
+      ),
+    );
+  }
 
+  Future<void> _open(
+      BuildContext context, WidgetRef ref, Map<String, dynamic> item) async {
+    try {
+      await ref
+          .read(msmePortalRepositoryProvider)
+          .markNotificationRead(item['id'].toString());
+      ref.invalidate(msmePortalNotificationsProvider);
+      final data = item['data'];
+      final route = data is Map ? data['route']?.toString() : null;
+      if (context.mounted &&
+          route != null &&
+          (route == '/msme-portal' || route.startsWith('/msme-portal/'))) {
+        context.push(route);
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    }
+  }
+
+  Future<void> _markAll(BuildContext context, WidgetRef ref) async {
+    try {
+      await ref.read(msmePortalRepositoryProvider).markAllNotificationsRead();
+      ref.invalidate(msmePortalNotificationsProvider);
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    }
+  }
+}

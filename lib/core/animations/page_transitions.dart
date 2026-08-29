@@ -40,7 +40,8 @@ class AppPageTransitions {
         final slideAnim = Tween<Offset>(
           begin: const Offset(0, 0.06),
           end: Offset.zero,
-        ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
+        ).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
 
         return SlideTransition(
           position: slideAnim,
@@ -67,12 +68,14 @@ class AppPageTransitions {
         final slideAnim = Tween<Offset>(
           begin: const Offset(1.0, 0),
           end: Offset.zero,
-        ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
+        ).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
 
         final secondarySlide = Tween<Offset>(
           begin: Offset.zero,
           end: const Offset(-0.25, 0),
-        ).animate(CurvedAnimation(parent: secondaryAnimation, curve: Curves.easeOutCubic));
+        ).animate(CurvedAnimation(
+            parent: secondaryAnimation, curve: Curves.easeOutCubic));
 
         return SlideTransition(
           position: secondarySlide,

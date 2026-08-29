@@ -34,20 +34,23 @@ class UserShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final currentIndex = _currentIndex(context);
     final role = ref.watch(authProvider).role;
-    final showTouristNavigation = role == UserRole.tourist || role == UserRole.guest;
+    final showTouristNavigation =
+        role == UserRole.tourist || role == UserRole.guest;
 
     return Scaffold(
       backgroundColor: const Color(0xFF080F1A),
       body: child,
-      bottomNavigationBar: showTouristNavigation ? _UserBottomNavBar(
-        currentIndex: currentIndex,
-        tabs: _tabs,
-        onTap: (i) {
-          if (i != currentIndex) {
-            context.go(_tabs[i].route);
-          }
-        },
-      ) : null,
+      bottomNavigationBar: showTouristNavigation
+          ? _UserBottomNavBar(
+              currentIndex: currentIndex,
+              tabs: _tabs,
+              onTap: (i) {
+                if (i != currentIndex) {
+                  context.go(_tabs[i].route);
+                }
+              },
+            )
+          : null,
     );
   }
 }
@@ -133,8 +136,8 @@ class _NavBarItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final activeColor = const Color(0xFFF59E0B);
-    final inactiveColor = const Color(0xFF64748B);
+    const activeColor = Color(0xFFF59E0B);
+    const inactiveColor = Color(0xFF64748B);
 
     return GestureDetector(
       onTap: onTap,
@@ -151,7 +154,8 @@ class _NavBarItem extends StatelessWidget {
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(20),
               border: selected
-                  ? Border.all(color: activeColor.withValues(alpha: 0.3), width: 1)
+                  ? Border.all(
+                      color: activeColor.withValues(alpha: 0.3), width: 1)
                   : null,
             ),
             child: Icon(

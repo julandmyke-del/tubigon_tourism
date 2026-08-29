@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/constants/api_endpoints.dart';
+import '../../../core/exceptions/app_exception.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/connectivity_provider.dart';
 import '../../../database/database_helper.dart';
@@ -154,6 +155,22 @@ class FavoritesRepository {
         return isFavorite;
       } catch (error) {
         debugPrint('[FAVORITES] Saved locally; remote update pending: $error');
+        if (error is! NetworkException) {
+          final changedRows = await dbHelper.query(
+            'favorites',
+            where:
+                'user_id = ? AND favoritable_type = ? AND favoritable_id = ?',
+            whereArgs: [userId, favoritableType, favoritableId],
+          );
+          for (final row in changedRows) {
+            await dbHelper
+                .delete('favorites', where: 'id = ?', whereArgs: [row['id']]);
+          }
+          for (final row in existing) {
+            await dbHelper.insert('favorites', row);
+          }
+          rethrow;
+        }
       }
     }
     return !wasFavorite;

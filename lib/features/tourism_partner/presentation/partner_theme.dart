@@ -93,7 +93,11 @@ abstract final class PartnerTheme {
         color: color ?? textWhite,
       );
 
-  static TextStyle body({Color? color, double size = 14, FontWeight weight = FontWeight.w400}) => GoogleFonts.inter(
+  static TextStyle body(
+          {Color? color,
+          double size = 14,
+          FontWeight weight = FontWeight.w400}) =>
+      GoogleFonts.inter(
         fontSize: size,
         fontWeight: weight,
         color: color ?? textWhite,

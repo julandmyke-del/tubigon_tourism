@@ -32,7 +32,7 @@ class ErrorState extends StatelessWidget {
             Container(
               width: 100,
               height: 100,
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: AppColors.errorContainer,
                 shape: BoxShape.circle,
               ),
@@ -49,7 +49,8 @@ class ErrorState extends StatelessWidget {
             const SizedBox(height: AppSpacing.sm),
             Text(
               message,
-              style: AppTypography.bodyMedium.copyWith(color: AppColors.grey500),
+              style:
+                  AppTypography.bodyMedium.copyWith(color: AppColors.grey500),
               textAlign: TextAlign.center,
             ),
             if (onRetry != null) ...[

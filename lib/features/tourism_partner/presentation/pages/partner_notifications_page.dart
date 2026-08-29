@@ -1,283 +1,121 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../providers/tourism_partner_providers.dart';
 import '../partner_theme.dart';
 
-class PartnerNotificationsPage extends ConsumerStatefulWidget {
+class PartnerNotificationsPage extends ConsumerWidget {
   const PartnerNotificationsPage({super.key});
 
   @override
-  ConsumerState<PartnerNotificationsPage> createState() => _PartnerNotificationsPageState();
-}
-
-class _PartnerNotificationsPageState extends ConsumerState<PartnerNotificationsPage> {
-  String _filter = 'all';
-
-  final List<Map<String, dynamic>> _mockFallbackNotifications = [
-    {
-      'id': '1',
-      'type': 'reservation',
-      'title': 'New Reservation Request',
-      'message': 'Maria Santos has requested a booking for Island Hopping Adventure on Aug 5, 2026 for 4 guests.',
-      'time': '5 minutes ago',
-      'read': false
-    },
-    {
-      'id': '2',
-      'type': 'review',
-      'title': 'New 5-Star Review',
-      'message': 'Juan dela Cruz left a 5-star review on your Scuba Diving Package: "Best diving experience I\'ve ever had!"',
-      'time': '22 minutes ago',
-      'read': false
-    },
-    {
-      'id': '3',
-      'type': 'reservation',
-      'title': 'Reservation Confirmed',
-      'message': 'Booking R-0059 for Ana Reyes (Dolphin Watching Trip, Aug 7) has been confirmed successfully.',
-      'time': '1 hour ago',
-      'read': false
-    },
-    {
-      'id': '4',
-      'type': 'payment',
-      'title': 'Payment Received',
-      'message': 'Payment of ₱3,200 received for Beach BBQ Experience booking R-0058. Funds will be released within 3 business days.',
-      'time': '2 hours ago',
-      'read': true
-    },
-    {
-      'id': '5',
-      'type': 'review',
-      'title': 'New Review Posted',
-      'message': 'Rosa Garcia posted a 5-star review on Snorkeling at Pandanon Island.',
-      'time': '3 hours ago',
-      'read': true
-    },
-    {
-      'id': '6',
-      'type': 'system',
-      'title': 'Listing Approved',
-      'message': 'Your listing "Bohol Day Tour Package" has been reviewed and approved. It is now visible to travelers.',
-      'time': '5 hours ago',
-      'read': true
-    },
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final notificationsAsync = ref.watch(partnerNotificationsProvider);
-
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notifications = ref.watch(partnerNotificationsProvider);
     return Scaffold(
       backgroundColor: PartnerTheme.bgDark,
-      body: notificationsAsync.when(
-        data: (notifs) => _buildBody(notifs.isEmpty ? _mockFallbackNotifications : notifs),
-        loading: () => const Center(child: CircularProgressIndicator(color: PartnerTheme.primaryOrange)),
-        error: (_, __) => _buildBody(_mockFallbackNotifications),
-      ),
-    );
-  }
-
-  Widget _buildBody(List<Map<String, dynamic>> rawNotifs) {
-    final unreadCount = rawNotifs.where((n) => n['read'] == false).length;
-
-    final filtered = rawNotifs.where((n) {
-      final type = (n['type'] ?? 'system').toString();
-      final isRead = n['read'] == true;
-
-      if (_filter == 'unread') return !isRead;
-      if (_filter != 'all') return type == _filter;
-      return true;
-    }).toList();
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Filter Tabs & Mark All Read Header
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: ['all', 'unread', 'reservation', 'review', 'payment', 'system'].map((f) {
-                  final isSelected = _filter == f;
-                  final label = f == 'unread' ? 'Unread ($unreadCount)' : '${f[0].toUpperCase()}${f.substring(1)}';
-
-                  return ChoiceChip(
-                    label: Text(label),
-                    selected: isSelected,
-                    onSelected: (selected) {
-                      if (selected) setState(() => _filter = f);
-                    },
-                    selectedColor: PartnerTheme.primaryOrange.withValues(alpha: 0.2),
-                    backgroundColor: Colors.white.withValues(alpha: 0.04),
-                    side: BorderSide(
-                      color: isSelected ? PartnerTheme.primaryOrange : Colors.white.withValues(alpha: 0.08),
-                    ),
-                    labelStyle: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: isSelected ? PartnerTheme.primaryOrange : PartnerTheme.textDisabled,
-                    ),
-                  );
-                }).toList(),
-              ),
-              if (unreadCount > 0)
-                TextButton.icon(
-                  onPressed: _markAllRead,
-                  icon: const Icon(Icons.done_all_rounded, size: 16, color: PartnerTheme.primaryOrange),
-                  label: Text('Mark all read', style: GoogleFonts.inter(fontSize: 12, color: PartnerTheme.primaryOrange)),
-                ),
-            ],
-          ),
-          const SizedBox(height: 20),
-
-          // Notifications List
-          if (filtered.isEmpty)
-            Container(
-              padding: const EdgeInsets.all(60),
-              width: double.infinity,
-              decoration: PartnerTheme.cardDecoration(),
-              child: Column(
-                children: [
-                  const Icon(Icons.notifications_off_outlined, size: 48, color: PartnerTheme.textDisabled),
-                  const SizedBox(height: 12),
-                  Text('No notifications', style: PartnerTheme.headingSmall()),
-                  Text('You have no notifications matching this filter.', style: PartnerTheme.label()),
-                ],
-              ),
-            )
-          else
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: filtered.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final notif = filtered[index];
-                return _buildNotifCard(notif);
-              },
+      body: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Wrap(alignment: WrapAlignment.spaceBetween, runSpacing: 8, children: [
+            Text('Notifications', style: PartnerTheme.headingLarge()),
+            TextButton.icon(
+              onPressed: () => _markAll(context, ref),
+              icon: const Icon(Icons.done_all_rounded),
+              label: const Text('Mark all read'),
             ),
-        ],
+          ]),
+          const SizedBox(height: 12),
+          Expanded(
+              child: notifications.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, _) => Center(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Text(error.toString(),
+                  style: const TextStyle(color: PartnerTheme.red)),
+              OutlinedButton(
+                  onPressed: () => ref.invalidate(partnerNotificationsProvider),
+                  child: const Text('Retry')),
+            ])),
+            data: (items) => items.isEmpty
+                ? const Center(
+                    child: Text('No notifications yet.',
+                        style: TextStyle(color: PartnerTheme.textMuted)))
+                : RefreshIndicator(
+                    onRefresh: () async =>
+                        ref.refresh(partnerNotificationsProvider.future),
+                    child: ListView.separated(
+                      itemCount: items.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final item = items[index];
+                        final unread =
+                            item['is_read'] != true && item['is_read'] != 1;
+                        return ListTile(
+                          tileColor: unread
+                              ? PartnerTheme.primaryOrange
+                                  .withValues(alpha: .08)
+                              : PartnerTheme.cardDark,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          leading: Icon(
+                              unread
+                                  ? Icons.notifications_active_rounded
+                                  : Icons.notifications_none_rounded,
+                              color: unread
+                                  ? PartnerTheme.primaryOrange
+                                  : PartnerTheme.textMuted),
+                          title: Text(item['title']?.toString() ?? 'Update',
+                              style: const TextStyle(color: Colors.white)),
+                          subtitle: Text(
+                              '${item['body'] ?? ''}\n${item['created_at'] ?? ''}',
+                              style: const TextStyle(
+                                  color: PartnerTheme.textMuted)),
+                          isThreeLine: true,
+                          onTap: () => _open(context, ref, item),
+                        );
+                      },
+                    ),
+                  ),
+          )),
+        ]),
       ),
     );
   }
 
-  Widget _buildNotifCard(Map<String, dynamic> notif) {
-    final isRead = notif['read'] == true;
-    final type = (notif['type'] ?? 'system').toString();
-    final id = notif['id'].toString();
-
-    IconData icon;
-    Color color;
-
-    switch (type) {
-      case 'reservation':
-        icon = Icons.calendar_month_rounded;
-        color = PartnerTheme.blue;
-        break;
-      case 'review':
-        icon = Icons.star_rate_rounded;
-        color = PartnerTheme.primaryOrange;
-        break;
-      case 'payment':
-        icon = Icons.account_balance_wallet_rounded;
-        color = PartnerTheme.green;
-        break;
-      case 'system':
-      default:
-        icon = Icons.settings_rounded;
-        color = PartnerTheme.purple;
-        break;
+  Future<void> _open(
+      BuildContext context, WidgetRef ref, Map<String, dynamic> item) async {
+    try {
+      await ref
+          .read(tourismPartnerRepositoryProvider)
+          .markNotificationRead(item['id'].toString());
+      ref.invalidate(partnerNotificationsProvider);
+      final data = item['data'];
+      final route = data is Map ? data['route']?.toString() : null;
+      if (context.mounted &&
+          route != null &&
+          (route == '/tourism-partner' ||
+              route.startsWith('/tourism-partner/'))) {
+        context.push(route);
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.toString())));
+      }
     }
-
-    return InkWell(
-      onTap: () => _markRead(id),
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: PartnerTheme.cardDecoration(
-          bg: isRead ? PartnerTheme.cardDark.withValues(alpha: 0.3) : PartnerTheme.primaryOrange.withValues(alpha: 0.05),
-          border: isRead ? Color(0x1AFFFFFF) : PartnerTheme.primaryOrange.withValues(alpha: 0.25),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, color: color, size: 20),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        notif['title'] ?? 'Notification',
-                        style: GoogleFonts.inter(
-                          fontSize: 14,
-                          fontWeight: isRead ? FontWeight.w600 : FontWeight.bold,
-                          color: PartnerTheme.textWhite,
-                        ),
-                      ),
-                      Text(
-                        notif['time'] ?? '',
-                        style: GoogleFonts.inter(fontSize: 11, color: PartnerTheme.textDisabled),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    notif['message'] ?? '',
-                    style: GoogleFonts.inter(fontSize: 13, color: isRead ? PartnerTheme.textDisabled : PartnerTheme.textMuted, height: 1.4),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 10),
-            IconButton(
-              icon: const Icon(Icons.close_rounded, size: 16, color: PartnerTheme.textDisabled),
-              onPressed: () => _deleteNotif(id),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
-  void _markRead(String id) async {
+  Future<void> _markAll(BuildContext context, WidgetRef ref) async {
     try {
-      final repo = ref.read(tourismPartnerRepositoryProvider);
-      await repo.markNotificationRead(id);
-    } catch (_) {}
-    ref.invalidate(partnerNotificationsProvider);
-  }
-
-  void _markAllRead() async {
-    try {
-      final repo = ref.read(tourismPartnerRepositoryProvider);
-      await repo.markAllNotificationsRead();
-    } catch (_) {}
-    ref.invalidate(partnerNotificationsProvider);
-  }
-
-  void _deleteNotif(String id) async {
-    try {
-      final repo = ref.read(tourismPartnerRepositoryProvider);
-      await repo.deleteNotification(id);
-    } catch (_) {}
-    ref.invalidate(partnerNotificationsProvider);
+      await ref
+          .read(tourismPartnerRepositoryProvider)
+          .markAllNotificationsRead();
+      ref.invalidate(partnerNotificationsProvider);
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    }
   }
 }

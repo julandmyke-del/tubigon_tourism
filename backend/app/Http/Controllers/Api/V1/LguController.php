@@ -3,181 +3,150 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
-use App\Models\TouristSpot;
-use App\Models\Msme;
-use App\Models\Reservation;
-use App\Models\WasteReport;
+use App\Models\ActivityLog;
 use App\Models\Announcement;
 use App\Models\EmergencyContact;
 use App\Models\FerrySchedule;
-use App\Models\EcoTip;
+use App\Models\MapLocation;
+use App\Models\Msme;
+use App\Models\Notification;
+use App\Models\Reservation;
+use App\Models\TouristSpot;
+use App\Models\User;
+use App\Models\WasteReport;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class LguController extends Controller
 {
-    /**
-     * Executive Municipal Dashboard Statistics
-     */
-    public function dashboardStats(Request $request)
+    public function dashboardStats(Request $request): JsonResponse
     {
-        $totalSpots = TouristSpot::count();
-        $totalMsmes = Msme::count();
-        $activeReservations = Reservation::whereIn('status', ['pending', 'confirmed'])->count();
-        $pendingWaste = WasteReport::whereIn('status', ['submitted', 'in_progress'])->count();
-        $resolvedWaste = WasteReport::where('status', 'resolved')->count();
-        $publishedAnnouncements = Announcement::count();
-        $emergencyContacts = EmergencyContact::count();
-        $ferrySchedules = FerrySchedule::count();
+        $activeReservations = Reservation::whereHas('status', fn ($query) => $query->whereIn('name', ['pending', 'approved', 'confirmed']))->count();
+        $pendingWaste = WasteReport::whereIn('status', ['pending', 'submitted', 'under_review', 'assigned', 'in_progress'])->count();
+        $actionCenter = [
+            'msmesAwaitingReview' => Msme::where('verification_status', 'pending')->count(),
+            'emergencyContactsNeedingVerification' => EmergencyContact::where(function ($query) {
+                $query->where('is_verified', false)->orWhereNull('last_verified_at');
+            })->count(),
+            'wasteReportsAwaitingReview' => WasteReport::whereIn('status', ['pending', 'submitted'])->count(),
+            'mapLocationsNeedingReview' => MapLocation::where(function ($query) {
+                $query->where('verified', false)->orWhere('published', false);
+            })->where('active', true)->count(),
+        ];
 
-        return response()->json([
-            'status' => 'success',
-            'data' => [
-                'total_spots' => $totalSpots,
-                'total_msmes' => $totalMsmes,
-                'active_reservations' => $activeReservations,
-                'pending_waste_reports' => $pendingWaste,
-                'resolved_waste_reports' => $resolvedWaste,
-                'published_announcements' => $publishedAnnouncements,
-                'emergency_contacts' => $emergencyContacts,
-                'ferry_schedules' => $ferrySchedules,
-            ],
-        ]);
+        return response()->json(['status' => 'success', 'data' => [
+            'totalSpots' => TouristSpot::count(),
+            'totalMsmes' => Msme::count(),
+            'activeReservations' => $activeReservations,
+            'pendingWasteReports' => $pendingWaste,
+            'resolvedWasteReports' => WasteReport::whereIn('status', ['resolved', 'closed'])->count(),
+            'publishedAnnouncements' => Announcement::count(),
+            'emergencyContacts' => EmergencyContact::count(),
+            'ferrySchedules' => FerrySchedule::count(),
+            'actionCenter' => $actionCenter,
+        ]]);
     }
 
-    /**
-     * Update Tourist Spot Status / Archiving
-     */
-    public function updateSpotStatus(Request $request, $id)
+    public function updateSpotStatus(Request $request, string $id): JsonResponse
     {
-        $request->validate([
-            'status' => 'required|string|in:active,maintenance,archived',
-        ]);
-
+        $validated = $request->validate(['status' => 'required|in:active,maintenance,archived']);
         $spot = TouristSpot::findOrFail($id);
-        $spot->status = $request->status;
-        $spot->save();
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Tourist spot status updated successfully.',
-            'data' => $spot,
-        ]);
+        $before = $spot->toArray();
+        $spot->update(['is_active' => $validated['status'] === 'active']);
+        $this->log($request->user()->id, 'Tourist spot '.$validated['status'], 'tourist_spot', $spot->id, $before, $spot->fresh()->toArray());
+        return response()->json(['status' => 'success', 'message' => 'Tourist spot status updated.', 'data' => $spot->fresh()]);
     }
 
-    /**
-     * MSME Verification / Approval / Rejection / Suspension
-     */
-    public function verifyMsme(Request $request, $id)
+    public function verifyMsme(Request $request, string $id): JsonResponse
     {
-        $request->validate([
-            'is_verified' => 'required|boolean',
-            'status' => 'nullable|string|in:pending,approved,rejected,suspended',
-            'notes' => 'nullable|string',
-        ]);
-
-        $msme = Msme::findOrFail($id);
-        $msme->is_verified = $request->is_verified;
-        if ($request->has('status')) {
-            $msme->status = $request->status;
-        }
-        $msme->save();
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'MSME verification state updated successfully.',
-            'data' => $msme,
-        ]);
+        return (new MsmeController())->updateVerification($request, $id);
     }
 
-    /**
-     * Waste Report Status, Remarks & Personnel Assignment
-     */
-    public function updateWasteStatus(Request $request, $id)
+    public function updateWasteStatus(Request $request, string $id): JsonResponse
     {
-        $request->validate([
-            'status' => 'required|string|in:submitted,in_progress,resolved',
-            'remarks' => 'nullable|string',
-            'assigned_personnel' => 'nullable|string',
+        $validated = $request->validate([
+            'status' => ['required', Rule::in(['submitted', 'under_review', 'assigned', 'in_progress', 'resolved', 'closed', 'rejected'])],
+            'priority' => ['nullable', Rule::in(['low', 'normal', 'high', 'urgent'])],
+            'assigned_to' => 'nullable|uuid|exists:users,id',
+            'assigned_personnel' => 'nullable|string|max:255',
+            'notes' => 'nullable|string|max:2000',
+            'resolution_evidence' => 'nullable|array|max:10',
+            'resolution_evidence.*' => 'string|max:2048',
         ]);
-
         $report = WasteReport::findOrFail($id);
-        $report->status = $request->status;
-        if ($request->has('remarks')) {
-            $report->remarks = $request->remarks;
+        $current = $report->status === 'pending' ? 'submitted' : $report->status;
+        $allowed = [
+            'submitted' => ['under_review', 'rejected'],
+            'under_review' => ['assigned', 'in_progress', 'rejected'],
+            'assigned' => ['in_progress', 'rejected'],
+            'in_progress' => ['resolved'],
+            'resolved' => ['closed'],
+            'closed' => [],
+            'rejected' => [],
+        ];
+        abort_unless($validated['status'] === $current || in_array($validated['status'], $allowed[$current] ?? [], true), 422, "A {$current} report cannot transition to {$validated['status']}.");
+        abort_if($validated['status'] === 'assigned' && empty($validated['assigned_to']) && empty($validated['assigned_personnel']), 422, 'Choose a staff member or responsible team before assigning this report.');
+        $before = $report->toArray();
+        $changes = [
+            'status' => $validated['status'],
+            'priority' => $validated['priority'] ?? $report->priority,
+            'lgu_notes' => $validated['notes'] ?? $report->lgu_notes,
+            'resolution_evidence' => $validated['resolution_evidence'] ?? $report->resolution_evidence,
+        ];
+        if (array_key_exists('assigned_to', $validated) || array_key_exists('assigned_personnel', $validated)) {
+            $changes['assigned_to'] = $validated['assigned_to'] ?? null;
+            $changes['assigned_personnel'] = isset($validated['assigned_to'])
+                ? User::whereKey($validated['assigned_to'])->value('name')
+                : ($validated['assigned_personnel'] ?? null);
+            $changes['assigned_at'] = now();
         }
-        if ($request->has('assigned_personnel')) {
-            $report->assigned_personnel = $request->assigned_personnel;
-        }
-        $report->save();
+        if ($validated['status'] === 'under_review') $changes['reviewed_at'] = now();
+        if ($validated['status'] === 'resolved') $changes['resolved_at'] = now();
 
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Waste report status updated successfully.',
-            'data' => $report,
-        ]);
+        DB::transaction(function () use ($request, $report, $before, $changes, $validated): void {
+            $report->update($changes);
+            $this->log($request->user()->id, 'Waste report '.$validated['status'], 'waste_report', $report->id, $before, $report->fresh()->toArray());
+            Notification::create([
+                'user_id' => $report->user_id,
+                'type' => 'waste_report_'.$validated['status'],
+                'title' => 'Waste Report '.str_replace('_', ' ', ucfirst($validated['status'])),
+                'body' => "Your waste report is now ".str_replace('_', ' ', $validated['status']).'.',
+                'data' => ['waste_report_id' => $report->id, 'status' => $validated['status'], 'route' => '/waste-report'],
+            ]);
+        });
+
+        return response()->json(['status' => 'success', 'message' => 'Waste report updated.', 'data' => $report->fresh()]);
     }
 
-    /**
-     * Municipal Tourism Analytics
-     */
-    public function analytics(Request $request)
+    public function analytics(Request $request): JsonResponse
     {
-        $monthlyVisitors = [
-            ['month' => 'Jan', 'visitors' => 1200],
-            ['month' => 'Feb', 'visitors' => 1450],
-            ['month' => 'Mar', 'visitors' => 1800],
-            ['month' => 'Apr', 'visitors' => 2400],
-            ['month' => 'May', 'visitors' => 2100],
-            ['month' => 'Jun', 'visitors' => 1950],
-            ['month' => 'Jul', 'visitors' => 2300],
-        ];
-
-        $reservationTrends = [
-            ['month' => 'Jan', 'count' => 180],
-            ['month' => 'Feb', 'count' => 220],
-            ['month' => 'Mar', 'count' => 310],
-            ['month' => 'Apr', 'count' => 450],
-            ['month' => 'May', 'count' => 390],
-            ['month' => 'Jun', 'count' => 340],
-            ['month' => 'Jul', 'count' => 410],
-        ];
-
-        $wasteStats = [
-            'submitted' => WasteReport::where('status', 'submitted')->count(),
-            'in_progress' => WasteReport::where('status', 'in_progress')->count(),
-            'resolved' => WasteReport::where('status', 'resolved')->count(),
-        ];
-
-        return response()->json([
-            'status' => 'success',
-            'data' => [
-                'monthly_visitors' => $monthlyVisitors,
-                'reservation_trends' => $reservationTrends,
-                'waste_stats' => $wasteStats,
-                'estimated_revenue' => 348500.00,
-            ],
-        ]);
+        $reservationStatuses = Reservation::with('status')->get()->groupBy(fn (Reservation $item) => $item->status?->name ?? 'pending')->map->count();
+        $wasteStatuses = WasteReport::select('status', DB::raw('COUNT(*) as total'))->groupBy('status')->pluck('total', 'status');
+        return response()->json(['status' => 'success', 'data' => [
+            'totalReservations' => Reservation::count(),
+            'reservationStatuses' => $reservationStatuses,
+            'verifiedMsmes' => Msme::where('verification_status', 'verified')->count(),
+            'pendingMsmes' => Msme::where('verification_status', 'pending')->count(),
+            'wasteStatuses' => $wasteStatuses,
+        ]]);
     }
 
-    /**
-     * Municipal Reports Generation Data
-     */
-    public function reports(Request $request)
+    public function reports(Request $request): JsonResponse
     {
-        $period = $request->query('period', 'monthly');
+        return response()->json(['status' => 'success', 'data' => [
+            'period' => $request->query('period', 'monthly'),
+            'generatedAt' => now()->toIso8601String(),
+            'spotsActive' => TouristSpot::where('is_active', true)->count(),
+            'msmesVerified' => Msme::where('verification_status', 'verified')->count(),
+            'wasteReportsResolved' => WasteReport::whereIn('status', ['resolved', 'closed'])->count(),
+            'reservations' => Reservation::count(),
+        ]]);
+    }
 
-        return response()->json([
-            'status' => 'success',
-            'data' => [
-                'period' => $period,
-                'generated_at' => now()->toIso8601String(),
-                'total_tourists' => 15640,
-                'total_revenue' => 348500.00,
-                'spots_active' => TouristSpot::where('status', 'active')->count(),
-                'msmes_active' => Msme::where('is_verified', true)->count(),
-                'waste_reports_resolved' => WasteReport::where('status', 'resolved')->count(),
-            ],
-        ]);
+    private function log(string $actor, string $action, string $entityType, string $entityId, ?array $before, ?array $after): void
+    {
+        ActivityLog::create(['user_id' => $actor, 'action' => $action, 'details' => json_encode(compact('entityType', 'entityId', 'before', 'after'))]);
     }
 }

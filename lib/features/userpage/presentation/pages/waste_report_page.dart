@@ -7,14 +7,18 @@ import '../../../waste_reporting/repositories/waste_report_repository.dart';
 import '../../../map/providers/map_provider.dart';
 import '../../../../core/utils/auth_action_guard.dart';
 
-const _categories = [
-  'Plastic Waste',
-  'Coastal Pollution',
-  'Illegal Dumping',
-  'Overflowing Bin',
-  'Hazardous Material',
-  'Other',
-];
+const _categories = <String, String>{
+  'garbage': 'Garbage',
+  'water_pollution': 'Water Pollution',
+  'beach_coastal': 'Beach / Coastal',
+  'environmental_damage': 'Environmental Damage',
+  'road_infrastructure': 'Road / Infrastructure',
+  'public_facility': 'Public Facility',
+  'safety': 'Safety',
+  'tourism_site': 'Tourism Site',
+  'marine_wildlife': 'Marine / Wildlife',
+  'other': 'Other',
+};
 
 class WasteReportPage extends ConsumerStatefulWidget {
   const WasteReportPage({super.key});
@@ -24,7 +28,7 @@ class WasteReportPage extends ConsumerStatefulWidget {
 }
 
 class _WasteReportPageState extends ConsumerState<WasteReportPage> {
-  String _selectedCategory = 'Plastic Waste';
+  String _selectedCategory = 'garbage';
   final _locationCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   bool _isSubmitting = false;
@@ -121,8 +125,8 @@ class _WasteReportPageState extends ConsumerState<WasteReportPage> {
                 border: Border.all(
                     color: const Color(0xFFF59E0B).withValues(alpha: 0.3)),
               ),
-              child: Row(
-                children: const [
+              child: const Row(
+                children: [
                   Icon(Icons.report_rounded,
                       color: Color(0xFFF59E0B), size: 36),
                   SizedBox(width: 14),
@@ -173,10 +177,10 @@ class _WasteReportPageState extends ConsumerState<WasteReportPage> {
                   isExpanded: true,
                   icon: const Icon(Icons.keyboard_arrow_down_rounded,
                       color: Color(0xFFF59E0B)),
-                  items: _categories.map((cat) {
+                  items: _categories.entries.map((entry) {
                     return DropdownMenuItem<String>(
-                      value: cat,
-                      child: Text(cat,
+                      value: entry.key,
+                      child: Text(entry.value,
                           style: const TextStyle(
                               color: Colors.white,
                               fontSize: 14,

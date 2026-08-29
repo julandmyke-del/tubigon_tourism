@@ -82,19 +82,35 @@ class MapLocation extends Model
         $integerId = null;
         $operatingHours = null;
         $contact = null;
+        $isBookable = false;
+        $bookingEnabled = false;
+        $bookingUnavailableReasonCode = null;
+        $bookingUnavailableReason = null;
+        $isFeatured = $this->is_featured;
+        $isPreapproved = false;
+        $aliases = [];
         $name = $this->name;
         $description = $this->description ?? '';
         $address = $this->address;
 
         if ($entity instanceof TouristSpot) {
             $name = $entity->name;
-            $description = filled($entity->description) ? $entity->description : $description;
+            $description = filled($entity->short_description)
+                ? $entity->short_description
+                : (filled($entity->description) ? $entity->description : $description);
             $address = filled($entity->address) ? $entity->address : $address;
             $images = $images ?: ($entity->images ?? []);
             $rating = $entity->average_rating;
             $reviewCount = $entity->review_count;
             $integerId = $entity->integer_id;
             $operatingHours = $entity->opening_hours;
+            $isBookable = (bool) $entity->is_bookable;
+            $bookingEnabled = (bool) $entity->booking_enabled;
+            $bookingUnavailableReasonCode = $entity->booking_unavailable_reason_code;
+            $bookingUnavailableReason = $entity->booking_unavailable_reason;
+            $isFeatured = (bool) $entity->is_featured;
+            $isPreapproved = (bool) $entity->is_preapproved;
+            $aliases = $entity->aliases ?? [];
         } elseif ($entity instanceof Msme) {
             $name = $entity->name;
             $description = filled($entity->description) ? $entity->description : $description;
@@ -131,6 +147,7 @@ class MapLocation extends Model
             'category_sort_order' => $displayCategory?->sort_order ?? 999,
             'subcategory' => $this->subcategory?->name,
             'description' => $description,
+            'aliases' => $aliases,
             'address' => $address,
             'latitude' => $this->latitude,
             'longitude' => $this->longitude,
@@ -139,7 +156,12 @@ class MapLocation extends Model
             'review_count' => $reviewCount,
             'operating_hours' => $operatingHours,
             'contact' => $contact,
-            'is_featured' => $this->is_featured,
+            'is_featured' => $isFeatured,
+            'is_preapproved' => $isPreapproved,
+            'is_bookable' => $isBookable,
+            'booking_enabled' => $bookingEnabled,
+            'booking_unavailable_reason_code' => $bookingUnavailableReasonCode,
+            'booking_unavailable_reason' => $bookingUnavailableReason,
             'view_count' => $this->view_count,
             'is_verified' => $this->verified,
             'is_published' => $this->published,

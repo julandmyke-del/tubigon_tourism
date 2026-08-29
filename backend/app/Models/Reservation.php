@@ -5,6 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Schema;
 
 class Reservation extends Model
 {
@@ -12,6 +14,7 @@ class Reservation extends Model
 
     protected $fillable = [
         'user_id',
+        'public_reference',
         'partner_id',
         'reservable_type',
         'reservable_id',
@@ -43,5 +46,22 @@ class Reservation extends Model
     public function listing()
     {
         return $this->belongsTo(TourismListing::class, 'reservable_id');
+    }
+
+    public function statusHistory()
+    {
+        return $this->hasMany(ReservationStatusHistory::class)->with('status')->oldest();
+    }
+
+    protected static function booted(): void
+    {
+        static::creating(function (Reservation $reservation): void {
+            if (Schema::hasColumn('reservations', 'public_reference') && ! $reservation->public_reference) {
+                do {
+                    $reference = 'TB-RSV-'.now()->format('Y').'-'.strtoupper(Str::random(8));
+                } while (static::where('public_reference', $reference)->exists());
+                $reservation->public_reference = $reference;
+            }
+        });
     }
 }

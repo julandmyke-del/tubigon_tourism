@@ -55,17 +55,19 @@ class Msme {
   factory Msme.fromJson(Map<String, dynamic> json) {
     List<MsmeProduct> parseProducts(dynamic val) {
       if (val == null) return [];
-      if (val is List)
+      if (val is List) {
         return val
             .map((e) => MsmeProduct.fromJson(e as Map<String, dynamic>))
             .toList();
+      }
       if (val is String) {
         try {
           final decoded = jsonDecode(val);
-          if (decoded is List)
+          if (decoded is List) {
             return decoded
                 .map((e) => MsmeProduct.fromJson(e as Map<String, dynamic>))
                 .toList();
+          }
         } catch (_) {}
       }
       return [];
@@ -73,17 +75,19 @@ class Msme {
 
     List<MsmeReview> parseReviews(dynamic val) {
       if (val == null) return [];
-      if (val is List)
+      if (val is List) {
         return val
             .map((e) => MsmeReview.fromJson(e as Map<String, dynamic>))
             .toList();
+      }
       if (val is String) {
         try {
           final decoded = jsonDecode(val);
-          if (decoded is List)
+          if (decoded is List) {
             return decoded
                 .map((e) => MsmeReview.fromJson(e as Map<String, dynamic>))
                 .toList();
+          }
         } catch (_) {}
       }
       return [];
@@ -138,7 +142,7 @@ class Msme {
       'review_count': reviewCount,
       'latitude': latitude,
       'longitude': longitude,
-      'color': '#${color.value.toRadixString(16).padLeft(8, '0')}',
+      'color': '#${color.toARGB32().toRadixString(16).padLeft(8, '0')}',
       'icon': _getIconString(icon),
       'tagline': tagline,
       'is_verified': isVerified ? 1 : 0,

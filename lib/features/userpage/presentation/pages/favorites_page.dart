@@ -75,6 +75,13 @@ class FavoritesPage extends ConsumerWidget {
                 itemBuilder: (context, index) => _FavoritePlaceCard(
                   place: favorites[index],
                   onOpen: () => _openPlace(context, favorites[index]),
+                  onBook: favorites[index].category ==
+                              MapMarkerCategory.touristSpot &&
+                          favorites[index].canAcceptBookings
+                      ? () => context.push(
+                            '/reservations/create?spot=${Uri.encodeQueryComponent(favorites[index].sourceId)}',
+                          )
+                      : null,
                   onMap: () => context.push(
                     '/map?marker=${Uri.encodeQueryComponent(favorites[index].id)}',
                   ),
@@ -118,6 +125,7 @@ class _FavoritePlaceCard extends StatelessWidget {
   const _FavoritePlaceCard({
     required this.place,
     required this.onOpen,
+    required this.onBook,
     required this.onMap,
     required this.onItinerary,
     required this.onRemove,
@@ -125,6 +133,7 @@ class _FavoritePlaceCard extends StatelessWidget {
 
   final MapMarker place;
   final VoidCallback onOpen;
+  final VoidCallback? onBook;
   final VoidCallback onMap;
   final VoidCallback onItinerary;
   final Future<void> Function() onRemove;
@@ -172,9 +181,28 @@ class _FavoritePlaceCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                             color: Color(0xFF94A3B8), fontSize: 11)),
+                  if (place.category == MapMarkerCategory.touristSpot &&
+                      place.isBookable &&
+                      !place.bookingEnabled)
+                    Text(
+                      'Booking unavailable — ${place.bookingUnavailableLabel}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Color(0xFFFCA5A5),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700),
+                    ),
                 ],
               ),
             ),
+            if (onBook != null)
+              IconButton(
+                tooltip: 'Book Destination',
+                onPressed: onBook,
+                icon: const Icon(Icons.event_available_rounded,
+                    color: Color(0xFF34D399)),
+              ),
             IconButton(
               tooltip: 'View on Map',
               onPressed: onMap,

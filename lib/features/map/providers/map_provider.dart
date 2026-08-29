@@ -11,6 +11,7 @@ import '../../../core/location/tubigon_boundary.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/connectivity_provider.dart';
 import '../../../core/services/local_storage_service.dart';
+import '../../../core/services/private_session_data_service.dart';
 import '../../authentication/auth_provider.dart';
 
 enum MapMarkerCategory {
@@ -34,6 +35,7 @@ class MapMarker {
     required this.category,
     this.sourceIntegerId,
     this.address,
+    this.aliases = const [],
     this.categoryName,
     this.images = const [],
     this.rating,
@@ -50,6 +52,10 @@ class MapMarker {
     this.markerColor = '#F59E0B',
     this.categorySortOrder = 999,
     this.isFeatured = false,
+    this.isBookable = false,
+    this.bookingEnabled = false,
+    this.bookingUnavailableReasonCode,
+    this.bookingUnavailableReason,
     this.viewCount = 0,
     this.createdAt,
   });
@@ -60,6 +66,7 @@ class MapMarker {
   final String name;
   final String description;
   final String? address;
+  final List<String> aliases;
   final double latitude;
   final double longitude;
   final MapMarkerCategory category;
@@ -79,6 +86,10 @@ class MapMarker {
   final String markerColor;
   final int categorySortOrder;
   final bool isFeatured;
+  final bool isBookable;
+  final bool bookingEnabled;
+  final String? bookingUnavailableReasonCode;
+  final String? bookingUnavailableReason;
   final int viewCount;
   final DateTime? createdAt;
 
@@ -87,6 +98,8 @@ class MapMarker {
       category == MapMarkerCategory.msme ||
       category == MapMarkerCategory.tourismListing ||
       category == MapMarkerCategory.mapLocation;
+
+  bool get hasCoordinates => latitude != 0 && longitude != 0;
 
   bool get isItineraryEligible =>
       category == MapMarkerCategory.touristSpot ||
@@ -123,6 +136,10 @@ class MapMarker {
       name: json['name']?.toString() ?? 'Unnamed location',
       description: json['description']?.toString() ?? '',
       address: json['address']?.toString(),
+      aliases: (json['aliases'] as List<dynamic>? ?? const [])
+          .map((item) => item.toString())
+          .where((item) => item.isNotEmpty)
+          .toList(growable: false),
       latitude: _asDouble(json['latitude']) ?? 0,
       longitude: _asDouble(json['longitude']) ?? 0,
       category: _categoryFromType(type),
@@ -150,6 +167,12 @@ class MapMarker {
       markerColor: json['marker_color']?.toString() ?? '#F59E0B',
       categorySortOrder: _asInt(json['category_sort_order']) ?? 999,
       isFeatured: json['is_featured'] == true || json['is_featured'] == 1,
+      isBookable: json['is_bookable'] == true || json['is_bookable'] == 1,
+      bookingEnabled:
+          json['booking_enabled'] == true || json['booking_enabled'] == 1,
+      bookingUnavailableReasonCode:
+          json['booking_unavailable_reason_code']?.toString(),
+      bookingUnavailableReason: json['booking_unavailable_reason']?.toString(),
       viewCount: _asInt(json['view_count']) ?? 0,
       createdAt: DateTime.tryParse(json['created_at']?.toString() ?? ''),
     );
@@ -163,6 +186,7 @@ class MapMarker {
         'name': name,
         'description': description,
         'address': address,
+        'aliases': aliases,
         'latitude': latitude,
         'longitude': longitude,
         'category': categoryName,
@@ -181,9 +205,25 @@ class MapMarker {
         'marker_color': markerColor,
         'category_sort_order': categorySortOrder,
         'is_featured': isFeatured,
+        'is_bookable': isBookable,
+        'booking_enabled': bookingEnabled,
+        'booking_unavailable_reason_code': bookingUnavailableReasonCode,
+        'booking_unavailable_reason': bookingUnavailableReason,
         'view_count': viewCount,
         'created_at': createdAt?.toIso8601String(),
       };
+
+  bool get canAcceptBookings => isBookable && bookingEnabled;
+
+  String get bookingUnavailableLabel {
+    final code = bookingUnavailableReasonCode?.trim();
+    if (code == null || code.isEmpty) return 'Temporarily unavailable';
+    return code
+        .split('_')
+        .where((part) => part.isNotEmpty)
+        .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+        .join(' ');
+  }
 
   double distanceTo(double lat, double lng) {
     const earthRadiusKm = 6371.0;
@@ -294,7 +334,11 @@ class MapRepository {
     AuthState auth, {
     bool forceOffline = false,
   }) async {
-    final cacheKey = 'smart_map_cache_${auth.role.name}';
+    final cacheKey = PrivateSessionDataService.mapCacheKey(
+      isLoggedIn: auth.isLoggedIn,
+      role: auth.role.name,
+      userId: auth.userId,
+    );
     final storage = LocalStorageService.instance;
     final boundary = await TubigonBoundary.load();
 
@@ -506,6 +550,7 @@ final filteredMapMarkersProvider = Provider<AsyncValue<List<MapMarker>>>((ref) {
     if (query.isNotEmpty) {
       result = result.where((item) =>
           item.name.toLowerCase().contains(query) ||
+          item.aliases.any((alias) => alias.toLowerCase().contains(query)) ||
           item.description.toLowerCase().contains(query) ||
           (item.address?.toLowerCase().contains(query) ?? false) ||
           (item.categoryName?.toLowerCase().contains(query) ?? false));

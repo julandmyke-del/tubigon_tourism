@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'route_names.dart';
 import '../../features/authentication/auth_provider.dart';
 import '../utils/auth_action_guard.dart';
+import '../widgets/portal_capability_notice_page.dart';
 
 // ─── Auth, Splash & Onboarding Imports ──────────────────────────────────────
 import '../../features/splash/splash_page.dart';
@@ -20,9 +21,11 @@ import '../../features/userpage/userpage.dart';
 import '../../features/admin/presentation/admin_shell.dart';
 import '../../features/admin/presentation/pages/admin_dashboard_page.dart';
 import '../../features/admin/presentation/pages/admin_user_management_page.dart';
+import '../../features/admin/presentation/pages/admin_user_detail_page.dart';
 import '../../features/admin/presentation/pages/admin_msme_management_page.dart';
 import '../../features/admin/presentation/pages/admin_tourism_management_page.dart';
 import '../../features/admin/presentation/pages/admin_reservation_management_page.dart';
+import '../../features/admin/presentation/pages/admin_reservation_detail_page.dart';
 import '../../features/admin/presentation/pages/admin_review_management_page.dart';
 import '../../features/admin/presentation/pages/admin_waste_reports_page.dart';
 import '../../features/admin/presentation/pages/admin_announcements_page.dart';
@@ -40,8 +43,6 @@ import '../../features/tourism_partner/presentation/pages/partner_notifications_
 import '../../features/tourism_partner/presentation/pages/partner_reviews_page.dart';
 import '../../features/tourism_partner/presentation/pages/partner_analytics_page.dart';
 import '../../features/tourism_partner/presentation/pages/partner_profile_page.dart';
-import '../../features/tourism_partner/presentation/pages/partner_settings_page.dart';
-import '../../features/tourism_partner/presentation/pages/partner_business_info_page.dart';
 
 // ─── LGU Staff Imports ───────────────────────────────────────────────────
 import '../../features/lgupage/lgupage.dart';
@@ -51,8 +52,7 @@ import '../../features/itinerary/presentation/itinerary_form_page.dart';
 import '../../features/itinerary/presentation/itinerary_detail_page.dart';
 
 // ─── MSME Module Imports ───────────────────────────────────────────────────
-import '../../features/msmepage/msmepage.dart'
-    hide MsmeDirectoryPage, MsmeDetailPage;
+import '../../features/msmepage/msmepage.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 final _shellNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'shell');
@@ -320,7 +320,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 path: 'spot/:id',
                 name: RouteNames.touristSpotDetail,
                 builder: (context, state) => TouristSpotDetailPage(
-                  spotId: int.parse(state.pathParameters['id'] ?? '0'),
+                  spotId: int.tryParse(state.pathParameters['id'] ?? '') ?? 0,
                 ),
               ),
               GoRoute(
@@ -328,6 +328,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 name: RouteNames.explorePlaceDetail,
                 builder: (context, state) => ExplorePlaceDetailPage(
                   placeId: state.pathParameters['id'] ?? '',
+                ),
+              ),
+              GoRoute(
+                path: 'listing/:id',
+                builder: (context, state) => TourismListingDetailPage(
+                  listingId: state.pathParameters['id'] ?? '',
                 ),
               ),
               GoRoute(
@@ -339,7 +345,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                     path: ':id',
                     name: RouteNames.msmeDetail,
                     builder: (context, state) => MsmeDetailPage(
-                      msmeId: int.parse(state.pathParameters['id'] ?? '0'),
+                      msmeId:
+                          int.tryParse(state.pathParameters['id'] ?? '') ?? 0,
                     ),
                   ),
                 ],
@@ -392,6 +399,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 name: RouteNames.createReservation,
                 builder: (context, state) => CreateReservationPage(
                   initialSpotUuid: state.uri.queryParameters['spot'],
+                  initialReservableType:
+                      state.uri.queryParameters['type'] ?? 'spot',
+                  initialReservableId: state.uri.queryParameters['id'],
+                  initialName: state.uri.queryParameters['name'],
+                  initialPrice:
+                      double.tryParse(state.uri.queryParameters['price'] ?? ''),
                 ),
               ),
               GoRoute(
@@ -506,6 +519,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const AdminUserManagementPage(),
           ),
           GoRoute(
+            path: '/admin/users/:id/edit',
+            builder: (context, state) => AdminUserEditPage(
+              userId: state.pathParameters['id']!,
+            ),
+          ),
+          GoRoute(
+            path: '/admin/users/:id',
+            builder: (context, state) => AdminUserDetailPage(
+              userId: state.pathParameters['id']!,
+            ),
+          ),
+          GoRoute(
             path: '/admin/msmes',
             name: 'admin-msmes',
             builder: (context, state) => const AdminMsmeManagementPage(),
@@ -519,6 +544,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/admin/reservations',
             name: 'admin-reservations',
             builder: (context, state) => const AdminReservationManagementPage(),
+          ),
+          GoRoute(
+            path: '/admin/reservations/:id',
+            builder: (context, state) => AdminReservationDetailPage(
+              reservationId: state.pathParameters['id']!,
+            ),
           ),
           GoRoute(
             path: '/admin/reviews',
@@ -555,6 +586,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: RouteNames.adminMapLocations,
             builder: (context, state) => const MapLocationManagementPage(),
           ),
+          GoRoute(
+            path: '/admin/emergency-contacts',
+            builder: (context, state) => const LguEmergencyContactsPage(),
+          ),
         ],
       ),
 
@@ -576,7 +611,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: 'create',
                 name: RouteNames.partnerCreateListing,
-                builder: (context, state) => const PartnerCreateListingPage(),
+                builder: (context, state) => PartnerCreateListingPage(
+                  listingId: state.uri.queryParameters['edit'],
+                ),
               ),
               GoRoute(
                 path: 'edit/:id',
@@ -615,12 +652,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/tourism-partner/settings',
             name: RouteNames.partnerSettings,
-            builder: (context, state) => const PartnerSettingsPage(),
+            builder: (context, state) => const PortalCapabilityNoticePage(
+              title: 'Partner settings',
+              message:
+                  'Account preferences are not yet exposed by the server. Your real contact details can be updated from Profile.',
+            ),
           ),
           GoRoute(
             path: '/tourism-partner/business',
             name: RouteNames.partnerBusinessInfo,
-            builder: (context, state) => const PartnerBusinessInfoPage(),
+            builder: (context, state) => const PartnerProfilePage(),
           ),
         ],
       ),
@@ -656,12 +697,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/lgu/reviews',
-            builder: (context, state) => const LguReviewsPage(),
+            builder: (context, state) => const PortalCapabilityNoticePage(
+              title: 'Community reviews',
+              message:
+                  'LGU review moderation is not enabled. Reviews remain public, read-only feedback for the business that received them.',
+            ),
           ),
           GoRoute(
             path: '/lgu/waste-reports',
             name: RouteNames.lguWasteReports,
             builder: (context, state) => const LguWasteReportsPage(),
+          ),
+          GoRoute(
+            path: '/lgu/waste-reports/:id',
+            builder: (context, state) => LguWasteReportDetailPage(
+              reportId: state.pathParameters['id'] ?? '',
+            ),
           ),
           GoRoute(
             path: '/lgu/emergency',
@@ -696,11 +747,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/lgu/profile',
             name: RouteNames.lguProfile,
-            builder: (context, state) => const LguProfilePage(),
+            builder: (context, state) => const PortalCapabilityNoticePage(
+              title: 'Officer profile',
+              message:
+                  'Officer profile editing is not available through the municipal API yet.',
+            ),
           ),
           GoRoute(
             path: '/lgu/settings',
-            builder: (context, state) => const LguSettingsPage(),
+            builder: (context, state) => const PortalCapabilityNoticePage(
+              title: 'Municipal settings',
+              message:
+                  'System-wide settings remain restricted to administrators.',
+            ),
           ),
           GoRoute(
             path: '/lgu/map-locations',
@@ -733,22 +792,23 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: 'create',
                 name: RouteNames.msmePortalCreateListing,
-                builder: (context, state) =>
-                    const MsmePortalCreateListingPage(),
+                builder: (context, state) => const MsmePortalProfilePage(),
               ),
               GoRoute(
                 path: 'edit/:id',
                 name: RouteNames.msmePortalEditListing,
-                builder: (context, state) => MsmePortalEditListingPage(
-                  listingId: state.pathParameters['id'] ?? '',
-                ),
+                builder: (context, state) => const MsmePortalProfilePage(),
               ),
             ],
           ),
           GoRoute(
             path: '/msme-portal/gallery',
             name: RouteNames.msmePortalGallery,
-            builder: (context, state) => const MsmePortalGalleryPage(),
+            builder: (context, state) => const PortalCapabilityNoticePage(
+              title: 'Business gallery',
+              message:
+                  'Standalone gallery management is not enabled. Business images are stored with the single business profile.',
+            ),
           ),
           GoRoute(
             path: '/msme-portal/reservations',
@@ -768,7 +828,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/msme-portal/promotions',
             name: RouteNames.msmePortalPromotions,
-            builder: (context, state) => const MsmePortalPromotionsPage(),
+            builder: (context, state) => const PortalCapabilityNoticePage(
+              title: 'Promotions',
+              message:
+                  'Promotion publishing is not enabled by the server, so no promotional offers are displayed or saved.',
+            ),
           ),
           GoRoute(
             path: '/msme-portal/notifications',
@@ -778,7 +842,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/msme-portal/reports',
             name: RouteNames.msmePortalReports,
-            builder: (context, state) => const MsmePortalReportsPage(),
+            builder: (context, state) => const PortalCapabilityNoticePage(
+              title: 'Business reports',
+              message:
+                  'Downloadable report generation is not enabled. Live booking totals remain available in Analytics.',
+            ),
           ),
           GoRoute(
             path: '/msme-portal/availability',
@@ -788,12 +856,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/msme-portal/settings',
             name: RouteNames.msmePortalSettings,
-            builder: (context, state) => const MsmePortalSettingsPage(),
+            builder: (context, state) => const PortalCapabilityNoticePage(
+              title: 'Business settings',
+              message:
+                  'Business operating hours and availability are managed in Business Profile and Availability.',
+            ),
           ),
           GoRoute(
             path: '/msme-portal/help',
             name: RouteNames.msmePortalHelp,
-            builder: (context, state) => const MsmePortalHelpPage(),
+            builder: (context, state) => const PortalCapabilityNoticePage(
+              title: 'Help center',
+              message:
+                  'An online support center has not been configured for this deployment.',
+            ),
           ),
         ],
       ),

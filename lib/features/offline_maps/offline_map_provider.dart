@@ -8,6 +8,7 @@ import '../../core/constants/app_constants.dart';
 import '../../core/location/tubigon_boundary.dart';
 import '../../core/network/connectivity_provider.dart';
 import '../../core/services/local_storage_service.dart';
+import '../../core/services/private_session_data_service.dart';
 import '../authentication/auth_provider.dart';
 import '../emergency/repositories/emergency_repository.dart';
 import '../favorites/repositories/favorites_repository.dart';
@@ -321,6 +322,12 @@ class OfflineMapNotifier extends StateNotifier<OfflineMapState> {
       }
       final storage = LocalStorageService.instance;
       await storage.remove(_metadataKey);
+      final auth = _ref.read(authProvider);
+      await storage.remove(PrivateSessionDataService.mapCacheKey(
+        isLoggedIn: auth.isLoggedIn,
+        role: auth.role.name,
+        userId: auth.userId,
+      ));
       await storage.remove('smart_map_cache_tourist');
       await storage.remove('smart_map_cache_guest');
       await storage.remove('smart_map_categories_cache');

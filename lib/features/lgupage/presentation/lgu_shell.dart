@@ -104,6 +104,7 @@ class _LguShellState extends ConsumerState<LguShell> {
   @override
   Widget build(BuildContext context) {
     final selectedIndex = _calculateSelectedIndex(context);
+    final auth = ref.watch(authProvider);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -150,12 +151,8 @@ class _LguShellState extends ConsumerState<LguShell> {
             ),
             actions: [
               IconButton(
-                icon: const Badge(
-                  smallSize: 8,
-                  backgroundColor: _accentOrange,
-                  child: Icon(Icons.notifications_outlined,
-                      color: AppColors.grey300),
-                ),
+                icon: const Icon(Icons.notifications_outlined,
+                    color: AppColors.grey300),
                 onPressed: () => context.goNamed(RouteNames.lguNotifications),
                 tooltip: 'Notifications',
               ),
@@ -168,18 +165,18 @@ class _LguShellState extends ConsumerState<LguShell> {
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: AppColors.grey700),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    CircleAvatar(
+                    const CircleAvatar(
                       radius: 12,
                       backgroundColor: _accentOrange,
                       child: Icon(Icons.person_rounded,
                           size: 14, color: AppColors.white),
                     ),
-                    SizedBox(width: 6),
+                    const SizedBox(width: 6),
                     Text(
-                      'LGU Officer',
-                      style: TextStyle(
+                      auth.name ?? 'LGU Staff',
+                      style: const TextStyle(
                           color: AppColors.white,
                           fontSize: 12,
                           fontWeight: FontWeight.bold),
@@ -192,42 +189,14 @@ class _LguShellState extends ConsumerState<LguShell> {
                     color: AppColors.grey400),
                 color: _cardBg,
                 onSelected: (value) {
-                  if (value == 'profile') {
-                    context.goNamed(RouteNames.lguProfile);
-                  } else if (value == 'settings') {
-                    context.go('/lgu/settings');
-                  } else if (value == 'logout') {
+                  if (value == 'logout') {
                     ref.read(authProvider.notifier).logout();
-                    if (context.mounted)
+                    if (context.mounted) {
                       context.go('/onboarding?page=5&login=true');
+                    }
                   }
                 },
                 itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'profile',
-                    child: Row(
-                      children: [
-                        Icon(Icons.person_outline_rounded,
-                            color: AppColors.white, size: 18),
-                        SizedBox(width: 8),
-                        Text('Officer Profile',
-                            style: TextStyle(color: AppColors.white)),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'settings',
-                    child: Row(
-                      children: [
-                        Icon(Icons.settings_outlined,
-                            color: AppColors.white, size: 18),
-                        SizedBox(width: 8),
-                        Text('Settings',
-                            style: TextStyle(color: AppColors.white)),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuDivider(),
                   const PopupMenuItem(
                     value: 'logout',
                     child: Row(
@@ -330,10 +299,6 @@ class _LguShellState extends ConsumerState<LguShell> {
                       selectedIndex, isDrawer),
                   _buildNavItem(2, Icons.sensors_rounded, 'Tourism Activity',
                       selectedIndex, isDrawer),
-                  _buildNavItem(3, Icons.calendar_month_rounded, 'Reservations',
-                      selectedIndex, isDrawer),
-                  _buildNavItem(4, Icons.rate_review_rounded,
-                      'Community Reviews', selectedIndex, isDrawer),
                   _buildNavHeader('OPERATIONS'),
                   _buildNavItem(5, Icons.storefront_rounded,
                       'MSME Verification', selectedIndex, isDrawer),
@@ -353,10 +318,6 @@ class _LguShellState extends ConsumerState<LguShell> {
                   _buildNavHeader('ACCOUNT'),
                   _buildNavItem(12, Icons.notifications_rounded,
                       'Notifications', selectedIndex, isDrawer),
-                  _buildNavItem(13, Icons.person_rounded, 'Officer Profile',
-                      selectedIndex, isDrawer),
-                  _buildNavItem(14, Icons.settings_rounded, 'System Settings',
-                      selectedIndex, isDrawer),
                 ],
               ),
             ),
@@ -372,7 +333,7 @@ class _LguShellState extends ConsumerState<LguShell> {
           left: AppSpacing.sm, top: AppSpacing.sm, bottom: 4),
       child: Text(
         title,
-        style: TextStyle(
+        style: const TextStyle(
           color: AppColors.grey500,
           fontSize: 10,
           fontWeight: FontWeight.bold,

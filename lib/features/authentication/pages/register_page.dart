@@ -97,7 +97,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
         SnackBar(
           content: Text(
             result['email_sent'] == true
-                ? 'Account created. Check your email inbox to verify it.'
+                ? 'Account created. Enter the code sent to your email.'
                 : 'Account created. Use Resend Email if the message did not arrive.',
             style: GoogleFonts.outfit(color: Colors.white),
           ),

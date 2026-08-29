@@ -85,8 +85,8 @@ class _MapLocationPickerPageState extends State<MapLocationPickerPage> {
             child: Text(
               widget.instruction,
               textAlign: TextAlign.center,
-              style:
-                  TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.w600),
             ),
           ),
         ),

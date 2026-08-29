@@ -6,9 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\Profile;
 use App\Models\Role;
+use App\Models\Setting;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rules\Password;
+use Illuminate\Validation\ValidationException;
 
 class UserController extends Controller
 {
@@ -40,6 +44,52 @@ class UserController extends Controller
             });
 
         return response()->json(['status' => 'success', 'data' => $users]);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|max:255|unique:users,email',
+            'password' => ['required', Password::min(8)],
+            'role_id' => 'required|exists:roles,id',
+            'is_verified' => 'sometimes|boolean',
+        ]);
+
+        $user = DB::transaction(function () use ($request, $validated): User {
+            $user = User::create([
+                'name' => trim($validated['name']),
+                'email' => strtolower(trim($validated['email'])),
+                'password' => $validated['password'],
+                'role_id' => $validated['role_id'],
+                'is_verified' => $validated['is_verified'] ?? false,
+                'auth_provider' => 'admin',
+            ]);
+
+            Profile::create([
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role_id' => $user->role_id,
+                'is_verified' => $user->is_verified,
+                'language' => $user->language ?: 'en',
+            ]);
+            Setting::firstOrCreate(['user_id' => $user->id]);
+
+            ActivityLog::create([
+                'user_id' => $request->user()->id,
+                'action' => 'User created',
+                'details' => "Created account {$user->email}",
+            ]);
+
+            return $user;
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'User created successfully.',
+            'data' => $user->fresh()->load('role'),
+        ], 201);
     }
 
     /**
@@ -81,6 +131,60 @@ class UserController extends Controller
         ]);
     }
 
+    /** Update an account from the Admin portal as one audited transaction. */
+    public function updateManaged(Request $request, string $id): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => 'sometimes|required|string|max:255',
+            'phone' => 'nullable|string|max:255',
+            'bio' => 'nullable|string|max:2000',
+            'language' => 'sometimes|required|string|max:50',
+            'role_id' => 'sometimes|required|exists:roles,id',
+        ]);
+
+        $user = User::with('role')->findOrFail($id);
+        $profile = Profile::findOrFail($id);
+        $newRole = isset($validated['role_id'])
+            ? Role::findOrFail($validated['role_id'])
+            : null;
+        if ($newRole !== null) {
+            $this->guardLastAdmin($user, $newRole);
+        }
+
+        DB::transaction(function () use ($request, $user, $profile, $newRole, $validated): void {
+            $userChanges = [];
+            if (array_key_exists('name', $validated)) {
+                $userChanges['name'] = trim($validated['name']);
+            }
+            if ($newRole !== null) {
+                $userChanges['role_id'] = $newRole->id;
+            }
+            if ($userChanges !== []) {
+                $user->update($userChanges);
+            }
+
+            $profileChanges = collect($validated)
+                ->only(['name', 'phone', 'bio', 'language', 'role_id'])
+                ->all();
+            if (array_key_exists('name', $profileChanges)) {
+                $profileChanges['name'] = trim($profileChanges['name']);
+            }
+            $profile->update($profileChanges);
+
+            ActivityLog::create([
+                'user_id' => $request->user()->id,
+                'action' => 'User account updated',
+                'details' => "Updated account ID {$user->id}",
+            ]);
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'User account updated.',
+            'data' => $profile->fresh()->load('role'),
+        ]);
+    }
+
     /**
      * PUT /api/v1/users/{id}/role
      */
@@ -88,14 +192,19 @@ class UserController extends Controller
     {
         $request->validate(['role_id' => 'required|exists:roles,id']);
 
-        Profile::where('id', $id)->update(['role_id' => $request->role_id]);
-        User::where('id', $id)->update(['role_id' => $request->role_id]);
+        $target = User::with('role')->findOrFail($id);
+        $newRole = Role::findOrFail($request->role_id);
+        $this->guardLastAdmin($target, $newRole);
 
-        ActivityLog::create([
-            'user_id' => $request->user()->id,
-            'action' => 'Role updated',
-            'details' => "Updated role of user ID $id",
-        ]);
+        DB::transaction(function () use ($request, $target, $newRole): void {
+            $target->update(['role_id' => $newRole->id]);
+            Profile::where('id', $target->id)->update(['role_id' => $newRole->id]);
+            ActivityLog::create([
+                'user_id' => $request->user()->id,
+                'action' => 'Role updated',
+                'details' => "Updated role of user ID {$target->id} to {$newRole->name}",
+            ]);
+        });
 
         return response()->json(['status' => 'success', 'message' => 'Role updated']);
     }
@@ -107,15 +216,17 @@ class UserController extends Controller
     {
         $request->validate(['is_verified' => 'required|boolean']);
 
-        Profile::where('id', $id)->update(['is_verified' => $request->is_verified]);
-        User::where('id', $id)->update(['is_verified' => $request->is_verified]);
-
+        $target = User::findOrFail($id);
         $action = $request->is_verified ? 'User verified' : 'User unverified';
-        ActivityLog::create([
-            'user_id' => $request->user()->id,
-            'action' => $action,
-            'details' => "Updated verification state of user ID $id",
-        ]);
+        DB::transaction(function () use ($request, $target, $action): void {
+            $target->update(['is_verified' => $request->boolean('is_verified')]);
+            Profile::where('id', $target->id)->update(['is_verified' => $request->boolean('is_verified')]);
+            ActivityLog::create([
+                'user_id' => $request->user()->id,
+                'action' => $action,
+                'details' => "Updated verification state of user ID {$target->id}",
+            ]);
+        });
 
         return response()->json(['status' => 'success', 'message' => $action]);
     }
@@ -125,19 +236,27 @@ class UserController extends Controller
      */
     public function destroy(Request $request, string $id): JsonResponse
     {
-        $profile = Profile::findOrFail($id);
-        $profile->delete(); // Soft delete profile
+        if ((string) $request->user()->id === $id) {
+            throw ValidationException::withMessages([
+                'user' => ['You cannot archive your own Admin account.'],
+            ]);
+        }
 
-        // Soft delete user record as well so user cannot authenticate
-        User::where('id', $id)->delete();
+        $target = User::with('role')->findOrFail($id);
+        $this->guardLastAdmin($target, null);
 
-        ActivityLog::create([
-            'user_id' => $request->user()->id,
-            'action' => 'User soft deleted',
-            'details' => "Soft deleted user ID $id",
-        ]);
+        DB::transaction(function () use ($request, $target): void {
+            Profile::where('id', $target->id)->firstOrFail()->delete();
+            $target->tokens()->delete();
+            $target->delete();
+            ActivityLog::create([
+                'user_id' => $request->user()->id,
+                'action' => 'User archived',
+                'details' => "Archived user ID {$target->id}",
+            ]);
+        });
 
-        return response()->json(['status' => 'success', 'message' => 'User deleted successfully']);
+        return response()->json(['status' => 'success', 'message' => 'User archived successfully.']);
     }
 
     /**
@@ -175,6 +294,20 @@ class UserController extends Controller
         $user->loadMissing('role');
         if ($user->role?->name !== 'admin' && (string) $user->id !== $id) {
             abort(403, 'You may only access your own profile.');
+        }
+    }
+
+    private function guardLastAdmin(User $target, ?Role $newRole): void
+    {
+        if ($target->role?->name !== 'admin' || $newRole?->name === 'admin') {
+            return;
+        }
+
+        $adminRoleId = Role::where('name', 'admin')->value('id');
+        if ($adminRoleId && User::where('role_id', $adminRoleId)->count() <= 1) {
+            throw ValidationException::withMessages([
+                'role_id' => ['The last active Admin cannot be demoted or archived.'],
+            ]);
         }
     }
 }

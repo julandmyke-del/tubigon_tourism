@@ -7,6 +7,7 @@ export 'presentation/user_shell.dart';
 export 'presentation/pages/tourist_dashboard_page.dart';
 export 'presentation/pages/tourist_spots_page.dart';
 export 'presentation/pages/tourist_spot_detail_page.dart';
+export 'presentation/pages/tourism_listing_detail_page.dart';
 export 'presentation/pages/explore_place_detail_page.dart';
 export 'presentation/pages/msme_directory_page.dart';
 export 'presentation/pages/msme_detail_page.dart';

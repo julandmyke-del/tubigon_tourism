@@ -14,7 +14,7 @@ class VerifyEmail extends Mailable
 
     public function __construct(
         public readonly string $userName,
-        public readonly string $verificationUrl,
+        public readonly string $verificationCode,
         public readonly int $expiresInMinutes,
     ) {
     }
@@ -22,7 +22,7 @@ class VerifyEmail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Verify Your Email Address — Tubigon Smart Tourism',
+            subject: 'Tubigon Smart Tourism Verification Code',
         );
     }
 

@@ -9,7 +9,9 @@ final connectivityProvider = StreamProvider<ConnectivityStatus>((ref) {
     final hasConnection = results.any(
       (r) => r != ConnectivityResult.none,
     );
-    return hasConnection ? ConnectivityStatus.online : ConnectivityStatus.offline;
+    return hasConnection
+        ? ConnectivityStatus.online
+        : ConnectivityStatus.offline;
   });
 });
 

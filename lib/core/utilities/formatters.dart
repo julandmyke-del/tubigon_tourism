@@ -74,7 +74,9 @@ abstract final class Formatters {
 
   // ─── Pluralize ────────────────────────────────────────────────────────────
   static String pluralize(int count, String singular, [String? plural]) {
-    return count == 1 ? '$count $singular' : '$count ${plural ?? '${singular}s'}';
+    return count == 1
+        ? '$count $singular'
+        : '$count ${plural ?? '${singular}s'}';
   }
 
   // ─── Phone ────────────────────────────────────────────────────────────────

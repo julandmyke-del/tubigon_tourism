@@ -83,7 +83,8 @@ class _SearchBarCustomState extends State<SearchBarCustom> {
           ),
           decoration: InputDecoration(
             hintText: widget.hint,
-            hintStyle: AppTypography.bodyMedium.copyWith(color: AppColors.grey400),
+            hintStyle:
+                AppTypography.bodyMedium.copyWith(color: AppColors.grey400),
             border: InputBorder.none,
             enabledBorder: InputBorder.none,
             focusedBorder: InputBorder.none,

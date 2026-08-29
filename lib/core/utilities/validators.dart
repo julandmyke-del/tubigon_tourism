@@ -35,15 +35,21 @@ abstract final class Validators {
 
   static String? Function(String?) confirmPassword(String? original) {
     return (String? value) {
-      if (value == null || value.isEmpty) return 'Please confirm your password.';
-      if (value != original) return 'Passwords do not match.';
+      if (value == null || value.isEmpty) {
+        return 'Please confirm your password.';
+      }
+      if (value != original) {
+        return 'Passwords do not match.';
+      }
       return null;
     };
   }
 
   // ─── Phone ────────────────────────────────────────────────────────────────
   static String? phone(String? value) {
-    if (value == null || value.trim().isEmpty) return 'Phone number is required.';
+    if (value == null || value.trim().isEmpty) {
+      return 'Phone number is required.';
+    }
     final phoneRegex = RegExp(r'^(09|\+639)\d{9}$');
     if (!phoneRegex.hasMatch(value.trim())) {
       return 'Enter a valid Philippine phone number (e.g. 09XXXXXXXXX).';
@@ -54,8 +60,12 @@ abstract final class Validators {
   // ─── Name ─────────────────────────────────────────────────────────────────
   static String? name(String? value, {String fieldName = 'Name'}) {
     if (value == null || value.trim().isEmpty) return '$fieldName is required.';
-    if (value.trim().length < 2) return '$fieldName must be at least 2 characters.';
-    if (value.trim().length > 100) return '$fieldName must be at most 100 characters.';
+    if (value.trim().length < 2) {
+      return '$fieldName must be at least 2 characters.';
+    }
+    if (value.trim().length > 100) {
+      return '$fieldName must be at most 100 characters.';
+    }
     return null;
   }
 

@@ -75,6 +75,38 @@ class FavoriteFlowTest extends TestCase
         $this->assertDatabaseMissing('favorites', ['user_id' => $second->id]);
     }
 
+    public function test_active_partner_drafts_and_inconsistent_msmes_cannot_be_favorited(): void
+    {
+        $tourist = $this->user('publication-check');
+        Sanctum::actingAs($tourist);
+
+        $draftListing = Str::uuid()->toString();
+        Schema::getConnection()->table('tourism_listings')->insert([
+            'id' => $draftListing,
+            'is_active' => true,
+            'approval_status' => 'draft',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $this->postJson('/api/v1/favorites/toggle', [
+            'favoritable_type' => 'tourism_listing',
+            'favoritable_id' => $draftListing,
+        ])->assertUnprocessable();
+
+        $inconsistentMsme = Str::uuid()->toString();
+        Schema::getConnection()->table('msmes')->insert([
+            'id' => $inconsistentMsme,
+            'is_verified' => true,
+            'verification_status' => 'suspended',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $this->postJson('/api/v1/favorites/toggle', [
+            'favoritable_type' => 'msme',
+            'favoritable_id' => $inconsistentMsme,
+        ])->assertUnprocessable();
+    }
+
     private function user(string $key): User
     {
         return User::create([
@@ -141,6 +173,11 @@ class FavoriteFlowTest extends TestCase
             Schema::create($tableName, function (Blueprint $table) use ($tableName) {
                 $table->uuid('id')->primary();
                 $table->boolean($tableName === 'msmes' ? 'is_verified' : 'is_active')->default(true);
+                if ($tableName === 'msmes') {
+                    $table->string('verification_status')->default('pending');
+                } else {
+                    $table->string('approval_status')->default('draft');
+                }
                 $table->timestamps();
                 $table->softDeletes();
             });

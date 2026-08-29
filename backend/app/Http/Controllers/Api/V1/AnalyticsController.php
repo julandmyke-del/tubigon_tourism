@@ -3,13 +3,13 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Models\Profile;
 use App\Models\TouristSpot;
 use App\Models\Reservation;
 use App\Models\Review;
 use App\Models\WasteReport;
 use App\Models\Msme;
 use App\Models\ActivityLog;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -17,8 +17,8 @@ class AnalyticsController extends Controller
 {
     public function dashboard(Request $request): JsonResponse
     {
-        $totalUsers = Profile::count();
-        $totalTourists = Profile::whereHas('role', fn($q) => $q->where('name', 'tourist'))->count();
+        $totalUsers = User::count();
+        $totalTourists = User::whereHas('role', fn($q) => $q->where('name', 'tourist'))->count();
         $totalMsmes = Msme::count();
         $totalSpots = TouristSpot::count();
         $totalReservations = Reservation::count();

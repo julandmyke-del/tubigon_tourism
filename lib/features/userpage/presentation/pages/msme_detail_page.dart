@@ -180,11 +180,6 @@ class MsmeDetailPage extends ConsumerWidget {
                       ),
                       const SizedBox(height: 14),
                       _DetailRow(
-                          icon: Icons.person_rounded,
-                          label: 'Owner',
-                          value: msme.ownerName),
-                      const Divider(color: Color(0xFF1E293B), height: 24),
-                      _DetailRow(
                           icon: Icons.location_on_rounded,
                           label: 'Address',
                           value:
@@ -236,6 +231,31 @@ class MsmeDetailPage extends ConsumerWidget {
                 ).animate().fadeIn(duration: 350.ms, delay: 200.ms),
 
                 const SizedBox(height: 32),
+
+                ElevatedButton.icon(
+                  onPressed: () {
+                    final target = Uri(
+                      path: '/reservations/create',
+                      queryParameters: {
+                        'type': 'msme',
+                        'id': msme.uuid,
+                        'name': msme.name,
+                        'price': '0',
+                      },
+                    );
+                    context.push(target.toString());
+                  },
+                  icon: const Icon(Icons.calendar_month_rounded),
+                  label: const Text('Request a Reservation'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFF59E0B),
+                    foregroundColor: Colors.black,
+                    minimumSize: const Size(double.infinity, 50),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                  ),
+                ),
+                const SizedBox(height: 12),
 
                 // Contact Action Button
                 if (msme.contactNumber.isNotEmpty &&

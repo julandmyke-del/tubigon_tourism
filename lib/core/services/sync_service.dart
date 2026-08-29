@@ -69,7 +69,6 @@ class SyncService {
     }
     if (!_isOnline || !DatabaseHelper.isSupported) return;
     try {
-      await syncTableToRemote('reservations');
       await syncTableToRemote('reviews');
       await syncTableToRemote('favorites');
       await syncTableToRemote('waste_reports');
@@ -154,8 +153,15 @@ class SyncService {
 
         if (response.statusCode == 200 &&
             (response.data as Map<String, dynamic>?)?['status'] == 'success') {
+          final rawIds = (response.data as Map<String, dynamic>)['data']
+              as Map<String, dynamic>?;
+          final syncedIds =
+              ((rawIds?['synced_ids'] as List<dynamic>?) ?? const [])
+                  .map((value) => value.toString())
+                  .toSet();
           for (final row in dirtyRows) {
             final id = row['id'] as String;
+            if (!syncedIds.contains(id)) continue;
             await dbHelper.update(
               tableName,
               {

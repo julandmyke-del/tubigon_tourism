@@ -2,9 +2,10 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// Wrapper around [FlutterSecureStorage] for sensitive data (tokens, PII).
 class SecureStorageService {
-  SecureStorageService() : _storage = const FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
+  SecureStorageService()
+      : _storage = const FlutterSecureStorage(
+          aOptions: AndroidOptions(encryptedSharedPreferences: true),
+        );
 
   final FlutterSecureStorage _storage;
 

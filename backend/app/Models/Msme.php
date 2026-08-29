@@ -29,6 +29,15 @@ class Msme extends Model
         'icon',
         'is_verified',
         'products',
+        'verification_status',
+        'verification_notes',
+        'submitted_at',
+        'reviewed_at',
+        'reviewed_by',
+        'operational_status',
+        'opening_hours',
+        'unavailable_dates',
+        'images',
     ];
 
     protected $casts = [
@@ -38,6 +47,11 @@ class Msme extends Model
         'is_verified' => 'boolean',
         'latitude' => 'float',
         'longitude' => 'float',
+        'opening_hours' => 'array',
+        'unavailable_dates' => 'array',
+        'images' => 'array',
+        'submitted_at' => 'datetime',
+        'reviewed_at' => 'datetime',
     ];
 
     public function profile()

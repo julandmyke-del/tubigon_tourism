@@ -58,7 +58,8 @@ backend/bootstrap/cache/*.php
 # Local database files / dumps
 *.sqlite
 *.db
-tubigon.sql
+*.sql
+/backups/
 .mysql-recovery-probe/
 
 # Temporary analysis / generated output

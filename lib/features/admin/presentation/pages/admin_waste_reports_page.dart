@@ -10,7 +10,8 @@ class AdminWasteReportsPage extends ConsumerStatefulWidget {
   const AdminWasteReportsPage({super.key});
 
   @override
-  ConsumerState<AdminWasteReportsPage> createState() => _AdminWasteReportsPageState();
+  ConsumerState<AdminWasteReportsPage> createState() =>
+      _AdminWasteReportsPageState();
 }
 
 class _AdminWasteReportsPageState extends ConsumerState<AdminWasteReportsPage> {
@@ -46,7 +47,8 @@ class _AdminWasteReportsPageState extends ConsumerState<AdminWasteReportsPage> {
                     const SizedBox(height: 4),
                     Text(
                       'Track environmental hazards, coastal plastic waste reports, and clean-up requests.',
-                      style: AppTypography.bodyMedium.copyWith(color: AdminColors.textSecondary),
+                      style: AppTypography.bodyMedium
+                          .copyWith(color: AdminColors.textSecondary),
                     ),
                   ],
                 ),
@@ -56,7 +58,8 @@ class _AdminWasteReportsPageState extends ConsumerState<AdminWasteReportsPage> {
                     side: const BorderSide(color: AdminColors.cardBorder),
                   ),
                   onPressed: () => ref.invalidate(adminWasteReportsProvider),
-                  icon: const Icon(Icons.refresh_rounded, color: AdminColors.orange),
+                  icon: const Icon(Icons.refresh_rounded,
+                      color: AdminColors.orange),
                 ),
               ],
             ),
@@ -70,17 +73,30 @@ class _AdminWasteReportsPageState extends ConsumerState<AdminWasteReportsPage> {
                 children: [
                   Expanded(
                     child: TextField(
-                      style: const TextStyle(color: AdminColors.textPrimary, fontSize: 14),
+                      style: const TextStyle(
+                          color: AdminColors.textPrimary, fontSize: 14),
                       decoration: InputDecoration(
                         hintText: 'Search by location or reporter name...',
-                        hintStyle: const TextStyle(color: AdminColors.textMuted),
-                        prefixIcon: const Icon(Icons.search_rounded, color: AdminColors.textSecondary, size: 20),
+                        hintStyle:
+                            const TextStyle(color: AdminColors.textMuted),
+                        prefixIcon: const Icon(Icons.search_rounded,
+                            color: AdminColors.textSecondary, size: 20),
                         filled: true,
                         fillColor: AdminColors.navy900,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AdminColors.cardBorder)),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AdminColors.cardBorder)),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AdminColors.borderActive)),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 10),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(
+                                color: AdminColors.cardBorder)),
+                        enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(
+                                color: AdminColors.cardBorder)),
+                        focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(
+                                color: AdminColors.borderActive)),
                       ),
                       onChanged: (v) => setState(() => _searchQuery = v),
                     ),
@@ -97,12 +113,25 @@ class _AdminWasteReportsPageState extends ConsumerState<AdminWasteReportsPage> {
                       child: DropdownButton<String>(
                         dropdownColor: AdminColors.navy900,
                         value: _statusFilter,
-                        icon: const Icon(Icons.filter_alt_outlined, color: AdminColors.textSecondary),
-                        style: const TextStyle(color: AdminColors.textPrimary, fontSize: 14),
-                        items: ['All', 'Pending', 'In Progress', 'Resolved']
-                            .map((s) => DropdownMenuItem(value: s, child: Text(s == 'All' ? 'All Reports' : s)))
+                        icon: const Icon(Icons.filter_alt_outlined,
+                            color: AdminColors.textSecondary),
+                        style: const TextStyle(
+                            color: AdminColors.textPrimary, fontSize: 14),
+                        items: [
+                          'All',
+                          'pending',
+                          'submitted',
+                          'in_progress',
+                          'resolved',
+                          'rejected'
+                        ]
+                            .map((s) => DropdownMenuItem(
+                                value: s,
+                                child: Text(
+                                    s == 'All' ? 'All Reports' : _label(s))))
                             .toList(),
-                        onChanged: (val) => setState(() => _statusFilter = val!),
+                        onChanged: (val) =>
+                            setState(() => _statusFilter = val!),
                       ),
                     ),
                   ),
@@ -119,17 +148,30 @@ class _AdminWasteReportsPageState extends ConsumerState<AdminWasteReportsPage> {
                 child: reportsAsync.when(
                   data: (reports) {
                     final filtered = reports.where((r) {
-                      final reporter = (r['user_name'] ?? r['reporter'] ?? '').toString().toLowerCase();
-                      final location = (r['location'] ?? r['address'] ?? '').toString().toLowerCase();
-                      final status = (r['status'] ?? 'Pending').toString();
+                      final user = r['user'] is Map
+                          ? Map<String, dynamic>.from(r['user'])
+                          : const <String, dynamic>{};
+                      final reporter =
+                          (user['name'] ?? '').toString().toLowerCase();
+                      final location = (r['location_description'] ?? '')
+                          .toString()
+                          .toLowerCase();
+                      final status = (r['status'] ?? '').toString();
 
-                      final matchesQuery = reporter.contains(_searchQuery.toLowerCase()) || location.contains(_searchQuery.toLowerCase());
-                      final matchesStatus = _statusFilter == 'All' || status.toLowerCase() == _statusFilter.toLowerCase();
+                      final matchesQuery =
+                          reporter.contains(_searchQuery.toLowerCase()) ||
+                              location.contains(_searchQuery.toLowerCase());
+                      final matchesStatus = _statusFilter == 'All' ||
+                          status.toLowerCase() == _statusFilter.toLowerCase();
                       return matchesQuery && matchesStatus;
                     }).toList();
 
                     if (filtered.isEmpty) {
-                      return const Center(child: Text('No environmental reports match the criteria.', style: TextStyle(color: AdminColors.textSecondary)));
+                      return const Center(
+                          child: Text(
+                              'No environmental reports match the criteria.',
+                              style:
+                                  TextStyle(color: AdminColors.textSecondary)));
                     }
 
                     return SingleChildScrollView(
@@ -137,45 +179,138 @@ class _AdminWasteReportsPageState extends ConsumerState<AdminWasteReportsPage> {
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: DataTable(
-                          headingRowColor: WidgetStateProperty.all(AdminColors.navy900),
+                          headingRowColor:
+                              WidgetStateProperty.all(AdminColors.navy900),
                           horizontalMargin: 20,
                           columnSpacing: 24,
                           columns: const [
-                            DataColumn(label: Text('REPORT ID', style: TextStyle(color: AdminColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 12))),
-                            DataColumn(label: Text('REPORTER', style: TextStyle(color: AdminColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 12))),
-                            DataColumn(label: Text('LOCATION', style: TextStyle(color: AdminColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 12))),
-                            DataColumn(label: Text('SEVERITY', style: TextStyle(color: AdminColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 12))),
-                            DataColumn(label: Text('STATUS', style: TextStyle(color: AdminColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 12))),
-                            DataColumn(label: Text('ACTIONS', style: TextStyle(color: AdminColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 12))),
+                            DataColumn(
+                                label: Text('REPORT ID',
+                                    style: TextStyle(
+                                        color: AdminColors.textSecondary,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12))),
+                            DataColumn(
+                                label: Text('REPORTER',
+                                    style: TextStyle(
+                                        color: AdminColors.textSecondary,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12))),
+                            DataColumn(
+                                label: Text('LOCATION',
+                                    style: TextStyle(
+                                        color: AdminColors.textSecondary,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12))),
+                            DataColumn(
+                                label: Text('CATEGORY',
+                                    style: TextStyle(
+                                        color: AdminColors.textSecondary,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12))),
+                            DataColumn(
+                                label: Text('STATUS',
+                                    style: TextStyle(
+                                        color: AdminColors.textSecondary,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12))),
+                            DataColumn(
+                                label: Text('ACTIONS',
+                                    style: TextStyle(
+                                        color: AdminColors.textSecondary,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12))),
                           ],
                           rows: filtered.map((r) {
-                            final reportId = r['id']?.toString() ?? r['uuid']?.toString() ?? '';
-                            final code = 'WR-${reportId.substring(0, reportId.length > 4 ? 4 : reportId.length)}';
-                            final reporter = (r['user_name'] ?? r['reporter'] ?? 'Citizen').toString();
-                            final location = (r['location'] ?? r['address'] ?? 'Port Area').toString();
-                            final severity = (r['severity'] ?? 'Medium').toString();
-                            final status = (r['status'] ?? 'Pending').toString();
+                            final reportId = r['id']?.toString() ??
+                                r['uuid']?.toString() ??
+                                '';
+                            final code =
+                                'WR-${reportId.substring(0, reportId.length > 4 ? 4 : reportId.length)}';
+                            final user = r['user'] is Map
+                                ? Map<String, dynamic>.from(r['user'])
+                                : const <String, dynamic>{};
+                            final reporter =
+                                (user['name'] ?? 'Anonymous/removed user')
+                                    .toString();
+                            final location = (r['location_description'] ??
+                                    'No location description')
+                                .toString();
+                            final category =
+                                (r['category'] ?? 'Other').toString();
+                            final status =
+                                (r['status'] ?? 'pending').toString();
 
                             return DataRow(
                               cells: [
-                                DataCell(Text(code, style: const TextStyle(color: AdminColors.orange, fontWeight: FontWeight.bold, fontSize: 12))),
-                                DataCell(Text(reporter, style: const TextStyle(color: AdminColors.textPrimary, fontWeight: FontWeight.w600, fontSize: 13))),
-                                DataCell(Text(location, style: const TextStyle(color: AdminColors.textSecondary, fontSize: 13))),
-                                DataCell(_SeverityBadge(severity: severity)),
+                                DataCell(Text(code,
+                                    style: const TextStyle(
+                                        color: AdminColors.orange,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12))),
+                                DataCell(Text(reporter,
+                                    style: const TextStyle(
+                                        color: AdminColors.textPrimary,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13))),
+                                DataCell(Text(location,
+                                    style: const TextStyle(
+                                        color: AdminColors.textSecondary,
+                                        fontSize: 13))),
+                                DataCell(Text(category,
+                                    style: const TextStyle(
+                                        color: AdminColors.textPrimary,
+                                        fontSize: 12))),
                                 DataCell(_StatusBadge(status: status)),
                                 DataCell(
                                   PopupMenuButton<String>(
-                                    icon: const Icon(Icons.edit_outlined, color: AdminColors.textSecondary, size: 18),
+                                    icon: const Icon(Icons.edit_outlined,
+                                        color: AdminColors.textSecondary,
+                                        size: 18),
                                     color: AdminColors.navy900,
                                     onSelected: (newStatus) async {
-                                      final repo = ref.read(adminRepositoryProvider);
-                                      await repo.updateWasteReportStatus(reportId, newStatus);
-                                      ref.invalidate(adminWasteReportsProvider);
+                                      try {
+                                        await ref
+                                            .read(adminRepositoryProvider)
+                                            .updateWasteReportStatus(
+                                                reportId, newStatus);
+                                        ref.invalidate(
+                                            adminWasteReportsProvider);
+                                        _feedback(
+                                            'Waste report status updated.');
+                                      } catch (_) {
+                                        _feedback(
+                                            'Unable to update this waste report.',
+                                            error: true);
+                                      }
                                     },
                                     itemBuilder: (ctx) => [
-                                      const PopupMenuItem(value: 'Pending', child: Text('Set Pending', style: TextStyle(color: AdminColors.warning))),
-                                      const PopupMenuItem(value: 'In Progress', child: Text('Mark In Progress', style: TextStyle(color: AdminColors.info))),
-                                      const PopupMenuItem(value: 'Resolved', child: Text('Mark Resolved', style: TextStyle(color: AdminColors.success))),
+                                      const PopupMenuItem(
+                                          value: 'pending',
+                                          child: Text('Set Pending',
+                                              style: TextStyle(
+                                                  color: AdminColors.warning))),
+                                      const PopupMenuItem(
+                                          value: 'submitted',
+                                          child: Text('Set Submitted',
+                                              style: TextStyle(
+                                                  color: AdminColors
+                                                      .textPrimary))),
+                                      const PopupMenuItem(
+                                          value: 'in_progress',
+                                          child: Text('Mark In Progress',
+                                              style: TextStyle(
+                                                  color: AdminColors.info))),
+                                      const PopupMenuItem(
+                                          value: 'resolved',
+                                          child: Text('Mark Resolved',
+                                              style: TextStyle(
+                                                  color: AdminColors.success))),
+                                      const PopupMenuItem(
+                                          value: 'rejected',
+                                          child: Text('Reject',
+                                              style: TextStyle(
+                                                  color: AdminColors.danger))),
                                     ],
                                   ),
                                 ),
@@ -186,8 +321,13 @@ class _AdminWasteReportsPageState extends ConsumerState<AdminWasteReportsPage> {
                       ),
                     );
                   },
-                  loading: () => const Center(child: CircularProgressIndicator(color: AdminColors.orange)),
-                  error: (err, _) => Center(child: Text('Error: $err', style: const TextStyle(color: AdminColors.danger))),
+                  loading: () => const Center(
+                      child:
+                          CircularProgressIndicator(color: AdminColors.orange)),
+                  error: (err, _) => const Center(
+                      child: Text(
+                          'Unable to load waste reports. Use Refresh to retry.',
+                          style: TextStyle(color: AdminColors.danger))),
                 ),
               ),
             ),
@@ -196,34 +336,19 @@ class _AdminWasteReportsPageState extends ConsumerState<AdminWasteReportsPage> {
       ),
     );
   }
-}
 
-class _SeverityBadge extends StatelessWidget {
-  final String severity;
-  const _SeverityBadge({required this.severity});
+  static String _label(String value) => value
+      .split('_')
+      .where((part) => part.isNotEmpty)
+      .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+      .join(' ');
 
-  @override
-  Widget build(BuildContext context) {
-    final s = severity.toLowerCase();
-    Color bg = AdminColors.infoBg;
-    Color fg = AdminColors.info;
-
-    if (s == 'high' || s == 'critical') {
-      bg = AdminColors.dangerBg;
-      fg = AdminColors.danger;
-    } else if (s == 'medium') {
-      bg = AdminColors.warningBg;
-      fg = AdminColors.warning;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
-      child: Text(
-        severity.toUpperCase(),
-        style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.bold),
-      ),
-    );
+  void _feedback(String message, {bool error = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message),
+      backgroundColor: error ? AdminColors.danger : null,
+    ));
   }
 }
 
@@ -240,16 +365,17 @@ class _StatusBadge extends StatelessWidget {
     if (s == 'resolved') {
       bg = AdminColors.successBg;
       fg = AdminColors.success;
-    } else if (s == 'in progress') {
+    } else if (s == 'in_progress') {
       bg = AdminColors.infoBg;
       fg = AdminColors.info;
     }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
+      decoration:
+          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
       child: Text(
-        status.toUpperCase(),
+        status.replaceAll('_', ' ').toUpperCase(),
         style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.bold),
       ),
     );

@@ -34,6 +34,14 @@ class AdminRepository {
     }
   }
 
+  Future<Map<String, dynamic>> getUser(String userId) async {
+    final response = await apiClient.get(ApiEndpoints.userById(userId));
+    if (response.statusCode == 200 && response.data['status'] == 'success') {
+      return Map<String, dynamic>.from(response.data['data']);
+    }
+    throw Exception('Unable to load this user.');
+  }
+
   Future<List<Map<String, dynamic>>> getRoles() async {
     try {
       final response = await apiClient.get(ApiEndpoints.adminRoles);
@@ -57,7 +65,7 @@ class AdminRepository {
 
   Future<bool> updateUser(String userId, Map<String, dynamic> userData) async {
     try {
-      await apiClient.put('/admin/users/$userId', data: userData);
+      await apiClient.put(ApiEndpoints.adminUser(userId), data: userData);
       return true;
     } catch (e) {
       throw Exception('Failed to update user: $e');
@@ -101,7 +109,7 @@ class AdminRepository {
 
   Future<List<Map<String, dynamic>>> getMsmes() async {
     try {
-      final response = await apiClient.get(ApiEndpoints.msmes);
+      final response = await apiClient.get(ApiEndpoints.adminMsmes);
       if (response.statusCode == 200 && response.data['status'] == 'success') {
         return List<Map<String, dynamic>>.from(response.data['data']);
       }
@@ -115,7 +123,9 @@ class AdminRepository {
     try {
       final bool verified = isVerified is bool
           ? isVerified
-          : (isVerified == 'approved' || isVerified == 'active' || isVerified == 'verified');
+          : (isVerified == 'approved' ||
+              isVerified == 'active' ||
+              isVerified == 'verified');
       await apiClient.put(
         ApiEndpoints.adminUpdateMsmeVerification(msmeId),
         data: {'is_verified': verified},
@@ -140,7 +150,7 @@ class AdminRepository {
   // 1. Tourist Spots
   Future<List<Map<String, dynamic>>> getTouristSpots() async {
     try {
-      final response = await apiClient.get(ApiEndpoints.touristSpots);
+      final response = await apiClient.get(ApiEndpoints.adminSpots);
       if (response.statusCode == 200 && response.data['status'] == 'success') {
         return List<Map<String, dynamic>>.from(response.data['data']);
       }
@@ -155,7 +165,8 @@ class AdminRepository {
     return true;
   }
 
-  Future<void> manageTouristSpot(Map<String, dynamic> spotData, {String? id}) async {
+  Future<void> manageTouristSpot(Map<String, dynamic> spotData,
+      {String? id}) async {
     try {
       if (id != null) {
         await apiClient.put(ApiEndpoints.adminUpdateSpot(id), data: spotData);
@@ -176,6 +187,17 @@ class AdminRepository {
     }
   }
 
+  Future<void> updateTouristSpotBooking(
+      String id, Map<String, dynamic> configuration) async {
+    final response = await apiClient.put(
+      ApiEndpoints.adminUpdateSpotBooking(id),
+      data: configuration,
+    );
+    if (response.statusCode != 200 || response.data['status'] != 'success') {
+      throw Exception('Failed to update tourist spot booking configuration.');
+    }
+  }
+
   // 2. Categories
   Future<List<Map<String, dynamic>>> getCategories() async {
     try {
@@ -189,12 +211,15 @@ class AdminRepository {
     }
   }
 
-  Future<void> manageCategory(Map<String, dynamic> categoryData, {String? id}) async {
+  Future<void> manageCategory(Map<String, dynamic> categoryData,
+      {String? id}) async {
     try {
       if (id != null) {
-        await apiClient.put(ApiEndpoints.adminUpdateCategory(id), data: categoryData);
+        await apiClient.put(ApiEndpoints.adminUpdateCategory(id),
+            data: categoryData);
       } else {
-        await apiClient.post(ApiEndpoints.adminCreateCategory, data: categoryData);
+        await apiClient.post(ApiEndpoints.adminCreateCategory,
+            data: categoryData);
       }
     } catch (e) {
       throw Exception('Failed to save category: $e');
@@ -222,12 +247,15 @@ class AdminRepository {
     }
   }
 
-  Future<void> manageFerrySchedule(Map<String, dynamic> scheduleData, {String? id}) async {
+  Future<void> manageFerrySchedule(Map<String, dynamic> scheduleData,
+      {String? id}) async {
     try {
       if (id != null) {
-        await apiClient.put('/admin/ferry-schedules/$id', data: scheduleData);
+        await apiClient.put(ApiEndpoints.adminFerrySchedule(id),
+            data: scheduleData);
       } else {
-        await apiClient.post('/admin/ferry-schedules', data: scheduleData);
+        await apiClient.post(ApiEndpoints.adminFerrySchedules,
+            data: scheduleData);
       }
     } catch (e) {
       throw Exception('Failed to save ferry schedule: $e');
@@ -236,7 +264,7 @@ class AdminRepository {
 
   Future<void> deleteFerrySchedule(String id) async {
     try {
-      await apiClient.delete('/admin/ferry-schedules/$id');
+      await apiClient.delete(ApiEndpoints.adminFerrySchedule(id));
     } catch (e) {
       throw Exception('Failed to delete ferry schedule: $e');
     }
@@ -255,12 +283,15 @@ class AdminRepository {
     }
   }
 
-  Future<void> manageEmergencyContact(Map<String, dynamic> contactData, {String? id}) async {
+  Future<void> manageEmergencyContact(Map<String, dynamic> contactData,
+      {String? id}) async {
     try {
       if (id != null) {
-        await apiClient.put(ApiEndpoints.adminEmergencyContact(id), data: contactData);
+        await apiClient.put(ApiEndpoints.adminEmergencyContact(id),
+            data: contactData);
       } else {
-        await apiClient.post(ApiEndpoints.adminEmergencyContacts, data: contactData);
+        await apiClient.post(ApiEndpoints.adminEmergencyContacts,
+            data: contactData);
       }
     } catch (e) {
       throw Exception('Failed to save emergency contact: $e');
@@ -288,12 +319,13 @@ class AdminRepository {
     }
   }
 
-  Future<void> manageEcoTip(Map<String, dynamic> ecoTipData, {String? id}) async {
+  Future<void> manageEcoTip(Map<String, dynamic> ecoTipData,
+      {String? id}) async {
     try {
       if (id != null) {
-        await apiClient.put('/admin/eco-tips/$id', data: ecoTipData);
+        await apiClient.put(ApiEndpoints.adminEcoTip(id), data: ecoTipData);
       } else {
-        await apiClient.post('/admin/eco-tips', data: ecoTipData);
+        await apiClient.post(ApiEndpoints.adminEcoTips, data: ecoTipData);
       }
     } catch (e) {
       throw Exception('Failed to save eco tip: $e');
@@ -302,7 +334,7 @@ class AdminRepository {
 
   Future<void> deleteEcoTip(String id) async {
     try {
-      await apiClient.delete('/admin/eco-tips/$id');
+      await apiClient.delete(ApiEndpoints.adminEcoTip(id));
     } catch (e) {
       throw Exception('Failed to delete eco tip: $e');
     }
@@ -334,7 +366,17 @@ class AdminRepository {
     }
   }
 
-  Future<void> updateReservationStatus(String reservationId, String statusId) async {
+  Future<Map<String, dynamic>> getReservation(String reservationId) async {
+    final response =
+        await apiClient.get(ApiEndpoints.reservationById(reservationId));
+    if (response.statusCode == 200 && response.data['status'] == 'success') {
+      return Map<String, dynamic>.from(response.data['data']);
+    }
+    throw Exception('Unable to load this reservation.');
+  }
+
+  Future<void> updateReservationStatus(
+      String reservationId, String statusId) async {
     try {
       await apiClient.put(
         ApiEndpoints.adminUpdateReservationStatus(reservationId),
@@ -349,7 +391,7 @@ class AdminRepository {
 
   Future<List<Map<String, dynamic>>> getAllReviews() async {
     try {
-      final response = await apiClient.get(ApiEndpoints.reviews);
+      final response = await apiClient.get(ApiEndpoints.adminReviews);
       if (response.statusCode == 200 && response.data['status'] == 'success') {
         return List<Map<String, dynamic>>.from(response.data['data']);
       }
@@ -359,18 +401,9 @@ class AdminRepository {
     }
   }
 
-  Future<bool> updateReviewStatus(String reviewId, String status) async {
-    try {
-      await apiClient.put('/admin/reviews/$reviewId/status', data: {'status': status});
-      return true;
-    } catch (e) {
-      throw Exception('Failed to update review status: $e');
-    }
-  }
-
   Future<bool> deleteReview(String reviewId) async {
     try {
-      await apiClient.delete('/reviews/$reviewId');
+      await apiClient.delete(ApiEndpoints.reviewById(reviewId));
       return true;
     } catch (e) {
       throw Exception('Failed to delete review: $e');
@@ -394,7 +427,7 @@ class AdminRepository {
   Future<bool> updateWasteReportStatus(String reportId, String status) async {
     try {
       await apiClient.put(
-        '/admin/waste-reports/$reportId/status',
+        ApiEndpoints.adminUpdateWasteReportStatus(reportId),
         data: {'status': status},
       );
       return true;
@@ -407,7 +440,7 @@ class AdminRepository {
 
   Future<List<Map<String, dynamic>>> getAnnouncements() async {
     try {
-      final response = await apiClient.get(ApiEndpoints.announcements);
+      final response = await apiClient.get(ApiEndpoints.adminAnnouncements);
       if (response.statusCode == 200 && response.data['status'] == 'success') {
         return List<Map<String, dynamic>>.from(response.data['data']);
       }
@@ -422,12 +455,13 @@ class AdminRepository {
     return true;
   }
 
-  Future<void> manageAnnouncement(Map<String, dynamic> data, {String? id}) async {
+  Future<void> manageAnnouncement(Map<String, dynamic> data,
+      {String? id}) async {
     try {
       if (id != null) {
-        await apiClient.put('/admin/announcements/$id', data: data);
+        await apiClient.put(ApiEndpoints.adminAnnouncement(id), data: data);
       } else {
-        await apiClient.post('/admin/announcements', data: data);
+        await apiClient.post(ApiEndpoints.adminAnnouncements, data: data);
       }
     } catch (e) {
       throw Exception('Failed to save announcement: $e');
@@ -436,7 +470,7 @@ class AdminRepository {
 
   Future<bool> deleteAnnouncement(String id) async {
     try {
-      await apiClient.delete('/admin/announcements/$id');
+      await apiClient.delete(ApiEndpoints.adminAnnouncement(id));
       return true;
     } catch (e) {
       throw Exception('Failed to delete announcement: $e');
@@ -451,15 +485,17 @@ class AdminRepository {
       if (response.statusCode == 200 && response.data['status'] == 'success') {
         return Map<String, dynamic>.from(response.data['data']);
       }
-      return {};
+      throw Exception('Invalid system settings response.');
     } catch (e) {
-      return {};
+      throw Exception('Failed to fetch system settings: $e');
     }
   }
 
-  Future<bool> updateSystemSettings(Map<String, dynamic> data, [String settingsId = '1']) async {
+  Future<bool> updateSystemSettings(
+      Map<String, dynamic> data, String settingsId) async {
     try {
-      await apiClient.put('/admin/system-settings/$settingsId', data: data);
+      await apiClient.put(ApiEndpoints.adminSystemSettings(settingsId),
+          data: data);
       return true;
     } catch (e) {
       throw Exception('Failed to update system settings: $e');

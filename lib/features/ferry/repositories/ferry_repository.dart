@@ -45,23 +45,15 @@ class FerryRepository {
     if (SyncService.instance.isOnline) {
       try {
         final remoteItems = await _fetchRemote();
+        // The public API is authoritative. Replace the cache so archived
+        // schedules disappear instead of surviving an upsert-only sync.
+        await dbHelper.delete(
+          'ferry_schedules',
+          where: '1 = 1',
+          whereArgs: const [],
+        );
         for (final parsedItem in remoteItems) {
-          final localResult = await dbHelper.query(
-            'ferry_schedules',
-            where: 'uuid = ?',
-            whereArgs: [parsedItem.uuid],
-          );
-          final itemJson = parsedItem.toJson();
-          if (localResult.isEmpty) {
-            await dbHelper.insert('ferry_schedules', itemJson);
-          } else {
-            await dbHelper.update(
-              'ferry_schedules',
-              itemJson,
-              where: 'uuid = ?',
-              whereArgs: [parsedItem.uuid],
-            );
-          }
+          await dbHelper.insert('ferry_schedules', parsedItem.toJson());
         }
         final updatedLocal = await dbHelper.query(
           'ferry_schedules',

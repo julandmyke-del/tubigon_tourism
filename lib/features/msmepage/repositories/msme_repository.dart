@@ -29,31 +29,22 @@ class MsmeRepository {
             response.data['status'] == 'success') {
           final remoteData = response.data['data'] as List<dynamic>;
 
+          // Public MSME responses contain verified businesses only. Replace
+          // the cache so unverified/archived entries disappear immediately.
+          await dbHelper.delete(
+            'msmes',
+            where: '1 = 1',
+            whereArgs: const [],
+          );
+
           for (final item in remoteData) {
             final row = item as Map<String, dynamic>;
-            final uuid = row['id'] as String;
             final integerId = (row['integer_id'] as int?) ?? 1;
-
-            final localMsmeResult = await dbHelper.query(
-              'msmes',
-              where: 'uuid = ?',
-              whereArgs: [uuid],
-            );
 
             final parsedMsme = Msme.fromJson(row);
             final msmeJson = parsedMsme.toJson();
             msmeJson['id'] = integerId;
-
-            if (localMsmeResult.isEmpty) {
-              await dbHelper.insert('msmes', msmeJson);
-            } else {
-              await dbHelper.update(
-                'msmes',
-                msmeJson,
-                where: 'uuid = ?',
-                whereArgs: [uuid],
-              );
-            }
+            await dbHelper.insert('msmes', msmeJson);
           }
 
           final updatedLocal = await dbHelper.query('msmes',

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../../core/constants/api_endpoints.dart';
 import '../../../core/network/api_client.dart';
@@ -27,6 +26,7 @@ class ReservationRepository {
         rawDate.length >= 10 ? rawDate.substring(0, 10) : rawDate;
     return {
       'id': row['id'].toString(),
+      'public_reference': row['public_reference']?.toString(),
       'user_id': row['user_id'].toString(),
       'partner_id': row['partner_id']?.toString(),
       'reservable_type': row['reservable_type'].toString(),
@@ -38,6 +38,15 @@ class ReservationRepository {
       'status': statusMap?['name']?.toString() ?? 'pending',
       'notes': row['notes']?.toString(),
       'total_amount': (row['total_amount'] as num?)?.toDouble() ?? 0,
+      'reservable_name': row['reservable_name']?.toString(),
+      'reservable_image': row['reservable_image']?.toString(),
+      'fee_configured':
+          row['fee_configured'] == true || row['fee_configured'] == 1 ? 1 : 0,
+      'booking_instructions': row['booking_instructions']?.toString(),
+      'cancellation_policy': row['cancellation_policy']?.toString(),
+      'latitude': (row['latitude'] as num?)?.toDouble(),
+      'longitude': (row['longitude'] as num?)?.toDouble(),
+      'status_history': row['status_history'],
       'created_at': row['created_at']?.toString(),
       'updated_at': row['updated_at']?.toString(),
       'sync_status': 'synced',
@@ -58,8 +67,6 @@ class ReservationRepository {
     // 1. Fetch remote if online
     if (SyncService.instance.isOnline) {
       try {
-        await SyncService.instance.syncTableToRemote('reservations');
-
         final response = await apiClient.get(ApiEndpoints.reservations);
 
         if (response.statusCode == 200 &&
@@ -102,7 +109,7 @@ class ReservationRepository {
       final reservableType = row['reservable_type'] as String;
       final reservableId = row['reservable_id'] as String;
 
-      String name = 'Reservation';
+      String name = row['reservable_name']?.toString() ?? 'Reservation';
       Color color = Colors.teal;
       IconData icon = Icons.calendar_today_rounded;
 
@@ -171,14 +178,41 @@ class ReservationRepository {
     return reservations;
   }
 
-  /// Submits a new booking offline first.
-  Future<bool> createReservation({
+  Future<Reservation> getReservation(String id) async {
+    if (await checkConnectivity()) {
+      final response = await apiClient.get(ApiEndpoints.reservationById(id));
+      if (response.statusCode != 200 || response.data['status'] != 'success') {
+        throw Exception('Unable to load this reservation.');
+      }
+      final row = _remoteReservationRow(
+        response.data['data'] as Map<String, dynamic>,
+      );
+      final reservation =
+          Reservation.fromJson(row, name: row['reservable_name']?.toString());
+      if (DatabaseHelper.isSupported) {
+        await dbHelper.insert(
+            'reservations',
+            reservation.toJson()
+              ..addAll(
+                  {'sync_status': 'synced', 'dirty': 0, 'pending_delete': 0}));
+      }
+      return reservation;
+    }
+    if (DatabaseHelper.isSupported) {
+      final rows = await dbHelper
+          .query('reservations', where: 'id = ?', whereArgs: [id]);
+      if (rows.isNotEmpty) return Reservation.fromJson(rows.first);
+    }
+    throw Exception('Connect to the internet to load this reservation.');
+  }
+
+  /// A reservation exists only after Laravel confirms MySQL persistence.
+  Future<Reservation> createReservation({
     required String reservableType,
     required String reservableId,
     required String date,
     required String? startTime,
     required int guests,
-    required double pricePerGuest,
     String? notes,
   }) async {
     final userId = _userId;
@@ -199,82 +233,19 @@ class ReservationRepository {
       );
     }
 
-    final resId = const Uuid().v4();
-    final total = pricePerGuest * guests;
-
-    final duplicate = await dbHelper.query(
-      'reservations',
-      where:
-          'user_id = ? AND reservable_type = ? AND reservable_id = ? AND reservation_date = ? AND start_time = ? AND status NOT IN (?, ?) AND pending_delete = 0',
-      whereArgs: [
-        userId,
-        reservableType,
-        reservableId,
-        date,
-        startTime,
-        'cancelled',
-        'rejected'
-      ],
+    final reservation = await _createRemoteReservation(
+      reservableType: reservableType,
+      reservableId: reservableId,
+      date: date,
+      startTime: startTime,
+      guests: guests,
+      notes: notes,
     );
-    if (duplicate.isNotEmpty) {
-      throw Exception(
-          'You already have a reservation for this place and time.');
-    }
-
-    final reservationJson = {
-      'id': resId,
-      'user_id': userId,
-      'reservable_type': reservableType,
-      'reservable_id': reservableId,
-      'reservation_date': date,
-      'start_time': startTime,
-      'end_time': null,
-      'guests': guests,
-      'status': 'pending',
-      'notes': notes,
-      'total_amount': total,
-      'created_at': DateTime.now().toIso8601String(),
-      'updated_at': DateTime.now().toIso8601String(),
-      'dirty': 1,
-      'sync_status': 'pending_insert',
-      'pending_delete': 0,
-    };
-
-    await dbHelper.insert('reservations', reservationJson);
-
-    // Sync in background if online
-    if (hasNetwork) {
-      try {
-        final response = await apiClient.post(
-          ApiEndpoints.reservations,
-          data: {
-            'reservable_type': reservableType,
-            'reservable_id': reservableId,
-            'reservation_date': date,
-            'start_time': startTime,
-            'guests': guests,
-            'notes': notes,
-          },
-        );
-
-        if (response.statusCode == 201 &&
-            response.data['status'] == 'success') {
-          final serverRow = _remoteReservationRow(
-            response.data['data'] as Map<String, dynamic>,
-          );
-          await dbHelper
-              .delete('reservations', where: 'id = ?', whereArgs: [resId]);
-          await dbHelper.insert('reservations', serverRow);
-          return true;
-        }
-        throw Exception('The reservation could not be accepted by the server.');
-      } catch (_) {
-        await dbHelper
-            .delete('reservations', where: 'id = ?', whereArgs: [resId]);
-        rethrow;
-      }
-    }
-    return false;
+    await dbHelper.insert(
+        'reservations',
+        reservation.toJson()
+          ..addAll({'sync_status': 'synced', 'dirty': 0, 'pending_delete': 0}));
+    return reservation;
   }
 
   /// Cancels a booking locally first.
@@ -292,9 +263,21 @@ class ReservationRepository {
         .query('reservations', where: 'id = ?', whereArgs: [uuid]);
     if (local.isEmpty) return;
 
+    final localRow = local.first;
+    if ((localRow['dirty'] as int? ?? 0) == 1 &&
+        localRow['sync_status'] == 'pending_insert') {
+      await dbHelper.delete('reservations', where: 'id = ?', whereArgs: [uuid]);
+      return;
+    }
+
     if (SyncService.instance.isOnline) {
       try {
-        await apiClient.put(ApiEndpoints.cancelReservation(uuid));
+        final response =
+            await apiClient.put(ApiEndpoints.cancelReservation(uuid));
+        if (response.statusCode != 200 ||
+            response.data['status'] != 'success') {
+          throw Exception('The server did not accept this cancellation.');
+        }
 
         await dbHelper.update(
           'reservations',
@@ -308,20 +291,12 @@ class ReservationRepository {
           whereArgs: [uuid],
         );
         return;
-      } catch (_) {}
+      } catch (_) {
+        rethrow;
+      }
     }
-
-    await dbHelper.update(
-      'reservations',
-      {
-        'status': 'cancelled',
-        'dirty': 1,
-        'sync_status': 'pending_update',
-        'updated_at': DateTime.now().toIso8601String(),
-      },
-      where: 'id = ?',
-      whereArgs: [uuid],
-    );
+    throw Exception(
+        'Connect to the internet to cancel a confirmed reservation.');
   }
 
   Future<List<Reservation>> _fetchRemoteReservations() async {
@@ -340,7 +315,7 @@ class ReservationRepository {
         .toList(growable: false);
   }
 
-  Future<bool> _createRemoteReservation({
+  Future<Reservation> _createRemoteReservation({
     required String reservableType,
     required String reservableId,
     required String date,
@@ -362,7 +337,10 @@ class ReservationRepository {
     if (response.statusCode != 201 || response.data['status'] != 'success') {
       throw Exception('Unable to create the reservation. Please try again.');
     }
-    return true;
+    final row = _remoteReservationRow(
+      response.data['data'] as Map<String, dynamic>,
+    );
+    return Reservation.fromJson(row, name: row['reservable_name']?.toString());
   }
 }
 
@@ -379,3 +357,8 @@ final reservationsListProvider = FutureProvider<List<Reservation>>((ref) async {
 });
 
 final userReservationsProvider = reservationsListProvider;
+
+final reservationDetailProvider =
+    FutureProvider.autoDispose.family<Reservation, String>((ref, id) async {
+  return ref.watch(reservationRepositoryProvider).getReservation(id);
+});

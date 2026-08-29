@@ -1,71 +1,249 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../../../core/theme/app_spacing.dart';
 import '../../providers/msme_portal_providers.dart';
 import '../msme_theme.dart';
 
 class MsmePortalDashboardPage extends ConsumerWidget {
-	const MsmePortalDashboardPage({super.key});
+  const MsmePortalDashboardPage({super.key});
 
-	@override
-	Widget build(BuildContext context, WidgetRef ref) {
-		final statsAsync = ref.watch(msmePortalDashboardStatsProvider);
-
-		return Scaffold(
-			backgroundColor: MsmeTheme.bgDark,
-			body: statsAsync.when(
-				data: (stats) {
-					final totalListings = stats['totalListings'] ?? 8;
-					final activeListings = stats['activeListings'] ?? 6;
-					final totalReservations = stats['totalReservations'] ?? 142;
-					final pendingReservations = stats['pendingReservations'] ?? 9;
-					final completedReservations = stats['completedReservations'] ?? 118;
-					final monthlyVisitors = stats['monthlyVisitors'] ?? 3450;
-					final averageRating = (stats['averageRating'] as num?)?.toDouble() ?? 4.8;
-					final totalRevenue = (stats['totalRevenue'] as num?)?.toDouble() ?? 184500.0;
-					final profileCompletion = (stats['profileCompletion'] as num?)?.toDouble() ?? 0.85;
-
-					return SingleChildScrollView(
-						padding: const EdgeInsets.all(AppSpacing.lg),
-						child: Column(
-							crossAxisAlignment: CrossAxisAlignment.start,
-							children: [
-								Container(
-									padding: const EdgeInsets.all(AppSpacing.lg),
-									decoration: BoxDecoration(
-										gradient: LinearGradient(colors: [MsmeTheme.primaryOrange.withValues(alpha: 0.15), MsmeTheme.cardDark], begin: Alignment.topLeft, end: Alignment.bottomRight),
-										borderRadius: BorderRadius.circular(16),
-										border: Border.all(color: MsmeTheme.primaryOrange.withValues(alpha: 0.3)),
-									),
-									child: Row(children: [Container(width: 56, height: 56, decoration: BoxDecoration(color: MsmeTheme.primaryOrange.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(14)), child: const Icon(Icons.storefront_rounded, color: MsmeTheme.primaryOrange, size: 28)), const SizedBox(width: AppSpacing.md), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Welcome back, Local Partner!', style: MsmeTheme.headingMedium()), const SizedBox(height: 4), Text('Tubigon Smart Tourism MSME Portal • Business Performance Overview', style: MsmeTheme.body(color: MsmeTheme.textMuted, size: 13))])), const SizedBox(width: AppSpacing.md), ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: MsmeTheme.primaryOrange, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))), onPressed: () => context.go('/msme-portal/listings/create'), icon: const Icon(Icons.add_rounded, size: 18), label: const Text('Add Listing', style: TextStyle(fontWeight: FontWeight.bold))),]),
-								),
-								const SizedBox(height: AppSpacing.lg),
-								Container(padding: const EdgeInsets.all(AppSpacing.md), decoration: MsmeTheme.cardDecoration(), child: Row(children: [const Icon(Icons.task_alt_rounded, color: MsmeTheme.green, size: 20), const SizedBox(width: 12), Text('Business Profile Completion', style: MsmeTheme.body(weight: FontWeight.w600, size: 13)), const SizedBox(width: 16), Expanded(child: ClipRRect(borderRadius: BorderRadius.circular(4), child: LinearProgressIndicator(value: profileCompletion, minHeight: 8, backgroundColor: MsmeTheme.surfaceDark, valueColor: const AlwaysStoppedAnimation<Color>(MsmeTheme.primaryOrange)))), const SizedBox(width: 16), Text('${(profileCompletion * 100).toInt()}% Complete', style: MsmeTheme.body(color: MsmeTheme.primaryOrange, weight: FontWeight.bold, size: 13))])),
-								const SizedBox(height: AppSpacing.lg),
-								LayoutBuilder(builder: (context, constraints) { final width = constraints.maxWidth; final crossCount = width > 1100 ? 4 : (width > 600 ? 2 : 1); return GridView.count(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), crossAxisCount: crossCount, crossAxisSpacing: AppSpacing.md, mainAxisSpacing: AppSpacing.md, childAspectRatio: 1.8, children: [_KpiCard(title: 'Total Listings', value: '$totalListings', sub: 'Crafts & Dining', icon: Icons.inventory_2_rounded, color: MsmeTheme.blue), _KpiCard(title: 'Active Listings', value: '$activeListings', sub: 'Available online', icon: Icons.check_circle_rounded, color: MsmeTheme.green), _KpiCard(title: 'Total Reservations', value: '$totalReservations', sub: 'All time bookings', icon: Icons.calendar_month_rounded, color: MsmeTheme.purple), _KpiCard(title: 'Pending Reservations', value: '$pendingReservations', sub: 'Needs action', icon: Icons.hourglass_top_rounded, color: MsmeTheme.amber), _KpiCard(title: 'Completed Bookings', value: '$completedReservations', sub: 'Fulfilled orders', icon: Icons.verified_rounded, color: MsmeTheme.cyan), _KpiCard(title: 'Monthly Visitors', value: '$monthlyVisitors', sub: '+14% influx', icon: Icons.groups_rounded, color: MsmeTheme.orangeLight), _KpiCard(title: 'Average Rating', value: '$averageRating ⭐', sub: '46 total reviews', icon: Icons.star_rounded, color: MsmeTheme.amber), _KpiCard(title: 'Est. Revenue', value: '₱${totalRevenue.toStringAsFixed(0)}', sub: 'Gross bookings', icon: Icons.payments_rounded, color: MsmeTheme.green)]); }),
-								const SizedBox(height: AppSpacing.lg),
-								Text('Quick Business Actions', style: MsmeTheme.headingSmall()),
-								const SizedBox(height: AppSpacing.md),
-								Row(children: [_QuickActionTile(label: 'Manage Listings', icon: Icons.storefront_rounded, color: MsmeTheme.blue, onTap: () => context.go('/msme-portal/listings')), const SizedBox(width: AppSpacing.md), _QuickActionTile(label: 'View Reservations', icon: Icons.calendar_today_rounded, color: MsmeTheme.purple, onTap: () => context.go('/msme-portal/reservations')), const SizedBox(width: AppSpacing.md), _QuickActionTile(label: 'Customer Reviews', icon: Icons.rate_review_rounded, color: MsmeTheme.amber, onTap: () => context.go('/msme-portal/reviews')), const SizedBox(width: AppSpacing.md), _QuickActionTile(label: 'Export Reports', icon: Icons.download_rounded, color: MsmeTheme.green, onTap: () => context.go('/msme-portal/reports'))]),
-								const SizedBox(height: AppSpacing.lg),
-								Container(decoration: MsmeTheme.cardDecoration(), padding: const EdgeInsets.all(AppSpacing.lg), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Recent Business Activity', style: MsmeTheme.headingSmall()), TextButton(onPressed: () => context.go('/msme-portal/notifications'), child: Text('View All', style: GoogleFonts.inter(color: MsmeTheme.primaryOrange, fontWeight: FontWeight.bold)))]), const SizedBox(height: AppSpacing.md), const _ActivityRow(title: 'New Reservation #RES-2026-081', subtitle: 'Maria Santos booked 4 spots for Loomweaving Workshop', time: '10 mins ago', icon: Icons.bookmark_added_rounded, color: MsmeTheme.amber), const Divider(color: MsmeTheme.cardBorder), const _ActivityRow(title: 'New 5-Star Customer Review', subtitle: 'Carlos Gomez: "Authentic Boholano craftwork! Very impressed."', time: '2 hours ago', icon: Icons.star_rounded, color: MsmeTheme.green), const Divider(color: MsmeTheme.cardBorder), const _ActivityRow(title: 'LGU Tourism Office Verification Approved', subtitle: 'Your business profile is now publicly verified', time: '1 day ago', icon: Icons.verified_user_rounded, color: MsmeTheme.blue)])),
-							],
-						),
-					);
-				},
-				loading: () => const Center(child: CircularProgressIndicator(color: MsmeTheme.primaryOrange)),
-				error: (err, _) => Center(child: Text('Error: $err', style: const TextStyle(color: MsmeTheme.red))),
-			),
-		);
-	}
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final stats = ref.watch(msmePortalDashboardStatsProvider);
+    return Scaffold(
+      backgroundColor: MsmeTheme.bgDark,
+      body: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: stats.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, _) => _StateMessage(
+            icon: Icons.cloud_off_rounded,
+            title: 'Dashboard unavailable',
+            message: error.toString(),
+            action: () => ref.invalidate(msmePortalDashboardStatsProvider),
+          ),
+          data: (data) {
+            final business = data['business'];
+            if (business is! Map) {
+              return _StateMessage(
+                icon: Icons.storefront_rounded,
+                title: 'Set up your business',
+                message:
+                    'Create your real business profile and submit it for LGU/Admin review.',
+                actionLabel: 'Start business setup',
+                action: () => context.push('/msme-portal/profile'),
+              );
+            }
+            final status =
+                business['verification_status']?.toString() ?? 'pending';
+            final complete = <String, bool>{
+              'Business profile':
+                  (business['name']?.toString().isNotEmpty ?? false) &&
+                      (business['category']?.toString().isNotEmpty ?? false),
+              'Location':
+                  business['latitude'] != null && business['longitude'] != null,
+              'Contact information':
+                  business['phone']?.toString().isNotEmpty ?? false,
+              'Opening hours': business['opening_hours'] is Map &&
+                  (business['opening_hours'] as Map).isNotEmpty,
+            };
+            return RefreshIndicator(
+              onRefresh: () async =>
+                  ref.refresh(msmePortalDashboardStatsProvider.future),
+              child: ListView(children: [
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  runSpacing: 12,
+                  children: [
+                    Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('MSME Owner Dashboard',
+                              style: MsmeTheme.headingLarge()),
+                          Text(business['name']?.toString() ?? 'Business',
+                              style:
+                                  const TextStyle(color: MsmeTheme.textMuted)),
+                        ]),
+                    Wrap(spacing: 8, children: [
+                      OutlinedButton.icon(
+                        onPressed: () =>
+                            context.push('/map?marker=msme:${business['id']}'),
+                        icon: const Icon(Icons.visibility_rounded),
+                        label: Text(status == 'verified'
+                            ? 'View on Smart Map'
+                            : 'Private preview'),
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: () => context.push('/msme-portal/profile'),
+                        icon: const Icon(Icons.edit_rounded),
+                        label: const Text('Edit business'),
+                      ),
+                    ]),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                _VerificationCard(
+                    status: status,
+                    items: complete,
+                    notes: business['verification_notes']?.toString()),
+                const SizedBox(height: 18),
+                LayoutBuilder(builder: (context, constraints) {
+                  final columns = constraints.maxWidth > 900
+                      ? 4
+                      : constraints.maxWidth > 520
+                          ? 2
+                          : 1;
+                  return GridView.count(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisCount: columns,
+                    childAspectRatio: 1.8,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    children: [
+                      _Metric(
+                          'Total reservations',
+                          data['totalReservations'] ?? 0,
+                          Icons.calendar_month_rounded),
+                      _Metric('Pending', data['pendingReservations'] ?? 0,
+                          Icons.pending_actions_rounded),
+                      _Metric('Completed', data['completedReservations'] ?? 0,
+                          Icons.task_alt_rounded),
+                      _Metric('Average rating', data['averageRating'] ?? 0,
+                          Icons.star_rounded),
+                      _Metric('Reviews', data['reviewCount'] ?? 0,
+                          Icons.reviews_rounded),
+                    ],
+                  );
+                }),
+                const SizedBox(height: 18),
+                Text('Recent activity', style: MsmeTheme.headingSmall()),
+                const SizedBox(height: 8),
+                if ((data['recentActivity'] as List? ?? const []).isEmpty)
+                  const _EmptyCard('No business activity yet.')
+                else
+                  ...(data['recentActivity'] as List)
+                      .whereType<Map>()
+                      .map((item) => ListTile(
+                            leading: const Icon(Icons.history_rounded,
+                                color: MsmeTheme.primaryOrange),
+                            title: Text(
+                                item['action']?.toString() ?? 'Activity',
+                                style: const TextStyle(color: Colors.white)),
+                            subtitle: Text(item['created_at']?.toString() ?? '',
+                                style: const TextStyle(
+                                    color: MsmeTheme.textMuted)),
+                          )),
+              ]),
+            );
+          },
+        ),
+      ),
+    );
+  }
 }
 
-class _KpiCard extends StatelessWidget { final String title; final String value; final String sub; final IconData icon; final Color color; const _KpiCard({required this.title, required this.value, required this.sub, required this.icon, required this.color}); @override Widget build(BuildContext context) { return Container(decoration: MsmeTheme.cardDecoration(), padding: const EdgeInsets.all(AppSpacing.md), child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Container(width: 36, height: 36, decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)), child: Icon(icon, color: color, size: 20)), Text(sub, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold))]), Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(value, style: GoogleFonts.plusJakartaSans(color: MsmeTheme.textWhite, fontSize: 24, fontWeight: FontWeight.w800)), const SizedBox(height: 2), Text(title, style: GoogleFonts.inter(color: MsmeTheme.textMuted, fontSize: 12))]) ])); } }
+class _Metric extends StatelessWidget {
+  const _Metric(this.label, this.value, this.icon);
+  final String label;
+  final Object value;
+  final IconData icon;
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(16),
+        decoration: MsmeTheme.cardDecoration(),
+        child: Row(children: [
+          Icon(icon, color: MsmeTheme.primaryOrange),
+          const SizedBox(width: 12),
+          Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                Text('$value',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold)),
+                Text(label, style: const TextStyle(color: MsmeTheme.textMuted)),
+              ])),
+        ]),
+      );
+}
 
-class _QuickActionTile extends StatelessWidget { final String label; final IconData icon; final Color color; final VoidCallback onTap; const _QuickActionTile({required this.label, required this.icon, required this.color, required this.onTap}); @override Widget build(BuildContext context) { return Expanded(child: InkWell(onTap: onTap, child: Container(height: 96, decoration: MsmeTheme.cardDecoration(), padding: const EdgeInsets.all(AppSpacing.md), child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Container(width: 40, height: 40, decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: color)), Text(label, style: GoogleFonts.inter(color: MsmeTheme.textWhite, fontWeight: FontWeight.w600, fontSize: 13))])))); } }
+class _VerificationCard extends StatelessWidget {
+  const _VerificationCard(
+      {required this.status, required this.items, this.notes});
+  final String status;
+  final Map<String, bool> items;
+  final String? notes;
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(16),
+        decoration: MsmeTheme.cardDecoration(),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Business verification', style: MsmeTheme.headingSmall()),
+          const SizedBox(height: 10),
+          ...items.entries.map((entry) => Row(children: [
+                Icon(
+                    entry.value
+                        ? Icons.check_circle
+                        : Icons.radio_button_unchecked,
+                    color: entry.value ? MsmeTheme.green : MsmeTheme.textMuted,
+                    size: 18),
+                const SizedBox(width: 8),
+                Text(entry.key, style: const TextStyle(color: Colors.white)),
+              ])),
+          const Divider(),
+          Text('Verification: ${status.replaceAll('_', ' ')}',
+              style: const TextStyle(
+                  color: MsmeTheme.primaryOrange, fontWeight: FontWeight.bold)),
+          if (notes != null && notes!.isNotEmpty)
+            Text(notes!, style: const TextStyle(color: MsmeTheme.amber)),
+        ]),
+      );
+}
 
-class _ActivityRow extends StatelessWidget { final String title; final String subtitle; final String time; final IconData icon; final Color color; const _ActivityRow({required this.title, required this.subtitle, required this.time, required this.icon, required this.color}); @override Widget build(BuildContext context) { return Row(children: [Container(width: 36, height: 36, decoration: BoxDecoration(color: color.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: color, size: 18)), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: GoogleFonts.inter(color: MsmeTheme.textWhite, fontWeight: FontWeight.w600, fontSize: 13)), Text(subtitle, style: GoogleFonts.inter(color: MsmeTheme.textMuted, fontSize: 12))])), Text(time, style: GoogleFonts.inter(color: MsmeTheme.textSubtle, fontSize: 11))]); } }
+class _StateMessage extends StatelessWidget {
+  const _StateMessage(
+      {required this.icon,
+      required this.title,
+      required this.message,
+      required this.action,
+      this.actionLabel = 'Retry'});
+  final IconData icon;
+  final String title;
+  final String message;
+  final VoidCallback action;
+  final String actionLabel;
+  @override
+  Widget build(BuildContext context) => ListView(children: [
+        const SizedBox(height: 100),
+        Icon(icon, size: 56, color: MsmeTheme.primaryOrange),
+        const SizedBox(height: 12),
+        Text(title,
+            textAlign: TextAlign.center, style: MsmeTheme.headingLarge()),
+        const SizedBox(height: 8),
+        Text(message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: MsmeTheme.textMuted)),
+        const SizedBox(height: 16),
+        Center(
+            child: ElevatedButton(onPressed: action, child: Text(actionLabel))),
+      ]);
+}
 
+class _EmptyCard extends StatelessWidget {
+  const _EmptyCard(this.text);
+  final String text;
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: MsmeTheme.cardDecoration(),
+        child: Center(
+            child:
+                Text(text, style: const TextStyle(color: MsmeTheme.textMuted))),
+      );
+}

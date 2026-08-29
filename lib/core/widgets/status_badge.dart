@@ -3,7 +3,16 @@ import '../theme/app_colors.dart';
 import '../theme/app_spacing.dart';
 import '../theme/app_typography.dart';
 
-enum StatusType { pending, confirmed, cancelled, completed, conflict, verified, active, inactive }
+enum StatusType {
+  pending,
+  confirmed,
+  cancelled,
+  completed,
+  conflict,
+  verified,
+  active,
+  inactive
+}
 
 /// Colored pill badge for status indicators.
 class StatusBadge extends StatelessWidget {

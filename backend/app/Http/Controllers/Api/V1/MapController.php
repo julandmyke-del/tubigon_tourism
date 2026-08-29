@@ -66,12 +66,17 @@ class MapController extends Controller
             $locations = $locations->concat($this->allMsmes($linkedMsmeIds));
         }
 
-        // The API is the authoritative scope boundary. Existing out-of-scope
-        // records remain in MySQL but can never leak into the Smart Map feed.
+        // The API is the authoritative scope boundary. The only exception to
+        // the land polygon is the controlled project-owner-approved seed,
+        // which includes legitimate marine attractions around Tubigon's
+        // island barangays.
         $locations = $locations
             ->filter(fn (array $location) => $this->boundary->contains(
                 (float) $location['latitude'],
                 (float) $location['longitude'],
+            ) || (
+                ($location['type'] ?? null) === 'tourist_spot'
+                && ($location['is_preapproved'] ?? false)
             ))
             // Later role-specific records win so owners retain their flags.
             ->reverse()->unique('id')->reverse()->values();
@@ -112,7 +117,16 @@ class MapController extends Controller
             ->whereNotNull('latitude')
             ->whereNotNull('longitude')
             ->whereHas('category', fn ($query) => $query->where('active', true))
+            ->where(fn ($query) => $query
+                ->whereNull('subcategory_id')
+                ->orWhereHas('subcategory', fn ($subcategory) => $subcategory->where('active', true)))
             ->get()
+            ->filter(function (MapLocation $location): bool {
+                $entity = $location->linkedEntity();
+
+                return ! $entity instanceof TouristSpot
+                    || ($entity->is_active && ($entity->is_published ?? true));
+            })
             ->map(fn (MapLocation $location) => $location->toPlaceArray());
     }
 
@@ -121,6 +135,9 @@ class MapController extends Controller
         $query = TouristSpot::with('category')
             ->where('is_active', true)
             ->whereNotNull('latitude')->whereNotNull('longitude');
+        if (Schema::hasColumn('tourist_spots', 'is_published')) {
+            $query->where('is_published', true);
+        }
         if ($excludedIds) {
             $query->whereNotIn('id', $excludedIds);
         }
@@ -137,7 +154,9 @@ class MapController extends Controller
                 'name' => $spot->name,
                 'category' => $spot->category?->name ?? 'Attraction',
                 'category_keys' => array_values(array_unique(array_filter(['tourist-spots', $specific]))),
-                'description' => $spot->description,
+                'description' => $spot->short_description ?: $spot->description,
+                'full_description' => $spot->description,
+                'aliases' => $spot->aliases ?? [],
                 'address' => $spot->address,
                 'latitude' => $spot->latitude,
                 'longitude' => $spot->longitude,
@@ -148,6 +167,12 @@ class MapController extends Controller
                 'is_verified' => true,
                 'is_owned' => false,
                 'is_featured' => (bool) $spot->is_featured,
+                'is_preapproved' => (bool) $spot->is_preapproved,
+                'is_bookable' => (bool) $spot->is_bookable,
+                'booking_enabled' => (bool) $spot->booking_enabled,
+                'booking_unavailable_reason_code' => $spot->booking_unavailable_reason_code,
+                'booking_unavailable_reason' => $spot->booking_unavailable_reason,
+                'booking_availability_updated_at' => $spot->booking_availability_updated_at?->toISOString(),
                 'view_count' => 0,
                 'created_at' => $spot->created_at?->toISOString(),
             ], $meta);
@@ -203,7 +228,7 @@ class MapController extends Controller
             'address' => $msme->address,
             'latitude' => $msme->latitude,
             'longitude' => $msme->longitude,
-            'images' => [],
+            'images' => $msme->images ?? [],
             'rating' => $msme->rating,
             'review_count' => $msme->review_count,
             'operating_hours' => $msme->business_hours,
@@ -252,7 +277,7 @@ class MapController extends Controller
     private function publicPartnerListings(): Collection
     {
         return TourismListing::where('is_active', true)
-            ->whereIn('status', ['active', 'approved'])
+            ->where('approval_status', 'approved')
             ->whereNotNull('latitude')->whereNotNull('longitude')
             ->get()->map(fn (TourismListing $listing) => $this->partnerLocation($listing, false));
     }
@@ -260,8 +285,6 @@ class MapController extends Controller
     private function ownedPartnerListings(string $userId): Collection
     {
         return TourismListing::where('owner_id', $userId)
-            ->where('is_active', true)
-            ->whereIn('status', ['active', 'approved'])
             ->whereNotNull('latitude')->whereNotNull('longitude')
             ->get()->map(fn (TourismListing $listing) => $this->partnerLocation($listing, true));
     }
@@ -290,8 +313,8 @@ class MapController extends Controller
             'review_count' => $listing->review_count,
             'operating_hours' => $listing->operating_hours,
             'contact' => $listing->contact_number,
-            'status' => $listing->status,
-            'is_verified' => in_array($listing->status, ['active', 'approved'], true),
+            'status' => $listing->approval_status,
+            'is_verified' => $listing->approval_status === 'approved',
             'is_owned' => $owned,
             'is_featured' => false,
             'view_count' => 0,

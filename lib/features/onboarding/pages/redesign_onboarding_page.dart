@@ -1215,8 +1215,9 @@ class _PageContent extends StatelessWidget {
                         horizontal: 16, vertical: 16),
                   ),
                   validator: (v) {
-                    if (v == null || v.trim().isEmpty)
+                    if (v == null || v.trim().isEmpty) {
                       return 'Please enter your email';
+                    }
                     if (!v.contains('@')) return 'Please enter a valid email';
                     return null;
                   },
@@ -1272,10 +1273,12 @@ class _PageContent extends StatelessWidget {
                         horizontal: 16, vertical: 16),
                   ),
                   validator: (v) {
-                    if (v == null || v.isEmpty)
+                    if (v == null || v.isEmpty) {
                       return 'Please enter your password';
-                    if (v.length < 6)
+                    }
+                    if (v.length < 6) {
                       return 'Password must be at least 6 characters';
+                    }
                     return null;
                   },
                   onFieldSubmitted: (_) => onSubmitLogin(),

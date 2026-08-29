@@ -20,63 +20,49 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
   static const double _sidebarWidth = 260.0;
 
   static final List<_PartnerNavItem> _navItems = [
-    _PartnerNavItem(
+    const _PartnerNavItem(
       id: 'dashboard',
       label: 'Dashboard',
       icon: Icons.dashboard_rounded,
       route: '/tourism-partner',
     ),
-    _PartnerNavItem(
+    const _PartnerNavItem(
       id: 'listings',
       label: 'My Listings',
       icon: Icons.store_rounded,
       route: '/tourism-partner/listings',
     ),
-    _PartnerNavItem(
+    const _PartnerNavItem(
       id: 'reservations',
       label: 'Reservations',
       icon: Icons.calendar_month_rounded,
       route: '/tourism-partner/reservations',
-      badgeCount: 5,
     ),
-    _PartnerNavItem(
+    const _PartnerNavItem(
       id: 'reviews',
       label: 'Reviews',
       icon: Icons.star_rate_rounded,
       route: '/tourism-partner/reviews',
     ),
-    _PartnerNavItem(
+    const _PartnerNavItem(
       id: 'notifications',
       label: 'Notifications',
       icon: Icons.notifications_rounded,
       route: '/tourism-partner/notifications',
-      badgeCount: 3,
     ),
-    _PartnerNavItem(
+    const _PartnerNavItem(
       id: 'analytics',
       label: 'Analytics',
       icon: Icons.analytics_rounded,
       route: '/tourism-partner/analytics',
     ),
-    _PartnerNavItem(
+    const _PartnerNavItem(
       id: 'profile',
       label: 'Profile',
       icon: Icons.person_rounded,
       route: '/tourism-partner/profile',
     ),
-    _PartnerNavItem(
-      id: 'settings',
-      label: 'Settings',
-      icon: Icons.settings_rounded,
-      route: '/tourism-partner/settings',
-    ),
-    _PartnerNavItem(
-      id: 'business',
-      label: 'Business Info',
-      icon: Icons.business_rounded,
-      route: '/tourism-partner/business',
-    ),
-    _PartnerNavItem(
+    const _PartnerNavItem(
       id: 'map',
       label: 'Smart Tubigon Map',
       icon: Icons.map_rounded,
@@ -126,7 +112,8 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
     );
   }
 
-  Widget _buildTopAppBar(BuildContext context, _PartnerNavItem activeItem, bool isDesktop) {
+  Widget _buildTopAppBar(
+      BuildContext context, _PartnerNavItem activeItem, bool isDesktop) {
     return Container(
       height: 72,
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -140,7 +127,8 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
         children: [
           if (!isDesktop)
             IconButton(
-              icon: const Icon(Icons.menu_rounded, color: PartnerTheme.textWhite),
+              icon:
+                  const Icon(Icons.menu_rounded, color: PartnerTheme.textWhite),
               onPressed: () => Scaffold.of(context).openDrawer(),
             ),
           Column(
@@ -151,14 +139,19 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
                 children: [
                   Text(
                     'Partner Portal',
-                    style: GoogleFonts.inter(fontSize: 11, color: PartnerTheme.textDisabled),
+                    style: GoogleFonts.inter(
+                        fontSize: 11, color: PartnerTheme.textDisabled),
                   ),
                   const SizedBox(width: 4),
-                  const Icon(Icons.chevron_right_rounded, size: 14, color: PartnerTheme.textDisabled),
+                  const Icon(Icons.chevron_right_rounded,
+                      size: 14, color: PartnerTheme.textDisabled),
                   const SizedBox(width: 4),
                   Text(
                     activeItem.label,
-                    style: GoogleFonts.inter(fontSize: 11, color: PartnerTheme.primaryOrange, fontWeight: FontWeight.w600),
+                    style: GoogleFonts.inter(
+                        fontSize: 11,
+                        color: PartnerTheme.primaryOrange,
+                        fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
@@ -188,14 +181,17 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.search_rounded, size: 18, color: PartnerTheme.textDisabled),
+                  const Icon(Icons.search_rounded,
+                      size: 18, color: PartnerTheme.textDisabled),
                   const SizedBox(width: 8),
                   Expanded(
                     child: TextField(
-                      style: GoogleFonts.inter(fontSize: 13, color: PartnerTheme.textWhite),
+                      style: GoogleFonts.inter(
+                          fontSize: 13, color: PartnerTheme.textWhite),
                       decoration: InputDecoration(
                         hintText: 'Search…',
-                        hintStyle: GoogleFonts.inter(fontSize: 13, color: PartnerTheme.textDisabled),
+                        hintStyle: GoogleFonts.inter(
+                            fontSize: 13, color: PartnerTheme.textDisabled),
                         border: InputBorder.none,
                         isDense: true,
                         contentPadding: EdgeInsets.zero,
@@ -210,10 +206,11 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
           // Notification Bell
           IconButton(
             onPressed: () => context.go('/tourism-partner/notifications'),
-            icon: Badge(
-              label: const Text('3'),
+            icon: const Badge(
+              label: Text('3'),
               backgroundColor: PartnerTheme.primaryOrange,
-              child: const Icon(Icons.notifications_outlined, color: PartnerTheme.textMuted),
+              child: Icon(Icons.notifications_outlined,
+                  color: PartnerTheme.textMuted),
             ),
           ),
         ],
@@ -253,7 +250,8 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
                           ),
                         ],
                       ),
-                      child: const Icon(Icons.location_on_rounded, color: Colors.white, size: 22),
+                      child: const Icon(Icons.location_on_rounded,
+                          color: Colors.white, size: 22),
                     ),
                     const SizedBox(width: 12),
                     Column(
@@ -287,7 +285,9 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
                   decoration: BoxDecoration(
                     color: PartnerTheme.primaryOrange.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: PartnerTheme.primaryOrange.withValues(alpha: 0.15)),
+                    border: Border.all(
+                        color:
+                            PartnerTheme.primaryOrange.withValues(alpha: 0.15)),
                   ),
                   child: Row(
                     children: [
@@ -296,7 +296,10 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
                         backgroundColor: PartnerTheme.primaryOrange,
                         child: Text(
                           (auth.name ?? 'E')[0].toUpperCase(),
-                          style: GoogleFonts.inter(fontWeight: FontWeight.w700, color: Colors.white, fontSize: 13),
+                          style: GoogleFonts.inter(
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                              fontSize: 13),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -306,18 +309,23 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
                           children: [
                             Text(
                               auth.name ?? 'Explorer',
-                              style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600, color: PartnerTheme.textWhite),
+                              style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: PartnerTheme.textWhite),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
                             Text(
                               'Business Partner',
-                              style: GoogleFonts.inter(fontSize: 11, color: PartnerTheme.textMuted),
+                              style: GoogleFonts.inter(
+                                  fontSize: 11, color: PartnerTheme.textMuted),
                             ),
                           ],
                         ),
                       ),
-                      const PartnerBadge(label: 'Active', type: PartnerBadgeType.green),
+                      const PartnerBadge(
+                          label: 'Active', type: PartnerBadgeType.green),
                     ],
                   ),
                 ),
@@ -365,18 +373,23 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
                   onTap: () => _showLogoutDialog(context),
                   borderRadius: BorderRadius.circular(10),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(10),
                       color: Colors.transparent,
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.logout_rounded, color: PartnerTheme.red, size: 20),
+                        const Icon(Icons.logout_rounded,
+                            color: PartnerTheme.red, size: 20),
                         const SizedBox(width: 12),
                         Text(
                           'Logout',
-                          style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600, color: PartnerTheme.red),
+                          style: GoogleFonts.inter(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: PartnerTheme.red),
                         ),
                       ],
                     ),
@@ -385,7 +398,8 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
                 const SizedBox(height: 12),
                 Text(
                   'Tubigon STIMS v2.0 • Partner',
-                  style: GoogleFonts.inter(fontSize: 10, color: PartnerTheme.textDisabled),
+                  style: GoogleFonts.inter(
+                      fontSize: 10, color: PartnerTheme.textDisabled),
                 ),
               ],
             ),
@@ -408,12 +422,16 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
               backgroundColor: PartnerTheme.primaryOrange,
               child: Text(
                 (auth.name ?? 'E')[0].toUpperCase(),
-                style: GoogleFonts.inter(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
+                style: GoogleFonts.inter(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white),
               ),
             ),
             accountName: Text(
               auth.name ?? 'Explorer',
-              style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.bold, color: Colors.white),
+              style: GoogleFonts.plusJakartaSans(
+                  fontWeight: FontWeight.bold, color: Colors.white),
             ),
             accountEmail: Text(
               auth.email ?? 'partner@tubigontourism.com',
@@ -430,18 +448,25 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
                 return ListTile(
                   leading: Icon(
                     item.icon,
-                    color: isSelected ? PartnerTheme.primaryOrange : PartnerTheme.textMuted,
+                    color: isSelected
+                        ? PartnerTheme.primaryOrange
+                        : PartnerTheme.textMuted,
                   ),
                   title: Text(
                     item.label,
                     style: GoogleFonts.inter(
-                      color: isSelected ? PartnerTheme.primaryOrange : PartnerTheme.textWhite,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      color: isSelected
+                          ? PartnerTheme.primaryOrange
+                          : PartnerTheme.textWhite,
+                      fontWeight:
+                          isSelected ? FontWeight.bold : FontWeight.normal,
                     ),
                   ),
                   selected: isSelected,
-                  selectedTileColor: PartnerTheme.primaryOrange.withValues(alpha: 0.1),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  selectedTileColor:
+                      PartnerTheme.primaryOrange.withValues(alpha: 0.1),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
                   onTap: () {
                     context.pop();
                     context.go(item.route);
@@ -453,7 +478,9 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
           const Divider(color: Color(0x1AFFFFFF)),
           ListTile(
             leading: const Icon(Icons.logout_rounded, color: PartnerTheme.red),
-            title: Text('Logout', style: GoogleFonts.inter(color: PartnerTheme.red, fontWeight: FontWeight.bold)),
+            title: Text('Logout',
+                style: GoogleFonts.inter(
+                    color: PartnerTheme.red, fontWeight: FontWeight.bold)),
             onTap: () {
               context.pop();
               _showLogoutDialog(context);
@@ -470,7 +497,9 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: PartnerTheme.cardDark,
-        title: Text('Confirm Logout', style: GoogleFonts.plusJakartaSans(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: Text('Confirm Logout',
+            style: GoogleFonts.plusJakartaSans(
+                color: Colors.white, fontWeight: FontWeight.bold)),
         content: Text(
           'Are you sure you want to log out of the Tourism Partner portal?',
           style: GoogleFonts.inter(color: PartnerTheme.textMuted),
@@ -478,7 +507,8 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: Text('Cancel', style: GoogleFonts.inter(color: PartnerTheme.textMuted)),
+            child: Text('Cancel',
+                style: GoogleFonts.inter(color: PartnerTheme.textMuted)),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -487,7 +517,9 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
               if (context.mounted) context.go('/onboarding?page=5&login=true');
             },
             style: ElevatedButton.styleFrom(backgroundColor: PartnerTheme.red),
-            child: Text('Logout', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: Text('Logout',
+                style: GoogleFonts.inter(
+                    color: Colors.white, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -500,14 +532,12 @@ class _PartnerNavItem {
   final String label;
   final IconData icon;
   final String route;
-  final int? badgeCount;
 
   const _PartnerNavItem({
     required this.id,
     required this.label,
     required this.icon,
     required this.route,
-    this.badgeCount,
   });
 }
 
@@ -533,17 +563,23 @@ class _SidebarTile extends StatelessWidget {
           duration: const Duration(milliseconds: 200),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: isSelected ? PartnerTheme.primaryOrange.withValues(alpha: 0.15) : Colors.transparent,
+            color: isSelected
+                ? PartnerTheme.primaryOrange.withValues(alpha: 0.15)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: isSelected ? PartnerTheme.primaryOrange.withValues(alpha: 0.25) : Colors.transparent,
+              color: isSelected
+                  ? PartnerTheme.primaryOrange.withValues(alpha: 0.25)
+                  : Colors.transparent,
             ),
           ),
           child: Row(
             children: [
               Icon(
                 item.icon,
-                color: isSelected ? PartnerTheme.primaryOrange : PartnerTheme.textMuted,
+                color: isSelected
+                    ? PartnerTheme.primaryOrange
+                    : PartnerTheme.textMuted,
                 size: 20,
               ),
               const SizedBox(width: 12),
@@ -552,27 +588,13 @@ class _SidebarTile extends StatelessWidget {
                   item.label,
                   style: GoogleFonts.inter(
                     fontSize: 13,
-                    color: isSelected ? PartnerTheme.primaryOrange : PartnerTheme.textMuted,
+                    color: isSelected
+                        ? PartnerTheme.primaryOrange
+                        : PartnerTheme.textMuted,
                     fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                   ),
                 ),
               ),
-              if (item.badgeCount != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: PartnerTheme.primaryOrange,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '${item.badgeCount}',
-                    style: GoogleFonts.inter(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
             ],
           ),
         ),

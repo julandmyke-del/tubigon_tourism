@@ -1,147 +1,160 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/theme/app_spacing.dart';
-import '../../../../core/theme/app_typography.dart';
+import '../../../map/providers/map_provider.dart';
+import '../../providers/lgu_providers.dart';
 
-class LguTourismMonitoringPage extends ConsumerWidget {
+class LguTourismMonitoringPage extends ConsumerStatefulWidget {
   const LguTourismMonitoringPage({super.key});
-
-  static const _navyDark = Color(0xFF0B132B);
-  static const _cardBg = Color(0xFF1C2541);
-  static const _accentOrange = Color(0xFFF97316);
-
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LguTourismMonitoringPage> createState() => _State();
+}
+
+class _State extends ConsumerState<LguTourismMonitoringPage> {
+  String _filter = 'submitted';
+  @override
+  Widget build(BuildContext context) {
+    final listings = ref
+        .watch(lguTourismListingsProvider(_filter == 'all' ? null : _filter));
     return Scaffold(
-      backgroundColor: _navyDark,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Real-Time Tourism Density & Influx',
-              style: AppTypography.headlineSmall.copyWith(
-                color: AppColors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const Text(
-              'Spatial distribution, port foot-traffic, and live destination occupancy',
-              style: TextStyle(color: AppColors.grey400, fontSize: 13),
-            ),
-            const SizedBox(height: AppSpacing.lg),
-
-            // Density Cards
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final isWide = constraints.maxWidth > 800;
-                return GridView.count(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: isWide ? 3 : 1,
-                  crossAxisSpacing: AppSpacing.md,
-                  mainAxisSpacing: AppSpacing.md,
-                  childAspectRatio: isWide ? 1.8 : 2.2,
-                  children: [
-                    _buildDensityCard('Tubigon Wharf Port', 'Foot Traffic: High', '5,100 visitors/day', Colors.redAccent, Icons.anchor_rounded),
-                    _buildDensityCard('Canigao Island Shore', 'Capacity: 82% Occupied', '1,240 active tourists', _accentOrange, Icons.beach_access_rounded),
-                    _buildDensityCard('Mangrove Eco Park', 'Capacity: 35% Occupied', '420 active tourists', AppColors.success, Icons.park_rounded),
-                  ],
-                );
-              },
-            ),
-            const SizedBox(height: AppSpacing.lg),
-
-            // Live Foot Traffic Table
-            Container(
-              padding: const EdgeInsets.all(AppSpacing.md),
-              decoration: BoxDecoration(
-                color: _cardBg,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.white.withValues(alpha: 0.08)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Live Spatial Density Monitor',
-                    style: AppTypography.titleMedium.copyWith(
-                      color: AppColors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
+      backgroundColor: const Color(0xFF0B132B),
+      body: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Partner Listing Review',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 25,
+                  fontWeight: FontWeight.bold)),
+          const Text('Municipal review of submitted tourism partner offerings.',
+              style: TextStyle(color: AppColors.grey400)),
+          const SizedBox(height: 12),
+          Wrap(spacing: 8, children: [
+            for (final value in const [
+              'all',
+              'submitted',
+              'approved',
+              'needs_changes',
+              'suspended'
+            ])
+              ChoiceChip(
+                  label: Text(value.replaceAll('_', ' ')),
+                  selected: _filter == value,
+                  onSelected: (_) => setState(() => _filter = value)),
+          ]),
+          const SizedBox(height: 12),
+          Expanded(
+              child: listings.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, _) => Center(
+                child: OutlinedButton(
+                    onPressed: () => ref.invalidate(lguTourismListingsProvider),
+                    child: Text('Retry: $error'))),
+            data: (items) => items.isEmpty
+                ? const Center(
+                    child: Text('No partner listings in this state.',
+                        style: TextStyle(color: AppColors.grey400)))
+                : ListView.separated(
+                    itemCount: items.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      final item = items[index];
+                      return ListTile(
+                        tileColor: const Color(0xFF1C2541),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
+                        leading: const Icon(Icons.tour_rounded,
+                            color: AppColors.warning),
+                        title: Text(
+                            item['listing_name']?.toString() ??
+                                'Tourism listing',
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold)),
+                        subtitle: Text(
+                            '${item['listing_type'] ?? 'service'} • ${item['address'] ?? 'No address'}\n${item['approval_status'] ?? 'draft'}',
+                            style: const TextStyle(color: AppColors.grey400)),
+                        isThreeLine: true,
+                        trailing: ElevatedButton(
+                            onPressed: () => _review(item),
+                            child: const Text('Review')),
+                      );
+                    },
                   ),
-                  const SizedBox(height: AppSpacing.sm),
-                  _buildMonitorRow('Canigao Island', 'Island Beach', '1,240', '82% Capacity', Colors.orange),
-                  _buildMonitorRow('Tubigon Public Market', 'Town Center', '3,820', '91% Capacity', Colors.redAccent),
-                  _buildMonitorRow('Bohol Heritage Shrine', 'Cultural District', '980', '45% Capacity', AppColors.success),
-                  _buildMonitorRow('Sipatan Falls', 'Nature Reserve', '680', '60% Capacity', Colors.blue),
-                ],
-              ),
-            ),
-          ],
-        ),
+          )),
+        ]),
       ),
     );
   }
 
-  Widget _buildDensityCard(String name, String status, String subtitle, Color color, IconData icon) {
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: _cardBg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Icon(icon, color: color, size: 26),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(color: color.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(8)),
-                child: Text(status, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
-          Text(name, style: const TextStyle(color: AppColors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-          Text(subtitle, style: const TextStyle(color: AppColors.grey400, fontSize: 12)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMonitorRow(String name, String zone, String count, String cap, Color badgeColor) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(name, style: const TextStyle(color: AppColors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-              Text('Zone: $zone', style: const TextStyle(color: AppColors.grey400, fontSize: 11)),
-            ],
-          ),
-          Row(
-            children: [
-              Text(count, style: const TextStyle(color: AppColors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-              const SizedBox(width: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(color: badgeColor.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(6)),
-                child: Text(cap, style: TextStyle(color: badgeColor, fontSize: 11, fontWeight: FontWeight.bold)),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
+  Future<void> _review(Map<String, dynamic> item) async {
+    String decision = 'approved';
+    final notes = TextEditingController();
+    final save = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+            builder: (context, setDialogState) => AlertDialog(
+                  title: Text('Review ${item['listing_name'] ?? 'listing'}'),
+                  content: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Text(
+                        '${item['description'] ?? ''}\n${item['latitude'] ?? '—'}, ${item['longitude'] ?? '—'}'),
+                    DropdownButtonFormField<String>(
+                        initialValue: decision,
+                        items: const [
+                          DropdownMenuItem(
+                              value: 'approved',
+                              child: Text('Approve and publish')),
+                          DropdownMenuItem(
+                              value: 'needs_changes',
+                              child: Text('Needs changes')),
+                          DropdownMenuItem(
+                              value: 'rejected', child: Text('Reject')),
+                          DropdownMenuItem(
+                              value: 'suspended', child: Text('Suspend')),
+                        ],
+                        onChanged: (value) =>
+                            setDialogState(() => decision = value ?? decision)),
+                    TextField(
+                        controller: notes,
+                        maxLines: 3,
+                        decoration:
+                            const InputDecoration(labelText: 'Review notes')),
+                  ]),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(dialogContext, false),
+                        child: const Text('Cancel')),
+                    ElevatedButton(
+                        onPressed: () => Navigator.pop(dialogContext, true),
+                        child: const Text('Save'))
+                  ],
+                )));
+    if (save != true) return;
+    if (decision != 'approved' && notes.text.trim().isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Notes are required for this decision.')));
+      }
+      return;
+    }
+    try {
+      await ref.read(lguRepositoryProvider).reviewTourismListing(
+          item['id'].toString(), decision,
+          notes: notes.text.trim().isEmpty ? null : notes.text.trim());
+      ref.invalidate(lguTourismListingsProvider);
+      ref.invalidate(lguDashboardStatsProvider);
+      ref.invalidate(mapMarkersProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            backgroundColor: AppColors.success,
+            content: Text('Listing review saved.')));
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            backgroundColor: AppColors.error, content: Text(error.toString())));
+      }
+    }
   }
 }

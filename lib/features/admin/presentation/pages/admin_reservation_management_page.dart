@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 import '../../../../core/theme/admin_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
@@ -10,16 +12,20 @@ class AdminReservationManagementPage extends ConsumerStatefulWidget {
   const AdminReservationManagementPage({super.key});
 
   @override
-  ConsumerState<AdminReservationManagementPage> createState() => _AdminReservationManagementPageState();
+  ConsumerState<AdminReservationManagementPage> createState() =>
+      _AdminReservationManagementPageState();
 }
 
-class _AdminReservationManagementPageState extends ConsumerState<AdminReservationManagementPage> {
+class _AdminReservationManagementPageState
+    extends ConsumerState<AdminReservationManagementPage> {
   String _searchQuery = '';
   String _statusFilter = 'All';
 
   @override
   Widget build(BuildContext context) {
     final reservationsAsync = ref.watch(adminReservationsProvider);
+    final statusesAsync = ref.watch(adminReservationStatusesProvider);
+    final statuses = statusesAsync.value ?? const <Map<String, dynamic>>[];
 
     return Scaffold(
       backgroundColor: AdminColors.navy950,
@@ -46,7 +52,8 @@ class _AdminReservationManagementPageState extends ConsumerState<AdminReservatio
                     const SizedBox(height: 4),
                     Text(
                       'Oversee tour bookings, resort stays, and municipal spot reservations.',
-                      style: AppTypography.bodyMedium.copyWith(color: AdminColors.textSecondary),
+                      style: AppTypography.bodyMedium
+                          .copyWith(color: AdminColors.textSecondary),
                     ),
                   ],
                 ),
@@ -56,7 +63,8 @@ class _AdminReservationManagementPageState extends ConsumerState<AdminReservatio
                     side: const BorderSide(color: AdminColors.cardBorder),
                   ),
                   onPressed: () => ref.invalidate(adminReservationsProvider),
-                  icon: const Icon(Icons.refresh_rounded, color: AdminColors.orange),
+                  icon: const Icon(Icons.refresh_rounded,
+                      color: AdminColors.orange),
                 ),
               ],
             ),
@@ -70,17 +78,31 @@ class _AdminReservationManagementPageState extends ConsumerState<AdminReservatio
                 children: [
                   Expanded(
                     child: TextField(
-                      style: const TextStyle(color: AdminColors.textPrimary, fontSize: 14),
+                      style: const TextStyle(
+                          color: AdminColors.textPrimary, fontSize: 14),
                       decoration: InputDecoration(
-                        hintText: 'Search by reservation ID, tourist name, or destination...',
-                        hintStyle: const TextStyle(color: AdminColors.textMuted),
-                        prefixIcon: const Icon(Icons.search_rounded, color: AdminColors.textSecondary, size: 20),
+                        hintText:
+                            'Search by reservation ID, tourist name, or destination...',
+                        hintStyle:
+                            const TextStyle(color: AdminColors.textMuted),
+                        prefixIcon: const Icon(Icons.search_rounded,
+                            color: AdminColors.textSecondary, size: 20),
                         filled: true,
                         fillColor: AdminColors.navy900,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AdminColors.cardBorder)),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AdminColors.cardBorder)),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AdminColors.borderActive)),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 10),
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(
+                                color: AdminColors.cardBorder)),
+                        enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(
+                                color: AdminColors.cardBorder)),
+                        focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(
+                                color: AdminColors.borderActive)),
                       ),
                       onChanged: (val) => setState(() => _searchQuery = val),
                     ),
@@ -97,12 +119,21 @@ class _AdminReservationManagementPageState extends ConsumerState<AdminReservatio
                       child: DropdownButton<String>(
                         dropdownColor: AdminColors.navy900,
                         value: _statusFilter,
-                        icon: const Icon(Icons.filter_list_rounded, color: AdminColors.textSecondary),
-                        style: const TextStyle(color: AdminColors.textPrimary, fontSize: 14),
-                        items: ['All', 'Confirmed', 'Pending', 'Cancelled']
-                            .map((s) => DropdownMenuItem(value: s, child: Text(s == 'All' ? 'All Statuses' : s)))
-                            .toList(),
-                        onChanged: (val) => setState(() => _statusFilter = val!),
+                        icon: const Icon(Icons.filter_list_rounded,
+                            color: AdminColors.textSecondary),
+                        style: const TextStyle(
+                            color: AdminColors.textPrimary, fontSize: 14),
+                        items: [
+                          const DropdownMenuItem(
+                              value: 'All', child: Text('All Statuses')),
+                          ...statuses.map((status) {
+                            final name = (status['name'] ?? '').toString();
+                            return DropdownMenuItem(
+                                value: name, child: Text(_label(name)));
+                          }),
+                        ],
+                        onChanged: (val) =>
+                            setState(() => _statusFilter = val!),
                       ),
                     ),
                   ),
@@ -119,20 +150,41 @@ class _AdminReservationManagementPageState extends ConsumerState<AdminReservatio
                 child: reservationsAsync.when(
                   data: (reservations) {
                     final filtered = reservations.where((r) {
-                      final id = (r['id'] ?? r['reference_no'] ?? '').toString().toLowerCase();
-                      final tourist = (r['user_name'] ?? r['tourist_name'] ?? r['tourist'] ?? '').toString().toLowerCase();
-                      final spot = (r['spot_name'] ?? r['destination'] ?? '').toString().toLowerCase();
-                      final status = (r['status'] ?? 'Pending').toString();
+                      final id = (r['public_reference'] ??
+                              r['id'] ??
+                              r['reference_no'] ??
+                              '')
+                          .toString()
+                          .toLowerCase();
+                      final user = r['user'] is Map
+                          ? Map<String, dynamic>.from(r['user'])
+                          : const <String, dynamic>{};
+                      final statusData = r['status'] is Map
+                          ? Map<String, dynamic>.from(r['status'])
+                          : const <String, dynamic>{};
+                      final tourist =
+                          (user['name'] ?? '').toString().toLowerCase();
+                      final spot =
+                          (r['reservable_name'] ?? r['reservable_type'] ?? '')
+                              .toString()
+                              .toLowerCase();
+                      final status = (statusData['name'] ?? '').toString();
 
-                      final matchesQuery = id.contains(_searchQuery.toLowerCase()) ||
-                          tourist.contains(_searchQuery.toLowerCase()) ||
-                          spot.contains(_searchQuery.toLowerCase());
-                      final matchesStatus = _statusFilter == 'All' || status.toLowerCase() == _statusFilter.toLowerCase();
+                      final matchesQuery =
+                          id.contains(_searchQuery.toLowerCase()) ||
+                              tourist.contains(_searchQuery.toLowerCase()) ||
+                              spot.contains(_searchQuery.toLowerCase());
+                      final matchesStatus = _statusFilter == 'All' ||
+                          status.toLowerCase() == _statusFilter.toLowerCase();
                       return matchesQuery && matchesStatus;
                     }).toList();
 
                     if (filtered.isEmpty) {
-                      return const Center(child: Text('No reservations match the search criteria.', style: TextStyle(color: AdminColors.textSecondary)));
+                      return const Center(
+                          child: Text(
+                              'No reservations match the search criteria.',
+                              style:
+                                  TextStyle(color: AdminColors.textSecondary)));
                     }
 
                     return SingleChildScrollView(
@@ -140,52 +192,175 @@ class _AdminReservationManagementPageState extends ConsumerState<AdminReservatio
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: DataTable(
-                          headingRowColor: WidgetStateProperty.all(AdminColors.navy900),
+                          headingRowColor:
+                              WidgetStateProperty.all(AdminColors.navy900),
                           horizontalMargin: 20,
                           columnSpacing: 24,
                           columns: const [
-                            DataColumn(label: Text('RESERVATION ID', style: TextStyle(color: AdminColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 12))),
-                            DataColumn(label: Text('TOURIST', style: TextStyle(color: AdminColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 12))),
-                            DataColumn(label: Text('DESTINATION', style: TextStyle(color: AdminColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 12))),
-                            DataColumn(label: Text('DATE', style: TextStyle(color: AdminColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 12))),
-                            DataColumn(label: Text('PAX', style: TextStyle(color: AdminColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 12))),
-                            DataColumn(label: Text('AMOUNT', style: TextStyle(color: AdminColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 12))),
-                            DataColumn(label: Text('STATUS', style: TextStyle(color: AdminColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 12))),
-                            DataColumn(label: Text('ACTION', style: TextStyle(color: AdminColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 12))),
+                            DataColumn(
+                                label: Text('RESERVATION ID',
+                                    style: TextStyle(
+                                        color: AdminColors.textSecondary,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12))),
+                            DataColumn(
+                                label: Text('TOURIST',
+                                    style: TextStyle(
+                                        color: AdminColors.textSecondary,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12))),
+                            DataColumn(
+                                label: Text('DESTINATION',
+                                    style: TextStyle(
+                                        color: AdminColors.textSecondary,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12))),
+                            DataColumn(
+                                label: Text('DATE',
+                                    style: TextStyle(
+                                        color: AdminColors.textSecondary,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12))),
+                            DataColumn(
+                                label: Text('PAX',
+                                    style: TextStyle(
+                                        color: AdminColors.textSecondary,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12))),
+                            DataColumn(
+                                label: Text('AMOUNT',
+                                    style: TextStyle(
+                                        color: AdminColors.textSecondary,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12))),
+                            DataColumn(
+                                label: Text('STATUS',
+                                    style: TextStyle(
+                                        color: AdminColors.textSecondary,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12))),
+                            DataColumn(
+                                label: Text('ACTION',
+                                    style: TextStyle(
+                                        color: AdminColors.textSecondary,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12))),
                           ],
                           rows: filtered.map((r) {
-                            final resId = r['id']?.toString() ?? r['uuid']?.toString() ?? '';
-                            final code = (r['reference_no'] ?? 'RES-${resId.substring(0, resId.length > 4 ? 4 : resId.length)}').toString();
-                            final tourist = (r['user_name'] ?? r['tourist_name'] ?? r['tourist'] ?? 'Tourist').toString();
-                            final spot = (r['spot_name'] ?? r['destination'] ?? 'Spot Booking').toString();
-                            final date = (r['reservation_date'] ?? r['date'] ?? '2026-08-05').toString();
-                            final pax = (r['number_of_guests'] ?? r['pax'] ?? '1').toString();
-                            final amount = (r['total_price'] ?? r['amount'] ?? '2,400').toString();
-                            final status = (r['status'] ?? 'Pending').toString();
+                            final resId = r['id']?.toString() ??
+                                r['uuid']?.toString() ??
+                                '';
+                            final code = (r['public_reference'] ??
+                                    r['reference_no'] ??
+                                    'RES-${resId.substring(0, resId.length > 4 ? 4 : resId.length)}')
+                                .toString();
+                            final user = r['user'] is Map
+                                ? Map<String, dynamic>.from(r['user'])
+                                : const <String, dynamic>{};
+                            final statusData = r['status'] is Map
+                                ? Map<String, dynamic>.from(r['status'])
+                                : const <String, dynamic>{};
+                            final tourist =
+                                (user['name'] ?? 'Unknown user').toString();
+                            final spot = (r['reservable_name'] ??
+                                    r['reservable_type'] ??
+                                    'Unavailable')
+                                .toString();
+                            final rawDate = DateTime.tryParse(
+                                (r['reservation_date'] ?? '').toString());
+                            final date = rawDate == null
+                                ? '—'
+                                : DateFormat('MMM d, yyyy')
+                                    .format(rawDate.toLocal());
+                            final pax = (r['guests'] ?? 0).toString();
+                            final amountValue =
+                                (r['total_amount'] as num?)?.toDouble() ?? 0;
+                            final amount =
+                                NumberFormat('#,##0.00').format(amountValue);
+                            final hasDisplayedFee =
+                                r['reservable_type']?.toString() != 'spot' ||
+                                    r['fee_configured'] == true;
+                            final status =
+                                (statusData['name'] ?? 'unknown').toString();
+                            final allowedTransitions =
+                                (r['allowed_transitions'] as List? ?? const [])
+                                    .map((item) => item.toString())
+                                    .toSet();
 
                             return DataRow(
                               cells: [
-                                DataCell(Text(code, style: const TextStyle(color: AdminColors.orange, fontWeight: FontWeight.bold, fontSize: 12))),
-                                DataCell(Text(tourist, style: const TextStyle(color: AdminColors.textPrimary, fontWeight: FontWeight.w600, fontSize: 13))),
-                                DataCell(Text(spot, style: const TextStyle(color: AdminColors.textSecondary, fontSize: 13))),
-                                DataCell(Text(date, style: const TextStyle(color: AdminColors.textSecondary, fontSize: 12))),
-                                DataCell(Text('$pax pax', style: const TextStyle(color: AdminColors.textPrimary, fontSize: 13))),
-                                DataCell(Text('₱$amount', style: const TextStyle(color: AdminColors.success, fontWeight: FontWeight.bold, fontSize: 13))),
+                                DataCell(
+                                  Text(code,
+                                      style: const TextStyle(
+                                          color: AdminColors.orange,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12)),
+                                  onTap: resId.isEmpty
+                                      ? null
+                                      : () => context
+                                          .push('/admin/reservations/$resId'),
+                                ),
+                                DataCell(Text(tourist,
+                                    style: const TextStyle(
+                                        color: AdminColors.textPrimary,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 13))),
+                                DataCell(Text(spot,
+                                    style: const TextStyle(
+                                        color: AdminColors.textSecondary,
+                                        fontSize: 13))),
+                                DataCell(Text(date,
+                                    style: const TextStyle(
+                                        color: AdminColors.textSecondary,
+                                        fontSize: 12))),
+                                DataCell(Text('$pax pax',
+                                    style: const TextStyle(
+                                        color: AdminColors.textPrimary,
+                                        fontSize: 13))),
+                                DataCell(Text(
+                                    hasDisplayedFee ? '₱$amount' : 'Not listed',
+                                    style: const TextStyle(
+                                        color: AdminColors.success,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13))),
                                 DataCell(_StatusBadge(status: status)),
                                 DataCell(
                                   PopupMenuButton<String>(
-                                    icon: const Icon(Icons.more_vert_rounded, color: AdminColors.textSecondary, size: 18),
+                                    enabled: allowedTransitions.isNotEmpty,
+                                    icon: const Icon(Icons.more_vert_rounded,
+                                        color: AdminColors.textSecondary,
+                                        size: 18),
                                     color: AdminColors.navy900,
-                                    onSelected: (newStatus) async {
-                                      final repo = ref.read(adminRepositoryProvider);
-                                      await repo.updateReservationStatus(resId, newStatus);
-                                      ref.invalidate(adminReservationsProvider);
+                                    onSelected: (statusId) async {
+                                      try {
+                                        await ref
+                                            .read(adminRepositoryProvider)
+                                            .updateReservationStatus(
+                                                resId, statusId);
+                                        ref.invalidate(
+                                            adminReservationsProvider);
+                                        _feedback(
+                                            'Reservation status updated.');
+                                      } catch (_) {
+                                        _feedback(
+                                            'Unable to update this reservation.',
+                                            error: true);
+                                      }
                                     },
-                                    itemBuilder: (ctx) => [
-                                      const PopupMenuItem(value: 'Confirmed', child: Text('Confirm Booking', style: TextStyle(color: AdminColors.success))),
-                                      const PopupMenuItem(value: 'Pending', child: Text('Set Pending', style: TextStyle(color: AdminColors.warning))),
-                                      const PopupMenuItem(value: 'Cancelled', child: Text('Cancel Booking', style: TextStyle(color: AdminColors.danger))),
-                                    ],
+                                    itemBuilder: (ctx) => statuses
+                                        .where((item) => allowedTransitions
+                                            .contains(item['name']?.toString()))
+                                        .map((item) {
+                                      final id = (item['id'] ?? '').toString();
+                                      final name =
+                                          (item['name'] ?? '').toString();
+                                      return PopupMenuItem(
+                                          value: id,
+                                          child: Text(_label(name),
+                                              style: const TextStyle(
+                                                  color: AdminColors
+                                                      .textPrimary)));
+                                    }).toList(),
                                   ),
                                 ),
                               ],
@@ -195,8 +370,13 @@ class _AdminReservationManagementPageState extends ConsumerState<AdminReservatio
                       ),
                     );
                   },
-                  loading: () => const Center(child: CircularProgressIndicator(color: AdminColors.orange)),
-                  error: (err, _) => Center(child: Text('Error: $err', style: const TextStyle(color: AdminColors.danger))),
+                  loading: () => const Center(
+                      child:
+                          CircularProgressIndicator(color: AdminColors.orange)),
+                  error: (err, _) => const Center(
+                      child: Text(
+                          'Unable to load reservations. Use Refresh to retry.',
+                          style: TextStyle(color: AdminColors.danger))),
                 ),
               ),
             ),
@@ -204,6 +384,20 @@ class _AdminReservationManagementPageState extends ConsumerState<AdminReservatio
         ),
       ),
     );
+  }
+
+  static String _label(String value) => value
+      .split('_')
+      .where((part) => part.isNotEmpty)
+      .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+      .join(' ');
+
+  void _feedback(String message, {bool error = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message),
+      backgroundColor: error ? AdminColors.danger : null,
+    ));
   }
 }
 
@@ -227,7 +421,8 @@ class _StatusBadge extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
+      decoration:
+          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
       child: Text(
         status.toUpperCase(),
         style: TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.bold),

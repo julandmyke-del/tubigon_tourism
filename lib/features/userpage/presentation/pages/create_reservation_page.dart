@@ -2,15 +2,32 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../reservations/repositories/reservation_repository.dart';
-import '../../../tourist_spots/repositories/tourist_spot_repository.dart';
 import '../../../../core/utils/auth_action_guard.dart';
 import '../../../authentication/auth_provider.dart';
+import '../../../itinerary/presentation/itinerary_add_sheet.dart';
+import '../../../itinerary/repositories/itinerary_repository.dart';
+import '../../../map/providers/map_provider.dart';
+import '../../../notifications/repositories/notification_repository.dart';
+import '../../../reservations/models/reservation.dart';
+import '../../../reservations/repositories/reservation_repository.dart';
+import '../../../tourist_spots/models/tourist_spot.dart';
+import '../../../tourist_spots/repositories/tourist_spot_repository.dart';
 
 class CreateReservationPage extends ConsumerStatefulWidget {
-  const CreateReservationPage({super.key, this.initialSpotUuid});
+  const CreateReservationPage({
+    super.key,
+    this.initialSpotUuid,
+    this.initialReservableType = 'spot',
+    this.initialReservableId,
+    this.initialName,
+    this.initialPrice,
+  });
 
   final String? initialSpotUuid;
+  final String initialReservableType;
+  final String? initialReservableId;
+  final String? initialName;
+  final double? initialPrice;
 
   @override
   ConsumerState<CreateReservationPage> createState() =>
@@ -20,46 +37,42 @@ class CreateReservationPage extends ConsumerStatefulWidget {
 class _CreateReservationPageState extends ConsumerState<CreateReservationPage> {
   DateTime _selectedDate = DateTime.now().add(const Duration(days: 1));
   TimeOfDay _selectedTime = const TimeOfDay(hour: 9, minute: 0);
-  int _guests = 2;
-  double _pricePerGuest = 150.0;
-  final _notesCtrl = TextEditingController();
-  bool _isSubmitting = false;
+  String? _selectedSlot;
   String? _selectedSpotUuid;
+  int _guests = 1;
+  bool _isSubmitting = false;
+  final _notesController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _selectedSpotUuid = widget.initialSpotUuid;
+    _selectedSpotUuid = widget.initialReservableId ?? widget.initialSpotUuid;
   }
 
   @override
   void dispose() {
-    _notesCtrl.dispose();
+    _notesController.dispose();
     super.dispose();
   }
 
-  Future<void> _pickDate() async {
+  String get _dateValue =>
+      '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
+
+  Future<void> _pickDate(TouristSpot? spot) async {
+    final maximum = DateTime.now().add(
+      Duration(days: spot?.advanceBookingDays ?? 365),
+    );
     final picked = await showDatePicker(
       context: context,
-      initialDate: _selectedDate,
+      initialDate: _selectedDate.isAfter(maximum) ? maximum : _selectedDate,
       firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-      builder: (context, child) {
-        return Theme(
-          data: ThemeData.dark().copyWith(
-            colorScheme: const ColorScheme.dark(
-              primary: Color(0xFFF59E0B),
-              onPrimary: Colors.black,
-              surface: Color(0xFF0F172A),
-              onSurface: Colors.white,
-            ),
-          ),
-          child: child!,
-        );
-      },
+      lastDate: maximum,
     );
-    if (picked != null) {
-      setState(() => _selectedDate = picked);
+    if (picked != null && mounted) {
+      setState(() {
+        _selectedDate = picked;
+        _selectedSlot = null;
+      });
     }
   }
 
@@ -67,92 +80,159 @@ class _CreateReservationPageState extends ConsumerState<CreateReservationPage> {
     final picked = await showTimePicker(
       context: context,
       initialTime: _selectedTime,
-      builder: (context, child) {
-        return Theme(
-          data: ThemeData.dark().copyWith(
-            colorScheme: const ColorScheme.dark(
-              primary: Color(0xFFF59E0B),
-              onPrimary: Colors.black,
-              surface: Color(0xFF0F172A),
-              onSurface: Colors.white,
-            ),
-          ),
-          child: child!,
-        );
-      },
     );
-    if (picked != null) {
-      setState(() => _selectedTime = picked);
-    }
+    if (picked != null && mounted) setState(() => _selectedTime = picked);
   }
 
-  Future<void> _submitReservation() async {
-    if (_selectedSpotUuid == null || _selectedSpotUuid!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Select a valid destination.')),
-      );
-      return;
+  Future<void> _submit(TouristSpot? spot) async {
+    final targetId = _selectedSpotUuid;
+    if (targetId == null || targetId.isEmpty) return;
+    if (widget.initialReservableType == 'spot') {
+      if (spot == null || !spot.canAcceptBookings) {
+        _message(spot == null
+            ? 'Reservations are not enabled for this destination.'
+            : 'Booking is currently unavailable. Reason: ${spot.bookingUnavailableLabel}${spot.bookingUnavailableReason?.trim().isNotEmpty == true ? ' — ${spot.bookingUnavailableReason}' : ''}');
+        return;
+      }
+      if (spot.maxGuestsPerReservation != null &&
+          _guests > spot.maxGuestsPerReservation!) {
+        _message('The maximum is ${spot.maxGuestsPerReservation} guests.');
+        return;
+      }
+      if (spot.bookingMode == 'date_time_slot' && _selectedSlot == null) {
+        _message('Select a configured time slot.');
+        return;
+      }
     }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: const Color(0xFF0F172A),
-        title: const Text('Confirm Reservation',
-            style: TextStyle(color: Colors.white)),
+        title: const Text('Submit reservation?'),
         content: Text(
-          'Book for $_guests guest(s) on ${_selectedDate.month}/${_selectedDate.day}/${_selectedDate.year} at ${_selectedTime.format(context)}?',
-          style: const TextStyle(color: Color(0xFFCBD5E1)),
+          'Request $_guests guest(s) for $_dateValue${_displayTime(spot) == null ? '' : ' at ${_displayTime(spot)}'}? Laravel will verify availability before saving.',
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Review')),
-          ElevatedButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Confirm')),
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Review'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Submit'),
+          ),
         ],
       ),
     );
     if (confirmed != true) return;
+
     setState(() => _isSubmitting = true);
     try {
-      final dateStr =
-          "${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}";
-      final timeStr =
-          "${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}";
-
-      final synced =
+      final reservation =
           await ref.read(reservationRepositoryProvider).createReservation(
-                reservableType: 'spot',
-                reservableId: _selectedSpotUuid ?? 'default-spot-uuid',
-                date: dateStr,
-                startTime: timeStr,
+                reservableType: widget.initialReservableType,
+                reservableId: targetId,
+                date: _dateValue,
+                startTime: _serverTime(spot),
                 guests: _guests,
-                pricePerGuest: _pricePerGuest,
-                notes: _notesCtrl.text.trim(),
+                notes: _notesController.text.trim().isEmpty
+                    ? null
+                    : _notesController.text.trim(),
               );
-
       ref.invalidate(reservationsListProvider);
-
+      ref.invalidate(touristNotificationsProvider);
+      ref.invalidate(touristUnreadCountProvider);
+      ref.invalidate(touristSpotsListProvider);
+      ref.invalidate(bookableTouristSpotsProvider);
+      ref.invalidate(mapMarkersProvider);
+      ref.invalidate(itinerariesProvider);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        backgroundColor:
-            synced ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
-        content: Text(synced
-            ? 'Reservation created successfully!'
-            : 'You are offline. The reservation is saved and pending synchronization.'),
-      ));
-      context.pop();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
-        ),
-      );
+      await _showSuccess(reservation, spot);
+    } catch (error) {
+      if (mounted) {
+        _message(error.toString().replaceFirst('Exception: ', ''));
+      }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
+  }
+
+  String? _serverTime(TouristSpot? spot) {
+    if (widget.initialReservableType == 'spot') {
+      return spot?.bookingMode == 'date_time_slot' ? _selectedSlot : null;
+    }
+    return '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}';
+  }
+
+  String? _displayTime(TouristSpot? spot) => _serverTime(spot);
+
+  Future<void> _showSuccess(Reservation reservation, TouristSpot? spot) async {
+    final action = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.check_circle_rounded,
+            color: Color(0xFF10B981), size: 44),
+        title: const Text('Reservation submitted successfully.'),
+        content: Text(
+          '${reservation.publicReference.isEmpty ? reservation.id : reservation.publicReference}\n${reservation.spotName}\n$_dateValue\nStatus: Pending',
+        ),
+        actions: [
+          if (spot != null && spot.latitude != 0 && spot.longitude != 0)
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, 'map'),
+              child: const Text('View on Map'),
+            ),
+          if (spot != null)
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, 'itinerary'),
+              child: const Text('Add to Itinerary'),
+            ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, 'reservation'),
+            child: const Text('View Reservation'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (action == 'map' && spot != null) {
+      context.go(
+          '/map?marker=${Uri.encodeQueryComponent('tourist_spot:${spot.uuid}')}');
+    } else if (action == 'itinerary' && spot != null) {
+      await showAddToItinerarySheet(
+        context,
+        ref,
+        _markerFor(spot),
+        reservationId: reservation.id,
+      );
+      if (mounted) context.go('/reservations/${reservation.id}');
+    } else {
+      context.go('/reservations/${reservation.id}');
+    }
+  }
+
+  MapMarker _markerFor(TouristSpot spot) => MapMarker(
+        id: 'tourist_spot:${spot.uuid}',
+        sourceId: spot.uuid,
+        sourceIntegerId: spot.id,
+        name: spot.name,
+        description: spot.description,
+        address: spot.address,
+        latitude: spot.latitude,
+        longitude: spot.longitude,
+        category: MapMarkerCategory.touristSpot,
+        categoryName: spot.categoryName,
+        images: spot.images,
+        isFeatured: spot.isFeatured,
+        isBookable: spot.isBookable,
+        bookingEnabled: spot.bookingEnabled,
+        bookingUnavailableReasonCode: spot.bookingUnavailableReasonCode,
+        bookingUnavailableReason: spot.bookingUnavailableReason,
+      );
+
+  void _message(String value) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(value)));
   }
 
   @override
@@ -161,346 +241,272 @@ class _CreateReservationPageState extends ConsumerState<CreateReservationPage> {
     if (!auth.isLoggedIn || auth.userId == null) {
       return signedInRequiredPage(context, ref, title: 'New Booking');
     }
-    final spotsAsync = ref.watch(touristSpotsListProvider);
-    final totalCost = _guests * _pricePerGuest;
-
-    return Scaffold(
-      backgroundColor: const Color(0xFF080F1A),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0F172A),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-          onPressed: () => context.pop(),
-        ),
-        title: const Text(
-          'Create Reservation',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-        ),
+    final AsyncValue<List<TouristSpot>> spotsAsync =
+        widget.initialReservableType == 'spot'
+            ? ref.watch(bookableTouristSpotsProvider)
+            : const AsyncData([]);
+    return spotsAsync.when(
+      loading: () => const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Destination Selector
-            const Text(
-              'Select Destination',
-              style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 8),
-            spotsAsync.when(
-              loading: () => Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0F172A),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: const Text('Loading spots…',
-                    style: TextStyle(color: Colors.white54)),
-              ),
-              error: (_, __) => Container(),
-              data: (spots) {
-                if (spots.isNotEmpty && _selectedSpotUuid == null) {
-                  _selectedSpotUuid = spots.first.uuid;
-                  _pricePerGuest = spots.first.entranceFee > 0
-                      ? spots.first.entranceFee
-                      : 150.0;
-                }
-                return Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0F172A),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFF1E293B)),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _selectedSpotUuid,
-                      dropdownColor: const Color(0xFF0F172A),
-                      isExpanded: true,
-                      icon: const Icon(Icons.keyboard_arrow_down_rounded,
-                          color: Color(0xFFF59E0B)),
-                      items: spots.map((spot) {
-                        return DropdownMenuItem<String>(
-                          value: spot.uuid,
-                          child: Text(
-                            spot.name,
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600),
-                          ),
-                        );
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          final spot = spots.firstWhere((s) => s.uuid == val);
-                          setState(() {
-                            _selectedSpotUuid = val;
-                            _pricePerGuest =
-                                spot.entranceFee > 0 ? spot.entranceFee : 150.0;
-                          });
-                        }
-                      },
-                    ),
-                  ),
-                );
-              },
-            ),
-
-            const SizedBox(height: 20),
-
-            // Date & Time Row
-            Row(
+      error: (error, _) => Scaffold(
+        appBar: AppBar(title: const Text('New Booking')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Date',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 8),
-                      GestureDetector(
-                        onTap: _pickDate,
-                        child: Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF0F172A),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: const Color(0xFF1E293B)),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.calendar_month_rounded,
-                                  color: Color(0xFFF59E0B), size: 18),
-                              const SizedBox(width: 10),
-                              Text(
-                                "${_selectedDate.month}/${_selectedDate.day}/${_selectedDate.year}",
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                const Text(
+                  'Booking destinations could not be loaded. Check your connection and try again.',
+                  textAlign: TextAlign.center,
                 ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Time',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 8),
-                      GestureDetector(
-                        onTap: _pickTime,
-                        child: Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF0F172A),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: const Color(0xFF1E293B)),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.access_time_rounded,
-                                  color: Color(0xFF38BDF8), size: 18),
-                              const SizedBox(width: 10),
-                              Text(
-                                _selectedTime.format(context),
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: () => ref.invalidate(bookableTouristSpotsProvider),
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Retry'),
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+      data: (spots) {
+        final bookable = spots;
+        TouristSpot? selectedSpot;
+        if (widget.initialReservableType == 'spot' &&
+            _selectedSpotUuid != null) {
+          for (final spot in spots) {
+            if (spot.uuid == _selectedSpotUuid) selectedSpot = spot;
+          }
+        }
+        return _buildForm(bookable, selectedSpot);
+      },
+    );
+  }
 
-            const SizedBox(height: 20),
-
-            // Number of Guests Counter
-            const Text('Number of Guests',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0F172A),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF1E293B)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.group_rounded,
-                      color: Color(0xFF34D399), size: 22),
-                  const SizedBox(width: 12),
-                  const Text('Guests',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600)),
-                  const Spacer(),
-                  IconButton(
-                    icon: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(
-                          color: Color(0xFF1E293B), shape: BoxShape.circle),
-                      child: const Icon(Icons.remove_rounded,
-                          color: Colors.white, size: 18),
-                    ),
-                    onPressed: () {
-                      if (_guests > 1) setState(() => _guests--);
-                    },
-                  ),
-                  Text('$_guests',
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold)),
-                  IconButton(
-                    icon: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(
-                          color: Color(0xFF1E293B), shape: BoxShape.circle),
-                      child: const Icon(Icons.add_rounded,
-                          color: Colors.white, size: 18),
-                    ),
-                    onPressed: () => setState(() => _guests++),
-                  ),
-                ],
-              ),
+  Widget _buildForm(List<TouristSpot> bookable, TouristSpot? spot) {
+    final isSpot = widget.initialReservableType == 'spot';
+    final availability = isSpot && spot?.canAcceptBookings == true
+        ? ref.watch(touristSpotAvailabilityProvider(
+            (spotId: spot!.uuid, date: _dateValue)))
+        : null;
+    final availabilityData = availability?.valueOrNull;
+    final slotOptions =
+        (availabilityData?['slots'] as List<dynamic>? ?? const [])
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .where((item) => item['available'] == true)
+            .toList(growable: false);
+    final serverAvailable = !isSpot ||
+        (availabilityData != null && availabilityData['available'] == true);
+    final fee = isSpot ? spot?.reservationFee : widget.initialPrice;
+    final fixedName = isSpot ? spot?.name : widget.initialName;
+    final unavailable = isSpot &&
+        _selectedSpotUuid != null &&
+        (spot == null || !spot.canAcceptBookings);
+    final guestLimit = spot?.maxGuestsPerReservation ?? 100;
+    return Scaffold(
+      backgroundColor: const Color(0xFF080F1A),
+      appBar: AppBar(title: const Text('New Booking')),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          const Text('Destination', style: _labelStyle),
+          const SizedBox(height: 8),
+          if (_selectedSpotUuid != null || !isSpot)
+            _panel(Text(fixedName ?? 'Selected destination',
+                style: const TextStyle(color: Colors.white)))
+          else if (bookable.isEmpty)
+            _panel(const Text(
+                'Reservations are not currently offered for any published destination.',
+                style: TextStyle(color: Color(0xFFCBD5E1))))
+          else
+            DropdownButtonFormField<String>(
+              dropdownColor: const Color(0xFF0F172A),
+              items: bookable
+                  .map((item) => DropdownMenuItem(
+                      value: item.uuid,
+                      enabled: item.canAcceptBookings,
+                      child: Text(item.canAcceptBookings
+                          ? item.name
+                          : '${item.name} — Unavailable: ${item.bookingUnavailableLabel}')))
+                  .toList(),
+              onChanged: (value) => setState(() {
+                _selectedSpotUuid = value;
+                _selectedSlot = null;
+                _guests = 1;
+              }),
+              decoration:
+                  const InputDecoration(labelText: 'Bookable destination'),
             ),
-
-            const SizedBox(height: 20),
-
-            // Special Notes / Requests
-            const Text('Special Notes (Optional)',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _notesCtrl,
-              maxLines: 3,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                hintText:
-                    'Add dietary preferences, equipment requests, or arrival details…',
-                hintStyle:
-                    TextStyle(color: Colors.white.withValues(alpha: 0.4)),
-                filled: true,
-                fillColor: const Color(0xFF0F172A),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(color: Color(0xFF1E293B)),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Cost Breakdown Card
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0F172A),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: const Color(0xFF1E293B)),
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Fee per guest',
-                          style: TextStyle(
-                              color: Color(0xFF94A3B8), fontSize: 13)),
-                      Text('₱${_pricePerGuest.toStringAsFixed(0)}',
-                          style: const TextStyle(
-                              color: Colors.white, fontSize: 13)),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Guests count',
-                          style: const TextStyle(
-                              color: Color(0xFF94A3B8), fontSize: 13)),
-                      Text('x $_guests',
-                          style: const TextStyle(
-                              color: Colors.white, fontSize: 13)),
-                    ],
-                  ),
-                  const Divider(color: Color(0xFF1E293B), height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Total Estimated Cost',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700)),
-                      Text('₱${totalCost.toStringAsFixed(0)}',
-                          style: const TextStyle(
-                              color: Color(0xFFF59E0B),
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800)),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 32),
-
-            // Submit Button
-            ElevatedButton(
-              onPressed: _isSubmitting ? null : _submitReservation,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFF59E0B),
-                foregroundColor: Colors.black,
-                minimumSize: const Size(double.infinity, 50),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
-              ),
-              child: _isSubmitting
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                          color: Colors.black, strokeWidth: 2))
-                  : const Text('Confirm & Book Now',
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          if (unavailable) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Booking Temporarily Unavailable\nReason: ${spot?.bookingUnavailableLabel ?? 'Destination unavailable'}${spot?.bookingUnavailableReason?.trim().isNotEmpty == true ? '\n${spot!.bookingUnavailableReason}' : ''}',
+              style: const TextStyle(color: Color(0xFFFCA5A5)),
             ),
           ],
-        ),
+          if (spot?.bookingAvailableDays.isNotEmpty ?? false) ...[
+            const SizedBox(height: 12),
+            Text('Opening days: ${spot!.bookingAvailableDays.join(', ')}',
+                style: const TextStyle(color: Color(0xFF94A3B8))),
+          ],
+          const SizedBox(height: 20),
+          const Text('Reservation date', style: _labelStyle),
+          const SizedBox(height: 8),
+          _panel(ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.calendar_month_rounded,
+                color: Color(0xFFF59E0B)),
+            title:
+                Text(_dateValue, style: const TextStyle(color: Colors.white)),
+            onTap: () => _pickDate(spot),
+          )),
+          if (availability?.isLoading == true) ...[
+            const SizedBox(height: 8),
+            const LinearProgressIndicator(),
+          ],
+          if (availability?.hasError == true) ...[
+            const SizedBox(height: 8),
+            Row(children: [
+              const Expanded(
+                child: Text(
+                  'This date is unavailable or availability could not be verified.',
+                  style: TextStyle(color: Color(0xFFFCA5A5)),
+                ),
+              ),
+              TextButton(
+                onPressed: () => ref.invalidate(touristSpotAvailabilityProvider(
+                    (spotId: spot!.uuid, date: _dateValue))),
+                child: const Text('Retry'),
+              ),
+            ]),
+          ],
+          if (availabilityData?['remaining_capacity'] != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              '${availabilityData!['remaining_capacity']} guest spaces remain for this date.',
+              style: const TextStyle(color: Color(0xFF94A3B8)),
+            ),
+          ],
+          if (isSpot && spot?.bookingMode == 'date_time_slot') ...[
+            const SizedBox(height: 20),
+            const Text('Configured time slot', style: _labelStyle),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              initialValue: _selectedSlot,
+              dropdownColor: const Color(0xFF0F172A),
+              items: slotOptions.map((slot) {
+                final start = slot['start']?.toString() ?? '';
+                final end = slot['end']?.toString();
+                final remaining = slot['remaining_capacity'];
+                return DropdownMenuItem(
+                  value: start,
+                  child: Text(
+                    '${end == null ? start : '$start – $end'}${remaining == null ? '' : ' · $remaining left'}',
+                  ),
+                );
+              }).toList(),
+              onChanged: (value) => setState(() => _selectedSlot = value),
+              decoration: const InputDecoration(
+                helperText: 'Final availability is verified when you submit.',
+              ),
+            ),
+          ] else if (!isSpot) ...[
+            const SizedBox(height: 20),
+            const Text('Time', style: _labelStyle),
+            const SizedBox(height: 8),
+            _panel(ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading:
+                  const Icon(Icons.schedule_rounded, color: Color(0xFF38BDF8)),
+              title: Text(_selectedTime.format(context),
+                  style: const TextStyle(color: Colors.white)),
+              onTap: _pickTime,
+            )),
+          ],
+          const SizedBox(height: 20),
+          const Text('Guests', style: _labelStyle),
+          const SizedBox(height: 8),
+          _panel(Row(children: [
+            IconButton(
+              onPressed: _guests > 1 ? () => setState(() => _guests--) : null,
+              icon: const Icon(Icons.remove_circle_outline),
+            ),
+            Text('$_guests', style: const TextStyle(color: Colors.white)),
+            IconButton(
+              onPressed: _guests >= guestLimit
+                  ? null
+                  : () => setState(() => _guests++),
+              icon: const Icon(Icons.add_circle_outline),
+            ),
+            Text('Maximum $guestLimit',
+                style: const TextStyle(color: Color(0xFF94A3B8))),
+          ])),
+          const SizedBox(height: 20),
+          TextField(
+            controller: _notesController,
+            maxLines: 3,
+            decoration:
+                const InputDecoration(labelText: 'Special notes (optional)'),
+          ),
+          if (fee != null) ...[
+            const SizedBox(height: 16),
+            _panel(Text(
+              'Verified reservation fee: ₱${fee.toStringAsFixed(2)} per guest\nEstimated total: ₱${(fee * _guests).toStringAsFixed(2)}',
+              style: const TextStyle(color: Colors.white),
+            )),
+          ] else ...[
+            const SizedBox(height: 16),
+            const Text('Fee information unavailable',
+                style: TextStyle(color: Color(0xFF94A3B8))),
+          ],
+          if (spot?.bookingInstructions?.trim().isNotEmpty ?? false) ...[
+            const SizedBox(height: 16),
+            Text('Instructions: ${spot!.bookingInstructions}',
+                style: const TextStyle(color: Color(0xFFCBD5E1))),
+          ],
+          if (spot?.cancellationPolicy?.trim().isNotEmpty ?? false) ...[
+            const SizedBox(height: 8),
+            Text('Cancellation: ${spot!.cancellationPolicy}',
+                style: const TextStyle(color: Color(0xFFCBD5E1))),
+          ],
+          const SizedBox(height: 28),
+          FilledButton.icon(
+            onPressed: _isSubmitting ||
+                    unavailable ||
+                    !serverAvailable ||
+                    (isSpot && _selectedSpotUuid == null)
+                ? null
+                : () => _submit(spot),
+            icon: _isSubmitting
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.event_available_rounded),
+            label: const Text('Submit Reservation'),
+          ),
+        ],
       ),
     );
   }
+
+  Widget _panel(Widget child) => Material(
+        color: const Color(0xFF0F172A),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: const BorderSide(color: Color(0xFF1E293B)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: child,
+        ),
+      );
+
+  static const _labelStyle = TextStyle(
+    color: Colors.white,
+    fontWeight: FontWeight.w700,
+  );
 }

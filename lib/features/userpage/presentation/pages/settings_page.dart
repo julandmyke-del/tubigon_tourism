@@ -97,7 +97,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
               secondary:
                   const Icon(Icons.dark_mode_rounded, color: Color(0xFFF59E0B)),
-              activeColor: const Color(0xFFF59E0B),
+              activeThumbColor: const Color(0xFFF59E0B),
               value: isDarkMode,
               onChanged: (val) {
                 ref.read(themeModeProvider.notifier).toggleTheme();
@@ -132,7 +132,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
                   secondary: const Icon(Icons.notifications_active_rounded,
                       color: Color(0xFF38BDF8)),
-                  activeColor: const Color(0xFF38BDF8),
+                  activeThumbColor: const Color(0xFF38BDF8),
                   value: _notificationsEnabled,
                   onChanged: (val) {
                     setState(() => _notificationsEnabled = val);
@@ -150,7 +150,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
                   secondary:
                       const Icon(Icons.sync_rounded, color: Color(0xFF34D399)),
-                  activeColor: const Color(0xFF34D399),
+                  activeThumbColor: const Color(0xFF34D399),
                   value: _offlineSyncEnabled,
                   onChanged: (val) {
                     setState(() => _offlineSyncEnabled = val);
@@ -168,7 +168,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
                   secondary: const Icon(Icons.location_on_rounded,
                       color: Color(0xFFF59E0B)),
-                  activeColor: const Color(0xFFF59E0B),
+                  activeThumbColor: const Color(0xFFF59E0B),
                   value: _locationEnabled,
                   onChanged: (val) {
                     setState(() => _locationEnabled = val);

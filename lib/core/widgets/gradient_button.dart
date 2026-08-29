@@ -60,7 +60,8 @@ class _GradientButtonState extends State<GradientButton>
     super.dispose();
   }
 
-  bool get _isActive => widget.isEnabled && !widget.isLoading && widget.onPressed != null;
+  bool get _isActive =>
+      widget.isEnabled && !widget.isLoading && widget.onPressed != null;
 
   @override
   Widget build(BuildContext context) {
@@ -80,12 +81,11 @@ class _GradientButtonState extends State<GradientButton>
           height: widget.height,
           width: widget.width ?? double.infinity,
           decoration: BoxDecoration(
-            gradient: _isActive
-                ? (widget.gradient ?? AppGradients.primary)
-                : null,
+            gradient:
+                _isActive ? (widget.gradient ?? AppGradients.primary) : null,
             color: _isActive ? null : AppColors.grey300,
-            borderRadius:
-                widget.borderRadius ?? BorderRadius.circular(AppSpacing.radiusLg),
+            borderRadius: widget.borderRadius ??
+                BorderRadius.circular(AppSpacing.radiusLg),
             boxShadow: _isActive
                 ? [
                     BoxShadow(
@@ -116,8 +116,10 @@ class _GradientButtonState extends State<GradientButton>
                       ],
                       Text(
                         widget.label,
-                        style: (widget.textStyle ?? AppTypography.buttonText).copyWith(
-                          color: _isActive ? AppColors.white : AppColors.grey500,
+                        style: (widget.textStyle ?? AppTypography.buttonText)
+                            .copyWith(
+                          color:
+                              _isActive ? AppColors.white : AppColors.grey500,
                         ),
                       ),
                     ],

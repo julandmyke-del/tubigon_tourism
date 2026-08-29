@@ -70,8 +70,12 @@ class FavoriteController extends Controller
     {
         $query = match ($type) {
             'spot' => DB::table('tourist_spots')->where('is_active', true),
-            'msme' => DB::table('msmes')->where('is_verified', true),
-            'tourism_listing' => DB::table('tourism_listings')->where('is_active', true),
+            'msme' => DB::table('msmes')
+                ->where('is_verified', true)
+                ->where('verification_status', 'verified'),
+            'tourism_listing' => DB::table('tourism_listings')
+                ->where('is_active', true)
+                ->where('approval_status', 'approved'),
             'map_location' => DB::table('map_locations')
                 ->where('published', true)
                 ->where('active', true),

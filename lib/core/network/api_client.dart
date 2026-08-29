@@ -76,8 +76,10 @@ class ApiClient {
       debugPrint('[API] POST $path → ${response.statusCode}');
       return response;
     } on DioException catch (e) {
-      debugPrint('[API] DioException on POST $path — type: ${e.type}, message: ${e.message}');
-      debugPrint('[API] Response: ${e.response?.statusCode} — ${e.response?.data}');
+      debugPrint(
+          '[API] DioException on POST $path — type: ${e.type}, message: ${e.message}');
+      debugPrint(
+          '[API] Response: ${e.response?.statusCode} — ${e.response?.data}');
       throw _mapDioException(e);
     } catch (e) {
       debugPrint('[API] Unknown error on POST $path: $e');
@@ -156,40 +158,50 @@ class ApiClient {
 
         if (statusCode == 401) {
           return AuthException(
-            message: _extractMessage(data, 'Session expired. Please log in again.'),
+            message:
+                _extractMessage(data, 'Session expired. Please log in again.'),
             statusCode: statusCode,
             isExpired: true,
+            responseData: _responseData(data),
           );
         }
         if (statusCode == 403) {
           return AuthException(
-            message: _extractMessage(data, 'You do not have permission to perform this action.'),
+            message: _extractMessage(
+                data, 'You do not have permission to perform this action.'),
             statusCode: statusCode,
             isUnauthorized: true,
+            responseData: _responseData(data),
           );
         }
         if (statusCode == 404) {
           return NotFoundException(
             message: _extractMessage(data, 'Resource not found.'),
             statusCode: statusCode,
+            responseData: _responseData(data),
           );
         }
         if (statusCode == 422) {
           return ValidationException(
-            message: _extractMessage(data, 'Please check the information you entered.'),
+            message: _extractMessage(
+                data, 'Please check the information you entered.'),
             statusCode: statusCode,
             errors: _extractErrors(data),
+            responseData: _responseData(data),
           );
         }
         if (statusCode != null && statusCode >= 500) {
           return ServerException(
-            message: _extractMessage(data, 'Server error. Please try again later.'),
+            message:
+                _extractMessage(data, 'Server error. Please try again later.'),
             statusCode: statusCode,
+            responseData: _responseData(data),
           );
         }
         return ServerException(
           message: _extractMessage(data, 'An error occurred.'),
           statusCode: statusCode,
+          responseData: _responseData(data),
         );
 
       case DioExceptionType.cancel:
@@ -215,7 +227,8 @@ class ApiClient {
             message: 'Connection lost. Please check your internet connection.',
           );
         }
-        debugPrint('[API] Unknown Dio error — this may be a CORS error on Web. Error: ${e.error}');
+        debugPrint(
+            '[API] Unknown Dio error — this may be a CORS error on Web. Error: ${e.error}');
         return UnknownException(
           message: e.message ?? 'An unexpected error occurred.',
           originalError: e,
@@ -230,6 +243,10 @@ class ApiClient {
           fallback;
     }
     return fallback;
+  }
+
+  Map<String, dynamic>? _responseData(dynamic data) {
+    return data is Map<String, dynamic> ? data : null;
   }
 
   Map<String, List<String>> _extractErrors(dynamic data) {

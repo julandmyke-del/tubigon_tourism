@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Mail\VerifyEmail;
 use App\Models\Profile;
+use App\Models\Image;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\GoogleIdTokenVerifier;
@@ -28,9 +29,19 @@ class AuthFlowTest extends TestCase
         RateLimiter::clear('');
         $this->createAuthSchema();
         $this->touristRole = Role::create(['name' => 'tourist']);
+        config([
+            'auth.development_allowlist_bypass.enabled' => false,
+            'auth.development_allowlist_bypass.emails' => [
+                'user@gmail.com',
+                'msme@gmail.com',
+                'lgu@gmail.com',
+                'admin@gmail.com',
+                'partner@gmail.com',
+            ],
+        ]);
     }
 
-    public function test_email_registration_creates_unverified_account_and_sends_signed_link(): void
+    public function test_email_registration_creates_unverified_tourist_and_sends_smtp_code(): void
     {
         Mail::fake();
 
@@ -42,7 +53,10 @@ class AuthFlowTest extends TestCase
         ]);
 
         $response->assertCreated()
+            ->assertJsonPath('data.requires_email_verification', true)
             ->assertJsonPath('data.requires_verification', true)
+            ->assertJsonPath('data.max_attempts', 5)
+            ->assertJsonPath('data.attempts_used', 0)
             ->assertJsonMissingPath('data.token');
 
         $user = User::where('email', 'tourist@example.com')->firstOrFail();
@@ -51,8 +65,157 @@ class AuthFlowTest extends TestCase
         $this->assertTrue(Hash::check('safe-password', $user->password));
         $this->assertFalse((bool) Profile::findOrFail($user->id)->is_verified);
         Mail::assertSent(VerifyEmail::class, fn (VerifyEmail $mail) =>
-            str_contains($mail->verificationUrl, '/api/v1/auth/email/verify/')
+            preg_match('/^\d{6}$/', $mail->verificationCode) === 1
+            && $mail->envelope()->subject === 'Tubigon Smart Tourism Verification Code'
         );
+    }
+
+    public function test_correct_email_code_verifies_tourist_and_issues_restorable_sanctum_session(): void
+    {
+        Mail::fake();
+        $verificationCode = null;
+
+        $this->postJson('/api/v1/auth/register', [
+            'name' => 'New Tourist',
+            'email' => 'newtourist@gmail.com',
+            'password' => 'safe-password',
+            'password_confirmation' => 'safe-password',
+        ])->assertCreated();
+
+        Mail::assertSent(VerifyEmail::class, function (VerifyEmail $mail) use (&$verificationCode): bool {
+            $verificationCode = $mail->verificationCode;
+
+            return true;
+        });
+
+        $response = $this->postJson('/api/v1/auth/verify-email-code', [
+            'email' => 'newtourist@gmail.com',
+            'code' => $verificationCode,
+        ])->assertOk()
+            ->assertJsonPath('data.role', 'tourist')
+            ->assertJsonPath('data.user.is_verified', true)
+            ->assertJsonStructure(['data' => ['token']]);
+
+        $user = User::where('email', 'newtourist@gmail.com')->firstOrFail();
+        $this->assertTrue($user->is_verified);
+        $this->assertNotNull($user->email_verified_at);
+        $this->assertNull($user->email_verification_code_hash);
+        $this->assertSame($this->touristRole->id, $user->role_id);
+        $this->assertDatabaseCount('users', 1);
+        $this->assertDatabaseCount('profiles', 1);
+
+        $token = $response->json('data.token');
+        $this->withToken($token)->getJson('/api/v1/auth/me')
+            ->assertOk()
+            ->assertJsonPath('data.role', 'tourist');
+
+        $this->withToken($token)->postJson('/api/v1/auth/logout')->assertOk();
+        Auth::forgetGuards();
+        $this->withToken($token)->getJson('/api/v1/auth/me')->assertUnauthorized();
+    }
+
+    public function test_incorrect_email_code_never_verifies_or_issues_a_token(): void
+    {
+        $user = $this->makeUser([
+            'email' => 'pending-tourist@gmail.com',
+            'is_verified' => false,
+            'email_verification_code_hash' => Hash::make('123456'),
+            'email_verification_code_expires_at' => now()->addMinutes(10),
+        ]);
+
+        $this->postJson('/api/v1/auth/verify-email-code', [
+            'email' => $user->email,
+            'code' => '654321',
+        ])->assertUnprocessable()
+            ->assertJsonMissingPath('data.token');
+
+        $user->refresh();
+        $this->assertFalse($user->is_verified);
+        $this->assertNull($user->email_verified_at);
+        $this->assertSame(1, $user->email_verification_attempts);
+    }
+
+    public function test_expired_email_code_returns_authoritative_zero_timer(): void
+    {
+        $user = $this->makeUser([
+            'email' => 'expired-tourist@gmail.com',
+            'is_verified' => false,
+            'email_verification_code_hash' => Hash::make('123456'),
+            'email_verification_code_expires_at' => now()->subSecond(),
+            'email_verification_attempts' => 2,
+        ]);
+
+        $this->postJson('/api/v1/auth/verify-email-code', [
+            'email' => $user->email,
+            'code' => '123456',
+        ])->assertUnprocessable()
+            ->assertJsonPath('message', 'The verification code has expired. Request a new code.')
+            ->assertJsonPath('data.expires_in_seconds', 0)
+            ->assertJsonPath('data.verification_code_sent', false)
+            ->assertJsonMissingPath('data.token');
+    }
+
+    public function test_resend_cooldown_is_server_authoritative_and_resets_attempts(): void
+    {
+        Mail::fake();
+        $user = $this->makeUser([
+            'email' => 'resend-tourist@gmail.com',
+            'is_verified' => false,
+            'email_verification_code_hash' => Hash::make('123456'),
+            'email_verification_code_expires_at' => now()->addMinutes(10),
+            'email_verification_attempts' => 3,
+            'email_verification_last_sent_at' => now(),
+        ]);
+
+        $this->postJson('/api/v1/auth/resend-verification-code', [
+            'email' => $user->email,
+        ])->assertStatus(429)
+            ->assertJsonPath('data.attempts_used', 3);
+        Mail::assertNothingSent();
+
+        $this->travel(61)->seconds();
+        $this->postJson('/api/v1/auth/resend-verification-code', [
+            'email' => $user->email,
+        ])->assertOk()
+            ->assertJsonPath('data.attempts_used', 0)
+            ->assertJsonPath('data.max_attempts', 5)
+            ->assertJsonPath('data.verification_code_sent', true);
+        Mail::assertSent(VerifyEmail::class, 1);
+    }
+
+    public function test_pending_email_change_updates_the_same_user_and_profile(): void
+    {
+        Mail::fake();
+        $user = $this->makeUser([
+            'email' => 'mistyped@gmail.com',
+            'is_verified' => false,
+            'email_verification_code_hash' => Hash::make('123456'),
+            'email_verification_code_expires_at' => now()->addMinutes(10),
+        ]);
+        Profile::create([
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'role_id' => $user->role_id,
+            'is_verified' => false,
+        ]);
+
+        $this->postJson('/api/v1/auth/change-unverified-email', [
+            'email' => 'mistyped@gmail.com',
+            'new_email' => 'corrected@gmail.com',
+            'password' => 'safe-password',
+        ])->assertOk()
+            ->assertJsonPath('data.email', 'corrected@gmail.com')
+            ->assertJsonPath('data.requires_email_verification', true);
+
+        $this->assertDatabaseCount('users', 1);
+        $this->assertDatabaseCount('profiles', 1);
+        $this->assertSame($user->id, User::where('email', 'corrected@gmail.com')->firstOrFail()->id);
+        $this->assertDatabaseHas('profiles', [
+            'id' => $user->id,
+            'email' => 'corrected@gmail.com',
+        ]);
+        Mail::assertSent(VerifyEmail::class, 1);
     }
 
     public function test_manual_registration_rejects_an_invalid_email_address(): void
@@ -83,9 +246,9 @@ class AuthFlowTest extends TestCase
             ->assertJsonMissingPath('data.token');
     }
 
-    public function test_local_environment_allows_only_the_five_unverified_test_accounts_to_log_in(): void
+    public function test_enabled_development_bypass_allows_only_the_five_exact_unverified_accounts(): void
     {
-        config(['app.env' => 'local']);
+        config(['auth.development_allowlist_bypass.enabled' => true]);
 
         $accounts = [
             'user@gmail.com' => 'tourist',
@@ -105,7 +268,9 @@ class AuthFlowTest extends TestCase
                 'is_verified' => false,
             ]);
 
-            $this->postJson('/api/v1/auth/login', [
+            $usersBeforeLogin = User::count();
+            $profilesBeforeLogin = Profile::count();
+            $response = $this->postJson('/api/v1/auth/login', [
                 'email' => strtoupper($email),
                 'password' => 'safe-password',
             ])->assertOk()
@@ -113,9 +278,20 @@ class AuthFlowTest extends TestCase
                 ->assertJsonPath('data.user.is_verified', false)
                 ->assertJsonStructure(['data' => ['token']]);
 
+            $token = $response->json('data.token');
+            $this->withToken($token)->getJson('/api/v1/auth/me')
+                ->assertOk()
+                ->assertJsonPath('data.role', $roleName)
+                ->assertJsonPath('data.user.email', $email);
+            $this->withToken($token)->postJson('/api/v1/auth/logout')->assertOk();
+            Auth::forgetGuards();
+            $this->withToken($token)->getJson('/api/v1/auth/me')->assertUnauthorized();
+
             $user->refresh();
             $this->assertFalse($user->is_verified);
             $this->assertSame($role->id, $user->role_id);
+            $this->assertSame($usersBeforeLogin, User::count());
+            $this->assertSame($profilesBeforeLogin, Profile::count());
         }
 
         $otherUser = $this->makeUser([
@@ -131,9 +307,13 @@ class AuthFlowTest extends TestCase
             ->assertJsonMissingPath('data.token');
     }
 
-    public function test_production_disables_the_unverified_test_account_bypass(): void
+    public function test_disabled_flag_applies_normal_verification_even_to_an_allowlisted_email(): void
     {
-        config(['app.env' => 'production']);
+        config([
+            'app.env' => 'local',
+            'app.debug' => true,
+            'auth.development_allowlist_bypass.enabled' => false,
+        ]);
         $user = $this->makeUser([
             'email' => 'admin@gmail.com',
             'is_verified' => false,
@@ -147,9 +327,9 @@ class AuthFlowTest extends TestCase
             ->assertJsonMissingPath('data.token');
     }
 
-    public function test_local_test_account_bypass_still_requires_the_existing_password(): void
+    public function test_enabled_development_bypass_still_requires_the_existing_password(): void
     {
-        config(['app.env' => 'local']);
+        config(['auth.development_allowlist_bypass.enabled' => true]);
         $this->makeUser([
             'email' => 'admin@gmail.com',
             'is_verified' => false,
@@ -409,6 +589,101 @@ class AuthFlowTest extends TestCase
             ->assertUnauthorized();
     }
 
+    public function test_admin_create_user_builds_matching_profile_setting_and_audit(): void
+    {
+        $adminRole = Role::create(['name' => 'admin']);
+        $admin = $this->makeUser([
+            'email' => 'admin-create@example.com',
+            'role_id' => $adminRole->id,
+        ]);
+        Profile::create([
+            'id' => $admin->id,
+            'name' => $admin->name,
+            'email' => $admin->email,
+            'role_id' => $adminRole->id,
+            'is_verified' => true,
+        ]);
+
+        $createdId = $this->actingAs($admin, 'sanctum')
+            ->postJson('/api/v1/admin/users', [
+                'name' => 'Managed Tourist',
+                'email' => 'managed@example.com',
+                'password' => 'safe-password',
+                'role_id' => $this->touristRole->id,
+                'is_verified' => true,
+            ])->assertCreated()->json('data.id');
+
+        $this->assertDatabaseHas('profiles', ['id' => $createdId]);
+        $this->assertDatabaseHas('settings', ['user_id' => $createdId]);
+        $this->assertDatabaseHas('activity_logs', [
+            'user_id' => $admin->id,
+            'action' => 'User created',
+        ]);
+    }
+
+    public function test_identity_reconciliation_backfills_legitimate_profile_mirrors_idempotently(): void
+    {
+        $user = $this->makeUser(['email' => 'legacy-import@example.com']);
+        $this->assertNull(Profile::find($user->id));
+
+        $migration = require database_path(
+            'migrations/2026_08_27_000002_reconcile_user_profile_identity.php'
+        );
+        $migration->up();
+        $migration->up();
+
+        $profile = Profile::findOrFail($user->id);
+        $this->assertSame($user->id, $profile->id);
+        $this->assertSame($user->email, $profile->email);
+        $this->assertSame($user->role_id, $profile->role_id);
+        $this->assertDatabaseCount('profiles', 1);
+    }
+
+    public function test_admin_cannot_archive_self_or_demote_the_last_admin(): void
+    {
+        $adminRole = Role::create(['name' => 'admin']);
+        $admin = $this->makeUser([
+            'email' => 'only-admin@example.com',
+            'role_id' => $adminRole->id,
+        ]);
+        Profile::create([
+            'id' => $admin->id,
+            'name' => $admin->name,
+            'email' => $admin->email,
+            'role_id' => $adminRole->id,
+            'is_verified' => true,
+        ]);
+
+        $this->actingAs($admin, 'sanctum')
+            ->deleteJson("/api/v1/admin/users/{$admin->id}")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('user');
+        $this->actingAs($admin, 'sanctum')
+            ->putJson("/api/v1/admin/users/{$admin->id}/role", [
+                'role_id' => $this->touristRole->id,
+            ])->assertUnprocessable()
+            ->assertJsonValidationErrors('role_id');
+    }
+
+    public function test_random_authenticated_user_cannot_delete_another_users_image(): void
+    {
+        $owner = $this->makeUser(['email' => 'image-owner@example.com']);
+        $other = $this->makeUser(['email' => 'image-other@example.com']);
+        $image = Image::create([
+            'url' => 'https://example.test/image.jpg',
+            'bucket' => 'test',
+            'owner_id' => $owner->id,
+        ]);
+
+        $this->actingAs($other, 'sanctum')
+            ->deleteJson("/api/v1/images/{$image->id}")
+            ->assertForbidden();
+        $this->assertDatabaseHas('images', [
+            'id' => $image->id,
+            'deleted_at' => null,
+        ]);
+    }
+
     /** @param array<string, mixed> $overrides */
     private function makeUser(array $overrides = []): User
     {
@@ -437,7 +712,7 @@ class AuthFlowTest extends TestCase
 
     private function createAuthSchema(): void
     {
-        foreach (['personal_access_tokens', 'activity_logs', 'admin_notifications', 'settings', 'profiles', 'users', 'roles'] as $table) {
+        foreach (['personal_access_tokens', 'images', 'activity_logs', 'admin_notifications', 'settings', 'profiles', 'users', 'roles'] as $table) {
             Schema::dropIfExists($table);
         }
 
@@ -460,6 +735,11 @@ class AuthFlowTest extends TestCase
             $table->text('bio')->nullable();
             $table->string('language')->default('en');
             $table->boolean('is_verified')->default(false);
+            $table->timestamp('email_verified_at')->nullable();
+            $table->string('email_verification_code_hash')->nullable();
+            $table->timestamp('email_verification_code_expires_at')->nullable();
+            $table->unsignedSmallInteger('email_verification_attempts')->default(0);
+            $table->timestamp('email_verification_last_sent_at')->nullable();
             $table->rememberToken();
             $table->timestamps();
             $table->softDeletes();
@@ -501,6 +781,14 @@ class AuthFlowTest extends TestCase
             $table->uuid('user_id')->nullable();
             $table->string('action');
             $table->text('details')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+        });
+        Schema::create('images', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->text('url');
+            $table->string('bucket');
+            $table->uuid('owner_id');
             $table->timestamps();
             $table->softDeletes();
         });

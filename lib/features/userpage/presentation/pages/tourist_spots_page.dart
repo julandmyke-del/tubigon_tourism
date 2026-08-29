@@ -12,6 +12,7 @@ import '../../../favorites/repositories/favorites_repository.dart';
 import '../../../map/place_category_style.dart';
 import '../../../map/providers/map_provider.dart';
 import '../../../itinerary/presentation/itinerary_add_sheet.dart';
+import '../../../tourist_spots/repositories/tourist_spot_repository.dart';
 
 enum _ExploreSort { recommended, rating, nearest, popular, recent }
 
@@ -42,6 +43,7 @@ class _TouristSpotsPageState extends ConsumerState<TouristSpotsPage> {
   @override
   Widget build(BuildContext context) {
     final places = ref.watch(mapMarkersProvider);
+    final destinations = ref.watch(touristSpotsListProvider);
     final location = ref.watch(userLocationProvider);
     final favoriteKeys =
         ref.watch(favoriteKeysProvider).valueOrNull ?? const {};
@@ -78,11 +80,41 @@ class _TouristSpotsPageState extends ConsumerState<TouristSpotsPage> {
           },
         ),
         data: (allPlaces) {
-          final publicPlaces = allPlaces
-              .where((place) =>
-                  place.category != MapMarkerCategory.wasteReport &&
-                  place.latitude != 0 &&
-                  place.longitude != 0)
+          final combined = List<MapMarker>.of(allPlaces);
+          final mappedSpotIds = combined
+              .where((item) => item.category == MapMarkerCategory.touristSpot)
+              .map((item) => item.sourceId)
+              .toSet();
+          for (final spot in destinations.valueOrNull ?? const []) {
+            if (!mappedSpotIds.add(spot.uuid)) continue;
+            combined.add(MapMarker(
+              id: 'tourist_spot:${spot.uuid}',
+              sourceId: spot.uuid,
+              sourceIntegerId: spot.id,
+              name: spot.name,
+              description: spot.description,
+              address: spot.address,
+              latitude: spot.latitude,
+              longitude: spot.longitude,
+              category: MapMarkerCategory.touristSpot,
+              categoryName: spot.categoryName,
+              images: spot.images,
+              rating: spot.averageRating > 0 ? spot.averageRating : null,
+              reviewCount: spot.reviewCount,
+              operatingHours: spot.openingHours,
+              isVerified: spot.isPublished,
+              isFeatured: spot.isFeatured,
+              isBookable: spot.isBookable,
+              bookingEnabled: spot.bookingEnabled,
+              bookingUnavailableReasonCode: spot.bookingUnavailableReasonCode,
+              bookingUnavailableReason: spot.bookingUnavailableReason,
+              categorySlug: 'tourist-spots',
+              categoryKeys: const ['tourist-spots'],
+              categoryIcon: 'landscape',
+            ));
+          }
+          final publicPlaces = combined
+              .where((place) => place.category != MapMarkerCategory.wasteReport)
               .toList(growable: false);
           final categories = _categories(publicPlaces);
           final filtered = _filtered(publicPlaces, location);
@@ -92,6 +124,7 @@ class _TouristSpotsPageState extends ConsumerState<TouristSpotsPage> {
             onRefresh: () async {
               ref.invalidate(mapPlaceCategoriesProvider);
               ref.invalidate(mapMarkersProvider);
+              ref.invalidate(touristSpotsListProvider);
               final refreshed = await ref.read(mapMarkersProvider.future);
               if (refreshed.isEmpty) return;
             },
@@ -175,7 +208,7 @@ class _TouristSpotsPageState extends ConsumerState<TouristSpotsPage> {
                             crossAxisCount: columns,
                             crossAxisSpacing: 14,
                             mainAxisSpacing: 14,
-                            mainAxisExtent: columns == 1 ? 390 : 408,
+                            mainAxisExtent: columns == 1 ? 432 : 450,
                           ),
                           delegate: SliverChildBuilderDelegate(
                             (context, index) => _ExplorePlaceCard(
@@ -188,9 +221,20 @@ class _TouristSpotsPageState extends ConsumerState<TouristSpotsPage> {
                                 filtered[index].sourceId,
                               )),
                               onDetails: () => _openDetails(filtered[index]),
-                              onMap: () => _openMap(filtered[index]),
-                              onDirections: () =>
-                                  _openMap(filtered[index], directions: true),
+                              onBook: filtered[index].category ==
+                                          MapMarkerCategory.touristSpot &&
+                                      filtered[index].canAcceptBookings
+                                  ? () => context.push(
+                                        '/reservations/create?spot=${Uri.encodeQueryComponent(filtered[index].sourceId)}',
+                                      )
+                                  : null,
+                              onMap: filtered[index].hasCoordinates
+                                  ? () => _openMap(filtered[index])
+                                  : null,
+                              onDirections: filtered[index].hasCoordinates
+                                  ? () => _openMap(filtered[index],
+                                      directions: true)
+                                  : null,
                               onFavorite: () =>
                                   _toggleFavorite(filtered[index]),
                               onItinerary: () => showAddToItinerarySheet(
@@ -398,7 +442,7 @@ class _TouristSpotsPageState extends ConsumerState<TouristSpotsPage> {
                   place: place,
                   distanceKm: _distance(place, location),
                   onTap: () => _openDetails(place),
-                  onMap: () => _openMap(place),
+                  onMap: place.hasCoordinates ? () => _openMap(place) : null,
                 );
               },
             ),
@@ -438,7 +482,7 @@ class _TouristSpotsPageState extends ConsumerState<TouristSpotsPage> {
       final categoryMatches =
           _category == 'all' || place.categoryKeys.contains(_category);
       final searchable =
-          '${place.name} ${place.description} ${place.address ?? ''} ${place.categoryName ?? ''} ${place.categoryKeys.join(' ')}'
+          '${place.name} ${place.aliases.join(' ')} ${place.description} ${place.address ?? ''} ${place.categoryName ?? ''} ${place.categoryKeys.join(' ')}'
               .toLowerCase();
       return categoryMatches &&
           searchable.contains(query) &&
@@ -494,7 +538,7 @@ class _TouristSpotsPageState extends ConsumerState<TouristSpotsPage> {
       _popularity(place);
 
   double? _distance(MapMarker place, UserLocationState location) =>
-      location.hasLocation
+      location.hasLocation && place.hasCoordinates
           ? place.distanceTo(location.latitude!, location.longitude!)
           : null;
 
@@ -681,6 +725,7 @@ class _ExplorePlaceCard extends StatelessWidget {
     required this.favoriteBusy,
     required this.isFavorite,
     required this.onDetails,
+    required this.onBook,
     required this.onMap,
     required this.onDirections,
     required this.onFavorite,
@@ -692,8 +737,9 @@ class _ExplorePlaceCard extends StatelessWidget {
   final bool favoriteBusy;
   final bool isFavorite;
   final VoidCallback onDetails;
-  final VoidCallback onMap;
-  final VoidCallback onDirections;
+  final VoidCallback? onBook;
+  final VoidCallback? onMap;
+  final VoidCallback? onDirections;
   final VoidCallback onFavorite;
   final VoidCallback onItinerary;
 
@@ -805,8 +851,33 @@ class _ExplorePlaceCard extends StatelessWidget {
                           color: Color(0xFFF59E0B),
                           fontSize: 10,
                           fontWeight: FontWeight.w900)),
+                if (place.canAcceptBookings)
+                  const Text('RESERVATIONS AVAILABLE',
+                      style: TextStyle(
+                          color: Color(0xFF34D399),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900)),
+                if (place.isBookable && !place.bookingEnabled)
+                  Text(
+                      'UNAVAILABLE — ${place.bookingUnavailableLabel.toUpperCase()}',
+                      style: const TextStyle(
+                          color: Color(0xFFFCA5A5),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900)),
               ]),
               const Spacer(),
+              if (onBook != null) ...[
+                SizedBox(
+                  width: double.infinity,
+                  height: 34,
+                  child: FilledButton.icon(
+                    onPressed: onBook,
+                    icon: const Icon(Icons.event_available_rounded, size: 17),
+                    label: const Text('Book this destination'),
+                  ),
+                ),
+                const SizedBox(height: 7),
+              ],
               Row(children: [
                 SizedBox(
                   width: 105,
@@ -862,7 +933,7 @@ class _DiscoveryTile extends StatelessWidget {
   final MapMarker place;
   final double? distanceKm;
   final VoidCallback onTap;
-  final VoidCallback onMap;
+  final VoidCallback? onMap;
 
   @override
   Widget build(BuildContext context) {

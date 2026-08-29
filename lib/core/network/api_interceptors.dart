@@ -118,8 +118,11 @@ class RetryInterceptor extends Interceptor {
     ErrorInterceptorHandler handler,
   ) async {
     final attempt = err.requestOptions.extra['retryCount'] as int? ?? 0;
+    final method = err.requestOptions.method.toUpperCase();
+    final isIdempotentRead = method == 'GET' || method == 'HEAD';
 
-    final shouldRetry = attempt < maxRetries &&
+    final shouldRetry = isIdempotentRead &&
+        attempt < maxRetries &&
         (err.type == DioExceptionType.connectionError ||
             err.type == DioExceptionType.connectionTimeout ||
             (err.response?.statusCode != null &&

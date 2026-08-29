@@ -21,13 +21,20 @@ abstract final class AppSpacing {
   static const double radiusFull = 100.0;
 
   // ─── Border Radius Objects ────────────────────────────────────────────────
-  static const BorderRadius roundedXs = BorderRadius.all(Radius.circular(radiusXs));
-  static const BorderRadius roundedSm = BorderRadius.all(Radius.circular(radiusSm));
-  static const BorderRadius roundedMd = BorderRadius.all(Radius.circular(radiusMd));
-  static const BorderRadius roundedLg = BorderRadius.all(Radius.circular(radiusLg));
-  static const BorderRadius roundedXl = BorderRadius.all(Radius.circular(radiusXl));
-  static const BorderRadius roundedXxl = BorderRadius.all(Radius.circular(radiusXxl));
-  static const BorderRadius roundedFull = BorderRadius.all(Radius.circular(radiusFull));
+  static const BorderRadius roundedXs =
+      BorderRadius.all(Radius.circular(radiusXs));
+  static const BorderRadius roundedSm =
+      BorderRadius.all(Radius.circular(radiusSm));
+  static const BorderRadius roundedMd =
+      BorderRadius.all(Radius.circular(radiusMd));
+  static const BorderRadius roundedLg =
+      BorderRadius.all(Radius.circular(radiusLg));
+  static const BorderRadius roundedXl =
+      BorderRadius.all(Radius.circular(radiusXl));
+  static const BorderRadius roundedXxl =
+      BorderRadius.all(Radius.circular(radiusXxl));
+  static const BorderRadius roundedFull =
+      BorderRadius.all(Radius.circular(radiusFull));
 
   static const BorderRadius roundedTopLg = BorderRadius.only(
     topLeft: Radius.circular(radiusLg),
@@ -52,7 +59,8 @@ abstract final class AppSpacing {
   static const EdgeInsets paddingVMd = EdgeInsets.symmetric(vertical: md);
 
   static const EdgeInsets paddingCard = EdgeInsets.all(md);
-  static const EdgeInsets paddingPage = EdgeInsets.symmetric(horizontal: md, vertical: md);
+  static const EdgeInsets paddingPage =
+      EdgeInsets.symmetric(horizontal: md, vertical: md);
 
   // ─── Icon Sizes ───────────────────────────────────────────────────────────
   static const double iconSm = 16.0;

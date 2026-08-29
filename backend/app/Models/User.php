@@ -25,18 +25,28 @@ class User extends Authenticatable
         'is_verified',
         'google_id',
         'auth_provider',
+        'email_verified_at',
+        'email_verification_code_hash',
+        'email_verification_code_expires_at',
+        'email_verification_attempts',
+        'email_verification_last_sent_at',
     ];
 
     protected $hidden = [
         'password',
         'remember_token',
         'google_id',
+        'email_verification_code_hash',
     ];
 
     protected function casts(): array
     {
         return [
             'is_verified' => 'boolean',
+            'email_verified_at' => 'datetime',
+            'email_verification_code_expires_at' => 'datetime',
+            'email_verification_attempts' => 'integer',
+            'email_verification_last_sent_at' => 'datetime',
             'password' => 'hashed',
         ];
     }
@@ -54,5 +64,15 @@ class User extends Authenticatable
     public function itineraries()
     {
         return $this->hasMany(Itinerary::class);
+    }
+
+    public function managedTouristSpots()
+    {
+        return $this->belongsToMany(
+            TouristSpot::class,
+            'tourist_spot_partner_assignments',
+            'partner_profile_id',
+            'tourist_spot_id',
+        )->withPivot(['is_primary', 'assigned_by', 'assigned_at'])->withTimestamps();
     }
 }

@@ -13,8 +13,7 @@
         .logo-sub { font-size: 12px; color: #94A3B8; margin-top: 4px; }
         h1 { color: #FFFFFF; font-size: 22px; font-weight: 700; margin: 0 0 12px 0; text-align: center; }
         p { color: #94A3B8; font-size: 15px; line-height: 1.6; margin: 0 0 20px 0; text-align: center; }
-        .btn { display: block; width: 100%; padding: 16px; background: linear-gradient(135deg, #F97316, #EA580C); color: #FFFFFF; text-align: center; text-decoration: none; font-size: 16px; font-weight: 700; border-radius: 12px; margin: 24px 0; box-sizing: border-box; }
-        .btn:hover { opacity: 0.9; }
+        .code { padding: 18px; background: rgba(249, 115, 22, 0.12); color: #FFFFFF; text-align: center; font-size: 34px; font-weight: 800; letter-spacing: 10px; border: 1px solid rgba(249, 115, 22, 0.45); border-radius: 12px; margin: 24px 0; }
         .divider { border: none; border-top: 1px solid rgba(255,255,255,0.08); margin: 24px 0; }
         .note { font-size: 12px; color: #64748B; text-align: center; line-height: 1.5; }
         .footer { text-align: center; margin-top: 30px; font-size: 11px; color: #475569; }
@@ -30,20 +29,15 @@
 
             <h1>Verify Your Email Address</h1>
             <p>Hello <strong style="color:#FFFFFF;">{{ $userName }}</strong>,</p>
-            <p>Thank you for registering with Tubigon Smart Tourism! Please click the button below to verify your email address and activate your account.</p>
+            <p>Thank you for registering with Tubigon Smart Tourism! Enter this code in the app to verify your email address and activate your account.</p>
 
-            <a href="{{ $verificationUrl }}" class="btn">✅ Verify My Email Address</a>
+            <div class="code">{{ $verificationCode }}</div>
 
             <hr class="divider">
 
             <p class="note">
-                This verification link will expire in <strong style="color:#F97316;">{{ $expiresInMinutes }} minutes</strong>.<br>
+                This verification code will expire in <strong style="color:#F97316;">{{ $expiresInMinutes }} minutes</strong>.<br>
                 If you did not create an account, no further action is required.
-            </p>
-
-            <p class="note">
-                If the button doesn't work, copy and paste this URL into your browser:<br>
-                <span style="color:#F97316; word-break:break-all; font-size:11px;">{{ $verificationUrl }}</span>
             </p>
         </div>
 

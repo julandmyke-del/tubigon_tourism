@@ -15,13 +15,20 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        User::firstOrCreate([
-            'email' => 'test@example.com',
-        ], [
-            'name' => 'Test User',
-            'password' => 'password',
-        ]);
+        if (app()->environment('testing')) {
+            User::firstOrCreate([
+                'email' => 'test@example.com',
+            ], [
+                'name' => 'Test User',
+                'password' => \Illuminate\Support\Str::random(32),
+            ]);
+        }
 
         $this->call(MapLocationSeeder::class);
+        $this->call(FeaturedDestinationSeeder::class);
+        $this->call(DevelopmentFeaturedDestinationBookingSeeder::class);
+        if (app()->environment(['local', 'testing'])) {
+            $this->call(DevelopmentFeaturedDestinationPartnerSeeder::class);
+        }
     }
 }

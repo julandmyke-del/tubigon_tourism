@@ -8,6 +8,7 @@ use App\Models\MapLocationCategory;
 use App\Models\Role;
 use App\Models\User;
 use App\Support\TubigonBoundary;
+use Database\Seeders\FeaturedDestinationSeeder;
 use Database\Seeders\MapLocationSeeder;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -60,6 +61,29 @@ class MapLocationManagementTest extends TestCase
         $this->getJson('/api/v1/map/locations')
             ->assertOk()
             ->assertJsonCount(0, 'data');
+    }
+
+    public function test_preapproved_featured_destinations_share_the_public_smart_map_feed(): void
+    {
+        (new FeaturedDestinationSeeder)->run();
+
+        $response = $this->getJson('/api/v1/map/locations')
+            ->assertOk()
+            ->assertJsonCount(8, 'data');
+
+        $this->assertEqualsCanonicalizing(
+            FeaturedDestinationSeeder::NAMES,
+            collect($response->json('data'))->pluck('name')->all(),
+        );
+        $this->assertTrue(collect($response->json('data'))->every(
+            fn (array $place) => $place['type'] === 'tourist_spot'
+                && $place['is_verified'] === true
+                && $place['is_preapproved'] === true,
+        ));
+        $this->assertTrue(collect($response->json('data'))->contains(
+            fn (array $place) => $place['name'] === 'Mundong Sandbar'
+                && $place['longitude'] === 123.8704844,
+        ));
     }
 
     public function test_guarded_development_seed_publishes_only_the_six_supplied_locations(): void
@@ -146,6 +170,84 @@ class MapLocationManagementTest extends TestCase
             ->assertForbidden();
         $this->postJson('/api/v1/admin/map-locations', $this->payload())
             ->assertForbidden();
+    }
+
+    public function test_admin_only_endpoint_rejects_every_non_admin_role(): void
+    {
+        $this->getJson('/api/v1/admin/map-locations')->assertUnauthorized();
+
+        foreach (['tourist', 'msme_owner', 'tourism_partner', 'lgu_staff'] as $roleName) {
+            $role = Role::firstOrCreate(['name' => $roleName]);
+            Sanctum::actingAs($this->user($role));
+            $this->getJson('/api/v1/admin/map-locations')->assertForbidden();
+        }
+
+        Sanctum::actingAs($this->user($this->adminRole));
+        $this->getJson('/api/v1/admin/map-locations')->assertOk();
+    }
+
+    public function test_public_lists_hide_unverified_msmes_and_inactive_spot_details(): void
+    {
+        Schema::getConnection()->table('msmes')->insert([
+            [
+                'id' => '31111111-1111-4111-8111-111111111111',
+                'name' => 'Verified Business',
+                'category' => 'Shopping',
+                'is_verified' => true,
+                'verification_status' => 'verified',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => '32222222-2222-4222-8222-222222222222',
+                'name' => 'Unverified Business',
+                'category' => 'Shopping',
+                'is_verified' => false,
+                'verification_status' => 'pending',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+        $this->getJson('/api/v1/msmes')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.name', 'Verified Business');
+
+        $spotId = '33333333-3333-4333-8333-333333333333';
+        Schema::getConnection()->table('tourist_spots')->insert([
+            'id' => $spotId,
+            'name' => 'Inactive Spot',
+            'is_active' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $this->getJson("/api/v1/tourist-spots/$spotId")->assertNotFound();
+    }
+
+    public function test_unverified_linked_msme_cannot_be_published(): void
+    {
+        $msmeId = '34444444-4444-4444-8444-444444444444';
+        Schema::getConnection()->table('msmes')->insert([
+            'id' => $msmeId,
+            'name' => 'Pending Business',
+            'category' => 'Shopping',
+            'is_verified' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        Sanctum::actingAs($this->user($this->adminRole));
+        $id = $this->postJson('/api/v1/admin/map-locations', [
+            ...$this->payload([
+                'name' => 'Pending Business Map Record',
+                'entity_type' => 'msme',
+                'entity_id' => $msmeId,
+            ]),
+            'duplicate_override' => true,
+        ])->assertCreated()->json('data.id');
+
+        $this->patchJson("/api/v1/admin/map-locations/$id/publish", [
+            'published' => true,
+        ])->assertUnprocessable()->assertJsonValidationErrors('entity_id');
     }
 
     public function test_lgu_can_create_verify_publish_move_deactivate_and_archive(): void
@@ -404,7 +506,9 @@ class MapLocationManagementTest extends TestCase
             $table->unsignedInteger('integer_id')->nullable();
             $table->string('name');
             $table->string('slug')->nullable();
+            $table->text('short_description')->nullable();
             $table->text('description')->nullable();
+            $table->json('aliases')->nullable();
             $table->uuid('category_id')->nullable();
             $table->double('latitude')->nullable();
             $table->double('longitude')->nullable();
@@ -415,6 +519,11 @@ class MapLocationManagementTest extends TestCase
             $table->integer('review_count')->default(0);
             $table->boolean('is_featured')->default(false);
             $table->boolean('is_active')->default(true);
+            $table->boolean('is_published')->default(false);
+            $table->boolean('is_bookable')->default(false);
+            $table->string('booking_mode')->default('no_reservation');
+            $table->boolean('is_preapproved')->default(false);
+            $table->timestamp('preapproved_at')->nullable();
             $table->timestamps();
             $table->softDeletes();
         });
@@ -433,6 +542,7 @@ class MapLocationManagementTest extends TestCase
             $table->double('rating')->default(0);
             $table->integer('review_count')->default(0);
             $table->boolean('is_verified')->default(false);
+            $table->string('verification_status')->default('pending');
             $table->timestamps();
             $table->softDeletes();
         });

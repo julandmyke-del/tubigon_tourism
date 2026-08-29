@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/constants/api_endpoints.dart';
+import '../../../core/exceptions/app_exception.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/sync_service.dart';
 import '../../../database/database_helper.dart';
@@ -204,7 +205,10 @@ class ReviewRepository {
           return true;
         }
         throw Exception('The review could not be accepted by the server.');
-      } catch (_) {
+      } catch (error) {
+        if (error is NetworkException) return false;
+        await dbHelper
+            .delete('reviews', where: 'id = ?', whereArgs: [reviewId]);
         rethrow;
       }
     }

@@ -23,7 +23,8 @@ abstract final class AssetPaths {
   // ─── Tourist Spots ────────────────────────────────────────────────────────
   static const String cabganIsland = '$_images/spots/cabgan_island.jpg';
   static const String dumogIslet = '$_images/spots/dumog_islet.jpg';
-  static const String enchantedIlijanHill = '$_images/spots/enchanted_ilijan_hill.jpg';
+  static const String enchantedIlijanHill =
+      '$_images/spots/enchanted_ilijan_hill.jpg';
   static const String spotPlaceholder = '$_images/spots/placeholder.jpg';
 
   // ─── Categories ───────────────────────────────────────────────────────────
@@ -34,7 +35,8 @@ abstract final class AssetPaths {
   static const String categoryAdventure = '$_icons/category_adventure.svg';
   static const String categoryFood = '$_icons/category_food.svg';
   static const String categoryEco = '$_icons/category_eco.svg';
-  static const String categoryAccommodation = '$_icons/category_accommodation.svg';
+  static const String categoryAccommodation =
+      '$_icons/category_accommodation.svg';
 
   // ─── Empty States ─────────────────────────────────────────────────────────
   static const String emptySearch = '$_images/empty_search.png';

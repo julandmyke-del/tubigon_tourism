@@ -164,14 +164,16 @@ class MapLocationController extends Controller
         if ($verified) {
             $this->assertPublishable($location, false);
         }
-        $location->update([
-            'verified' => $verified,
-            'verified_by' => $verified ? $request->user()->id : null,
-            'verified_at' => $verified ? now() : null,
-            'published' => $verified ? $location->published : false,
-            'updated_by' => $request->user()->id,
-        ]);
-        $this->audit($request, $verified ? 'Location verified' : 'Location verification removed', ['location_id' => $id]);
+        DB::transaction(function () use ($request, $location, $verified, $id): void {
+            $location->update([
+                'verified' => $verified,
+                'verified_by' => $verified ? $request->user()->id : null,
+                'verified_at' => $verified ? now() : null,
+                'published' => $verified ? $location->published : false,
+                'updated_by' => $request->user()->id,
+            ]);
+            $this->audit($request, $verified ? 'Location verified' : 'Location verification removed', ['location_id' => $id]);
+        });
 
         return response()->json(['status' => 'success', 'data' => $location->fresh()->load('verifier:id,name')]);
     }
@@ -183,8 +185,10 @@ class MapLocationController extends Controller
         if ($request->boolean('published')) {
             $this->assertPublishable($location, true);
         }
-        $location->update(['published' => $request->boolean('published'), 'updated_by' => $request->user()->id]);
-        $this->audit($request, $location->published ? 'Location published' : 'Location unpublished', ['location_id' => $id]);
+        DB::transaction(function () use ($request, $location, $id): void {
+            $location->update(['published' => $request->boolean('published'), 'updated_by' => $request->user()->id]);
+            $this->audit($request, $location->published ? 'Location published' : 'Location unpublished', ['location_id' => $id]);
+        });
 
         return response()->json(['status' => 'success', 'data' => $location->fresh()]);
     }
@@ -194,12 +198,14 @@ class MapLocationController extends Controller
         $request->validate(['active' => 'required|boolean']);
         $location = MapLocation::findOrFail($id);
         $active = $request->boolean('active');
-        $location->update([
-            'active' => $active,
-            'published' => $active ? $location->published : false,
-            'updated_by' => $request->user()->id,
-        ]);
-        $this->audit($request, $active ? 'Location activated' : 'Location deactivated', ['location_id' => $id]);
+        DB::transaction(function () use ($request, $location, $active, $id): void {
+            $location->update([
+                'active' => $active,
+                'published' => $active ? $location->published : false,
+                'updated_by' => $request->user()->id,
+            ]);
+            $this->audit($request, $active ? 'Location activated' : 'Location deactivated', ['location_id' => $id]);
+        });
 
         return response()->json(['status' => 'success', 'data' => $location->fresh()]);
     }
@@ -207,9 +213,11 @@ class MapLocationController extends Controller
     public function destroy(Request $request, string $id): JsonResponse
     {
         $location = MapLocation::findOrFail($id);
-        $location->update(['published' => false, 'active' => false, 'updated_by' => $request->user()->id]);
-        $location->delete();
-        $this->audit($request, 'Location archived', ['location_id' => $id, 'name' => $location->name]);
+        DB::transaction(function () use ($request, $location, $id): void {
+            $location->update(['published' => false, 'active' => false, 'updated_by' => $request->user()->id]);
+            $location->delete();
+            $this->audit($request, 'Location archived', ['location_id' => $id, 'name' => $location->name]);
+        });
 
         return response()->json(['status' => 'success', 'message' => 'Location archived. No record was permanently deleted.']);
     }
@@ -303,6 +311,14 @@ class MapLocationController extends Controller
         }
         if ($location->entity_type && ! $location->linkedEntity()) {
             $errors['entity_id'][] = 'The linked entity is no longer available.';
+        }
+        if ($location->entity_type === 'msme' &&
+            ! Msme::whereKey($location->entity_id)->where('is_verified', true)->exists()) {
+            $errors['entity_id'][] = 'Verify the linked MSME before publishing this map location.';
+        }
+        if ($location->entity_type === 'tourist_spot' &&
+            ! TouristSpot::whereKey($location->entity_id)->where('is_active', true)->exists()) {
+            $errors['entity_id'][] = 'Activate the linked Tourist Spot before publishing this map location.';
         }
         if ($errors) {
             throw ValidationException::withMessages($errors);

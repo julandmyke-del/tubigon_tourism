@@ -21,14 +21,20 @@ class EstablishmentController extends Controller
         if ($request->has('search')) {
             $query->where('name', 'like', '%'.$request->search.'%');
         }
-        $establishments = $query->where('is_active', true)->orderBy('name')->get();
+        $establishments = $query
+            ->where('is_active', true)
+            ->where('is_verified', true)
+            ->orderBy('name')
+            ->get();
 
         return response()->json(['status' => 'success', 'data' => $establishments]);
     }
 
     public function show(string $id): JsonResponse
     {
-        $establishment = Establishment::findOrFail($id);
+        $establishment = Establishment::where('is_active', true)
+            ->where('is_verified', true)
+            ->findOrFail($id);
 
         return response()->json(['status' => 'success', 'data' => $establishment]);
     }

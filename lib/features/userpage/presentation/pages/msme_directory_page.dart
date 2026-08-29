@@ -213,10 +213,10 @@ class _MsmeDirectoryPageState extends ConsumerState<MsmeDirectoryPage> {
                   ..sort((a, b) => (b.rating ?? 0).compareTo(a.rating ?? 0));
 
                 if (filtered.isEmpty) {
-                  return Center(
+                  return const Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      children: const [
+                      children: [
                         Icon(Icons.storefront_outlined,
                             size: 64, color: Color(0xFF475569)),
                         SizedBox(height: 16),

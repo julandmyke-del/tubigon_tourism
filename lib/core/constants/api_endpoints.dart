@@ -12,9 +12,11 @@ abstract final class ApiEndpoints {
   static const String refreshToken = '$_base/auth/refresh';
   static const String forgotPassword = '$_base/auth/forgot-password';
   static const String resetPassword = '$_base/auth/reset-password';
-  static const String verifyEmail = '$_base/auth/verify-email';
+  static const String verifyEmailCode = '$_base/auth/verify-email-code';
   static const String resendVerificationEmail =
-      '$_base/auth/email/verification-notification';
+      '$_base/auth/resend-verification-code';
+  static const String changeUnverifiedEmail =
+      '$_base/auth/change-unverified-email';
   static const String verificationStatus = '$_base/auth/verification-status';
   static const String me = '$_base/auth/me';
 
@@ -31,6 +33,8 @@ abstract final class ApiEndpoints {
   // ─── Tourist Spots ────────────────────────────────────────────────────────
   static const String touristSpots = '$_base/tourist-spots';
   static String touristSpotById(String id) => '$_base/tourist-spots/$id';
+  static String touristSpotAvailability(String id) =>
+      '$_base/tourist-spots/$id/availability';
   static String touristSpotsByCategory(String categoryId) =>
       '$_base/tourist-spots?category=$categoryId';
   static String nearbySpots(double lat, double lng, double radiusKm) =>
@@ -118,17 +122,23 @@ abstract final class ApiEndpoints {
   static const String analytics = '$_base/analytics';
   static const String adminDashboardStats = '$_base/admin/dashboard-stats';
   static const String adminActivityLogs = '$_base/admin/activity-logs';
+  static const String adminReviews = '$_base/admin/reviews';
   static const String adminUsers = '$_base/admin/users';
+  static String adminUser(String id) => '$adminUsers/$id';
   static const String adminRoles = '$_base/admin/roles';
   static String adminUpdateUserRole(String id) => '$_base/admin/users/$id/role';
   static String adminUpdateUserVerification(String id) =>
       '$_base/admin/users/$id/verify';
   static String adminDeleteUser(String id) => '$_base/admin/users/$id';
+  static const String adminMsmes = '$_base/admin/msmes';
   static String adminUpdateMsmeVerification(String id) =>
       '$_base/admin/msmes/$id/verify';
   static String adminDeleteMsme(String id) => '$_base/admin/msmes/$id';
+  static const String adminSpots = '$_base/admin/tourist-spots';
   static const String adminCreateSpot = '$_base/admin/tourist-spots';
   static String adminUpdateSpot(String id) => '$_base/admin/tourist-spots/$id';
+  static String adminUpdateSpotBooking(String id) =>
+      '$_base/admin/tourist-spots/$id/booking';
   static String adminDeleteSpot(String id) => '$_base/admin/tourist-spots/$id';
   static const String adminCreateCategory = '$_base/admin/spot-categories';
   static String adminUpdateCategory(String id) =>
@@ -137,6 +147,16 @@ abstract final class ApiEndpoints {
       '$_base/admin/spot-categories/$id';
   static String adminUpdateReservationStatus(String id) =>
       '$_base/admin/reservations/$id/status';
+  static String adminUpdateWasteReportStatus(String id) =>
+      '$_base/admin/waste-reports/$id/status';
+  static const String adminFerrySchedules = '$_base/admin/ferry-schedules';
+  static String adminFerrySchedule(String id) => '$adminFerrySchedules/$id';
+  static const String adminEcoTips = '$_base/admin/eco-tips';
+  static String adminEcoTip(String id) => '$adminEcoTips/$id';
+  static const String adminAnnouncements = '$_base/admin/announcements';
+  static String adminAnnouncement(String id) => '$adminAnnouncements/$id';
+  static String adminSystemSettings(String id) =>
+      '$_base/admin/system-settings/$id';
 
   // ─── System Settings ──────────────────────────────────────────────────────
   static const String systemSettings = '$_base/system-settings';
@@ -180,21 +200,65 @@ abstract final class ApiEndpoints {
   static String lguVerifyMsme(String id) => '$_base/lgu/msmes/$id/verify';
   static String lguUpdateWasteStatus(String id) =>
       '$_base/lgu/waste-reports/$id/status';
+  static const String lguMsmes = '$_base/lgu/msmes';
+  static const String lguTouristSpots = '$_base/lgu/tourist-spots';
+  static String lguUpdateTouristSpot(String id) =>
+      '$_base/lgu/tourist-spots/$id';
+  static String lguUpdateSpotBooking(String id) =>
+      '$_base/lgu/tourist-spots/$id/booking';
+  static const String lguReservations = '$_base/lgu/reservations';
+  static String lguReservation(String id) => '$lguReservations/$id';
+  static String lguUpdateReservationStatus(String id) =>
+      '$lguReservations/$id/status';
+  static const String lguTourismListings = '$_base/lgu/tourism-listings';
+  static String lguReviewTourismListing(String id) =>
+      '$lguTourismListings/$id/review';
 
   // ─── MSME Owner Portal Endpoints ──────────────────────────────────────────
   static const String msmeDashboardStats = '$_base/msme/dashboard-stats';
-  static const String msmePortalListings = '$_base/msme/listings';
-  static String msmePortalListingById(String id) => '$_base/msme/listings/$id';
+  static const String createMsmeBusiness = '$_base/msmes';
   static const String msmePortalReservations = '$_base/msme/reservations';
   static String msmePortalReservationById(String id) =>
       '$_base/msme/reservations/$id';
   static String msmePortalUpdateReservationStatus(String id) =>
       '$_base/msme/reservations/$id/status';
   static const String msmePortalReviews = '$_base/msme/reviews';
-  static const String msmePortalReviewStats = '$_base/msme/review-stats';
   static const String msmePortalAnalytics = '$_base/msme/analytics';
-  static const String msmePortalNotifications = '$_base/msme/notifications';
+  static const String msmePortalNotifications = notifications;
   static const String msmePortalProfile = '$_base/msme/profile';
+  static const String msmeSubmitProfile = '$_base/msme/profile/submit';
   static const String msmePortalPromotions = '$_base/msme/promotions';
   static const String msmePortalReports = '$_base/msme/reports';
+
+  // Tourism Partner
+  static const String partnerBase = '$_base/partner';
+  static const String partnerDashboardStats = '$partnerBase/dashboard-stats';
+  static const String partnerListings = '$partnerBase/listings';
+  static const String partnerTouristSpots = '$partnerBase/tourist-spots';
+  static String partnerTouristSpot(String id) => '$partnerTouristSpots/$id';
+  static String partnerTouristSpotBookingAvailability(String id) =>
+      '${partnerTouristSpot(id)}/booking-availability';
+  static String partnerListing(String id) => '$partnerListings/$id';
+  static String partnerSubmitListing(String id) =>
+      '$partnerListings/$id/submit';
+  static const String partnerReservations = '$partnerBase/reservations';
+  static String partnerReservation(String id) => '$partnerReservations/$id';
+  static String partnerReservationStatus(String id) =>
+      '$partnerReservations/$id/status';
+  static const String partnerNotifications = '$partnerBase/notifications';
+  static String partnerNotificationRead(String id) =>
+      '$partnerNotifications/$id/read';
+  static const String partnerNotificationsReadAll =
+      '$partnerNotifications/read-all';
+  static String partnerNotification(String id) => '$partnerNotifications/$id';
+  static const String partnerReviews = '$partnerBase/reviews';
+  static const String partnerReviewStats = '$partnerBase/review-stats';
+  static const String partnerAnalytics = '$partnerBase/analytics';
+  static const String partnerProfile = '$partnerBase/profile';
+  static const String partnerPassword = '$partnerBase/password';
+  static const String partnerImageUpload = '$partnerBase/images/upload';
+  static String lguTouristSpotBookingAvailability(String id) =>
+      '$_base/lgu/tourist-spots/$id/booking-availability';
+  static const String tourismListings = '$_base/tourism-listings';
+  static String tourismListing(String id) => '$tourismListings/$id';
 }

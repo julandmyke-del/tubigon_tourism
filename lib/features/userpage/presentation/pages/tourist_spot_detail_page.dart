@@ -269,8 +269,9 @@ class _TouristSpotDetailPageState extends ConsumerState<TouristSpotDetailPage> {
                       ),
                       onPressed: () async {
                         if (_favoriteLoading) return;
-                        if (!await requireSignedIn(context, ref) || !mounted)
+                        if (!await requireSignedIn(context, ref) || !mounted) {
                           return;
+                        }
                         setState(() => _favoriteLoading = true);
                         try {
                           await ref
@@ -409,7 +410,7 @@ class _TouristSpotDetailPageState extends ConsumerState<TouristSpotDetailPage> {
                               icon: Icons.confirmation_number_outlined,
                               label: 'Entry Fee',
                               value: spot.entranceFee == 0
-                                  ? 'Free'
+                                  ? 'Not listed'
                                   : '₱${spot.entranceFee.toStringAsFixed(0)}',
                               color: const Color(0xFF34D399),
                             ),
@@ -421,7 +422,7 @@ class _TouristSpotDetailPageState extends ConsumerState<TouristSpotDetailPage> {
                               label: 'Hours',
                               value: spot.openingHours.isNotEmpty
                                   ? spot.openingHours
-                                  : '6AM - 5PM',
+                                  : 'Not listed',
                               color: const Color(0xFF38BDF8),
                             ),
                           ),
@@ -450,6 +451,95 @@ class _TouristSpotDetailPageState extends ConsumerState<TouristSpotDetailPage> {
 
                       const SizedBox(height: 24),
 
+                      if (spot.canAcceptBookings) ...[
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0F172A),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: const Color(0xFFF59E0B)
+                                  .withValues(alpha: .35),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Reservations Available',
+                                  style: TextStyle(
+                                      color: Color(0xFFF59E0B),
+                                      fontWeight: FontWeight.w800)),
+                              const SizedBox(height: 8),
+                              Text(
+                                spot.bookingMode == 'date_time_slot'
+                                    ? 'Choose a date and a configured time slot.'
+                                    : 'Choose an available reservation date.',
+                                style:
+                                    const TextStyle(color: Color(0xFFCBD5E1)),
+                              ),
+                              if (spot.maxGuestsPerReservation != null)
+                                Text(
+                                    'Maximum ${spot.maxGuestsPerReservation} guests per request',
+                                    style: const TextStyle(
+                                        color: Color(0xFF94A3B8))),
+                              Text(
+                                spot.feeConfigured &&
+                                        spot.reservationFee != null
+                                    ? 'Verified fee: ₱${spot.reservationFee!.toStringAsFixed(2)} per guest'
+                                    : 'Fee information unavailable',
+                                style:
+                                    const TextStyle(color: Color(0xFF94A3B8)),
+                              ),
+                              if (spot.bookingInstructions?.trim().isNotEmpty ??
+                                  false)
+                                Text(
+                                    'Instructions: ${spot.bookingInstructions}',
+                                    style: const TextStyle(
+                                        color: Color(0xFFCBD5E1))),
+                              if (spot.cancellationPolicy?.trim().isNotEmpty ??
+                                  false)
+                                Text('Cancellation: ${spot.cancellationPolicy}',
+                                    style: const TextStyle(
+                                        color: Color(0xFFCBD5E1))),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                      ] else if (spot.isBookable) ...[
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF2A1720),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFF87171)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Booking Temporarily Unavailable',
+                                  style: TextStyle(
+                                      color: Color(0xFFFCA5A5),
+                                      fontWeight: FontWeight.w800)),
+                              const SizedBox(height: 8),
+                              Text('Reason: ${spot.bookingUnavailableLabel}',
+                                  style: const TextStyle(
+                                      color: Color(0xFFFECACA),
+                                      fontWeight: FontWeight.w700)),
+                              if (spot.bookingUnavailableReason
+                                      ?.trim()
+                                      .isNotEmpty ==
+                                  true)
+                                Text(spot.bookingUnavailableReason!,
+                                    style: const TextStyle(
+                                        color: Color(0xFFFECACA))),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                      ],
+
                       // Eco Tips Section
                       if (spot.ecoTips.isNotEmpty) ...[
                         Container(
@@ -464,8 +554,8 @@ class _TouristSpotDetailPageState extends ConsumerState<TouristSpotDetailPage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
-                                children: const [
+                              const Row(
+                                children: [
                                   Icon(Icons.eco_rounded,
                                       color: Color(0xFF34D399), size: 20),
                                   SizedBox(width: 8),
@@ -601,6 +691,11 @@ class _TouristSpotDetailPageState extends ConsumerState<TouristSpotDetailPage> {
                         reviewCount: spot.reviewCount,
                         operatingHours: spot.openingHours,
                         isVerified: spot.isActive,
+                        isBookable: spot.isBookable,
+                        bookingEnabled: spot.bookingEnabled,
+                        bookingUnavailableReasonCode:
+                            spot.bookingUnavailableReasonCode,
+                        bookingUnavailableReason: spot.bookingUnavailableReason,
                       ),
                     ),
                     icon: const Icon(Icons.luggage_rounded),
@@ -611,34 +706,36 @@ class _TouristSpotDetailPageState extends ConsumerState<TouristSpotDetailPage> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () async {
-                      if (await requireSignedIn(
-                            context,
-                            ref,
-                            returnTo:
-                                '/reservations/create?spot=${Uri.encodeComponent(spot.uuid)}',
-                          ) &&
-                          context.mounted) {
-                        context.goNamed(
-                          RouteNames.createReservation,
-                          queryParameters: {'spot': spot.uuid},
-                        );
-                      }
-                    },
-                    icon: const Icon(Icons.calendar_month_rounded),
-                    label: const Text('Book'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFF59E0B),
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
+                if (spot.canAcceptBookings) ...[
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        if (await requireSignedIn(
+                              context,
+                              ref,
+                              returnTo:
+                                  '/reservations/create?spot=${Uri.encodeComponent(spot.uuid)}',
+                            ) &&
+                            context.mounted) {
+                          context.goNamed(
+                            RouteNames.createReservation,
+                            queryParameters: {'spot': spot.uuid},
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.calendar_month_rounded),
+                      label: const Text('Book'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFF59E0B),
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16)),
+                      ),
                     ),
                   ),
-                ),
+                ],
               ],
             ),
           ),

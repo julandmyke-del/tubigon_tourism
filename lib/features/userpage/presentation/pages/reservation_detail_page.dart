@@ -3,10 +3,11 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../reservations/models/reservation.dart';
 import '../../../reservations/repositories/reservation_repository.dart';
 import '../../../itinerary/presentation/itinerary_add_sheet.dart';
+import '../../../itinerary/repositories/itinerary_repository.dart';
 import '../../../map/providers/map_provider.dart';
+import '../../../notifications/repositories/notification_repository.dart';
 
 class ReservationDetailPage extends ConsumerWidget {
   const ReservationDetailPage({super.key, required this.reservationUuid});
@@ -15,10 +16,11 @@ class ReservationDetailPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final reservationsAsync = ref.watch(reservationsListProvider);
+    final reservationAsync =
+        ref.watch(reservationDetailProvider(reservationUuid));
     final mapMarkers = ref.watch(mapMarkersProvider).valueOrNull ?? const [];
 
-    return reservationsAsync.when(
+    return reservationAsync.when(
       loading: () => const Scaffold(
         backgroundColor: Color(0xFF080F1A),
         body:
@@ -30,44 +32,51 @@ class ReservationDetailPage extends ConsumerWidget {
             child: Text('Error loading booking: $err',
                 style: const TextStyle(color: Colors.white))),
       ),
-      data: (reservations) {
-        final reservation = reservations.firstWhere(
-          (r) => r.id == reservationUuid,
-          orElse: () => Reservation(
-            id: reservationUuid,
-            userId: '',
-            reservableType: 'spot',
-            reservableId: '',
-            reservationDate: '',
-            guests: 1,
-            status: 'pending',
-            totalAmount: 0.0,
-            spotName: 'Reservation Not Found',
-          ),
-        );
-
-        final cleanRef = reservation.id.length > 8
-            ? reservation.id.substring(0, 8).toUpperCase()
-            : reservation.id.toUpperCase();
+      data: (reservation) {
+        final cleanRef = reservation.publicReference.isNotEmpty
+            ? reservation.publicReference
+            : reservation.id.length > 8
+                ? reservation.id.substring(0, 8).toUpperCase()
+                : reservation.id.toUpperCase();
         MapMarker? reservedPlace;
         for (final marker in mapMarkers) {
-          final expectedType = reservation.reservableType == 'spot'
-              ? MapMarkerCategory.touristSpot
-              : MapMarkerCategory.msme;
+          final expectedType = switch (reservation.reservableType) {
+            'spot' => MapMarkerCategory.touristSpot,
+            'tourism_listing' => MapMarkerCategory.tourismListing,
+            _ => MapMarkerCategory.msme,
+          };
           if (marker.category == expectedType &&
               marker.sourceId == reservation.reservableId) {
             reservedPlace = marker;
             break;
           }
         }
+        if (reservedPlace == null &&
+            reservation.latitude != null &&
+            reservation.longitude != null) {
+          reservedPlace = MapMarker(
+            id: '${reservation.reservableType}:${reservation.reservableId}',
+            sourceId: reservation.reservableId,
+            name: reservation.spotName,
+            description: reservation.bookingInstructions ?? '',
+            latitude: reservation.latitude!,
+            longitude: reservation.longitude!,
+            category: reservation.reservableType == 'spot'
+                ? MapMarkerCategory.touristSpot
+                : MapMarkerCategory.tourismListing,
+          );
+        }
 
         Color statusColor = const Color(0xFFF59E0B);
-        if (reservation.status == 'confirmed')
+        if (reservation.status == 'confirmed') {
           statusColor = const Color(0xFF34D399);
-        if (reservation.status == 'cancelled')
+        }
+        if (reservation.status == 'cancelled') {
           statusColor = const Color(0xFFF87171);
-        if (reservation.status == 'completed')
+        }
+        if (reservation.status == 'completed') {
           statusColor = const Color(0xFF38BDF8);
+        }
 
         return Scaffold(
           backgroundColor: const Color(0xFF080F1A),
@@ -142,7 +151,7 @@ class ReservationDetailPage extends ConsumerWidget {
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    'Reference: TUB-$cleanRef',
+                                    'Reference: $cleanRef',
                                     style: const TextStyle(
                                         color: Color(0xFF94A3B8), fontSize: 12),
                                   ),
@@ -183,7 +192,7 @@ class ReservationDetailPage extends ConsumerWidget {
                                 borderRadius: BorderRadius.circular(16),
                               ),
                               child: SelectableText(
-                                reservation.id,
+                                cleanRef,
                                 textAlign: TextAlign.center,
                                 style: const TextStyle(
                                     color: Colors.white,
@@ -236,11 +245,18 @@ class ReservationDetailPage extends ConsumerWidget {
                                 label: 'Guests',
                                 value: '${reservation.guests} Person(s)'),
                             const SizedBox(height: 12),
-                            _SummaryRow(
-                                label: 'Total Cost',
-                                value:
-                                    '₱${reservation.totalAmount.toStringAsFixed(0)}',
-                                isTotal: true),
+                            if (reservation.feeConfigured ||
+                                reservation.reservableType != 'spot')
+                              _SummaryRow(
+                                  label: 'Total Cost',
+                                  value:
+                                      '₱${reservation.totalAmount.toStringAsFixed(2)}',
+                                  isTotal: true)
+                            else
+                              const _SummaryRow(
+                                label: 'Fee',
+                                value: 'Fee information unavailable',
+                              ),
                           ],
                         ),
                       ),
@@ -251,6 +267,17 @@ class ReservationDetailPage extends ConsumerWidget {
                 const SizedBox(height: 24),
 
                 _StatusTimeline(status: reservation.status),
+
+                if (reservation.statusHistory.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  _ReservationInfo(
+                    title: 'Status History',
+                    value: reservation.statusHistory
+                        .map((entry) =>
+                            '${entry.status.toUpperCase()}${entry.createdAt == null ? '' : ' · ${entry.createdAt}'}')
+                        .join('\n'),
+                  ),
+                ],
 
                 const SizedBox(height: 24),
 
@@ -280,6 +307,18 @@ class ReservationDetailPage extends ConsumerWidget {
                     ),
                   ),
 
+                if (reservation.bookingInstructions?.trim().isNotEmpty ?? false)
+                  _ReservationInfo(
+                    title: 'Destination Instructions',
+                    value: reservation.bookingInstructions!,
+                  ),
+
+                if (reservation.cancellationPolicy?.trim().isNotEmpty ?? false)
+                  _ReservationInfo(
+                    title: 'Cancellation Policy',
+                    value: reservation.cancellationPolicy!,
+                  ),
+
                 const SizedBox(height: 24),
 
                 if (reservedPlace != null)
@@ -297,6 +336,31 @@ class ReservationDetailPage extends ConsumerWidget {
                       minimumSize: const Size(double.infinity, 48),
                     ),
                   ),
+
+                if (reservedPlace != null) const SizedBox(height: 12),
+
+                if (reservedPlace != null)
+                  Row(children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => context.push(
+                          '/map?marker=${Uri.encodeQueryComponent(reservedPlace!.id)}',
+                        ),
+                        icon: const Icon(Icons.map_rounded),
+                        label: const Text('View on Map'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () => context.push(
+                          '/map?marker=${Uri.encodeQueryComponent(reservedPlace!.id)}&navigate=true',
+                        ),
+                        icon: const Icon(Icons.directions_rounded),
+                        label: const Text('Directions'),
+                      ),
+                    ),
+                  ]),
 
                 if (reservedPlace != null) const SizedBox(height: 12),
 
@@ -333,6 +397,11 @@ class ReservationDetailPage extends ConsumerWidget {
                             .read(reservationRepositoryProvider)
                             .cancelReservation(reservation.id);
                         ref.invalidate(reservationsListProvider);
+                        ref.invalidate(
+                            reservationDetailProvider(reservation.id));
+                        ref.invalidate(touristNotificationsProvider);
+                        ref.invalidate(touristUnreadCountProvider);
+                        ref.invalidate(itinerariesProvider);
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
@@ -362,6 +431,32 @@ class ReservationDetailPage extends ConsumerWidget {
       },
     );
   }
+}
+
+class _ReservationInfo extends StatelessWidget {
+  const _ReservationInfo({required this.title, required this.value});
+
+  final String title;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(top: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0F172A),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFF1E293B)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title,
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 5),
+          Text(value, style: const TextStyle(color: Color(0xFFCBD5E1))),
+        ]),
+      );
 }
 
 class _StatusTimeline extends StatelessWidget {

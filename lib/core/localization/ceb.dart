@@ -13,13 +13,17 @@ const Map<String, String> cebStrings = {
 
   // ── Onboarding ─────────────────────────────────────────────────────────────
   'onboarding_1_title': 'Tuklasin ang Tubigon',
-  'onboarding_1_desc': 'Bisita ang mga dalampasigan, kalikasan, ug makasaysayang lugar sa Tubigon, Bohol.',
+  'onboarding_1_desc':
+      'Bisita ang mga dalampasigan, kalikasan, ug makasaysayang lugar sa Tubigon, Bohol.',
   'onboarding_2_title': 'Plano ang Imong Byahe',
-  'onboarding_2_desc': 'Storyaon ang imong itinerary ug mag-book og aktibidad ug ferry sa dali.',
+  'onboarding_2_desc':
+      'Storyaon ang imong itinerary ug mag-book og aktibidad ug ferry sa dali.',
   'onboarding_3_title': 'Responsableng Pagbiyahe',
-  'onboarding_3_desc': 'Sunod sa eco-friendly nga mga tips ug tabang ampingi ang kagandahan sa Tubigon.',
+  'onboarding_3_desc':
+      'Sunod sa eco-friendly nga mga tips ug tabang ampingi ang kagandahan sa Tubigon.',
   'onboarding_4_title': 'Magkonekta',
-  'onboarding_4_desc': 'Gamit offline, dawata ang real-time updates, ug mag-ugnay sa lokal nga negosyo.',
+  'onboarding_4_desc':
+      'Gamit offline, dawata ang real-time updates, ug mag-ugnay sa lokal nga negosyo.',
   'get_started': 'Sugdi',
   'skip': 'Priso',
   'next': 'Sunod',

@@ -164,6 +164,22 @@ class _FerryCard extends StatelessWidget {
                 ),
               ),
               const Spacer(),
+              Container(
+                margin: const EdgeInsets.only(right: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _statusColor(ferry.status).withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  ferry.status.replaceAll('_', ' ').toUpperCase(),
+                  style: TextStyle(
+                    color: _statusColor(ferry.status),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
               Text(
                 ferry.farePrice == null
                     ? 'Confirm fare'
@@ -261,5 +277,14 @@ class _FerryCard extends StatelessWidget {
         ],
       ),
     ).animate(delay: (60 * index).ms).fadeIn(duration: 350.ms);
+  }
+
+  Color _statusColor(String status) {
+    return switch (status.toLowerCase()) {
+      'scheduled' || 'on_time' => const Color(0xFF34D399),
+      'delayed' => const Color(0xFFF59E0B),
+      'cancelled' || 'suspended' => const Color(0xFFF87171),
+      _ => const Color(0xFF94A3B8),
+    };
   }
 }

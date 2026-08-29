@@ -8,6 +8,7 @@ import '../../core/constants/api_endpoints.dart';
 import '../../core/exceptions/app_exception.dart';
 import '../../core/network/api_client.dart';
 import '../../core/services/local_storage_service.dart';
+import '../../core/services/private_session_data_service.dart';
 import '../../core/services/secure_storage_service.dart';
 import '../../database/database_helper.dart';
 import 'google_auth_service.dart';
@@ -19,12 +20,72 @@ enum UserRole { guest, tourist, msmeOwner, lguStaff, admin, tourismPartner }
 class UnverifiedEmailException implements Exception {
   final String email;
   final String message;
+  final EmailVerificationContext? context;
 
-  const UnverifiedEmailException(this.email,
-      [this.message = 'Please verify your email address before logging in.']);
+  const UnverifiedEmailException(
+    this.email, [
+    this.message = 'Please verify your email address before logging in.',
+    this.context,
+  ]);
 
   @override
   String toString() => message;
+}
+
+class EmailVerificationContext {
+  const EmailVerificationContext({
+    required this.email,
+    required this.attemptsUsed,
+    required this.maxAttempts,
+    required this.expiresInSeconds,
+    required this.resendAvailableInSeconds,
+    required this.codeSent,
+  });
+
+  final String email;
+  final int attemptsUsed;
+  final int maxAttempts;
+  final int expiresInSeconds;
+  final int resendAvailableInSeconds;
+  final bool codeSent;
+
+  int get attemptsRemaining =>
+      (maxAttempts - attemptsUsed).clamp(0, maxAttempts);
+  bool get isExpired => expiresInSeconds <= 0;
+
+  factory EmailVerificationContext.fromMap(
+    Map<String, dynamic>? data, {
+    required String fallbackEmail,
+  }) {
+    int readInt(String key, int fallback) =>
+        (data?[key] as num?)?.toInt() ?? fallback;
+
+    return EmailVerificationContext(
+      email: data?['email'] as String? ?? fallbackEmail,
+      attemptsUsed: readInt('attempts_used', 0),
+      maxAttempts: readInt('max_attempts', 5),
+      expiresInSeconds: readInt('expires_in_seconds', 0),
+      resendAvailableInSeconds: readInt('resend_available_in_seconds', 0),
+      codeSent: data?['verification_code_sent'] as bool? ?? false,
+    );
+  }
+}
+
+class VerificationCodeException implements Exception {
+  const VerificationCodeException(this.message, this.context);
+
+  final String message;
+  final EmailVerificationContext context;
+
+  @override
+  String toString() => message;
+}
+
+class VerifiedEmailSession {
+  const VerifiedEmailSession({required this.token, required this.state});
+
+  final String token;
+  final AuthState state;
 }
 
 // ─── User Object ─────────────────────────────────────────────────────────────
@@ -46,6 +107,7 @@ class User {
 class AuthState {
   final bool isLoggedIn;
   final bool isGuest;
+  final bool isRestoring;
   final UserRole role;
   final String? name;
   final String? email;
@@ -54,13 +116,14 @@ class AuthState {
   const AuthState({
     this.isLoggedIn = false,
     this.isGuest = false,
+    this.isRestoring = false,
     this.role = UserRole.tourist,
     this.name,
     this.email,
     this.userId,
   });
 
-  bool get isAuthenticated => isLoggedIn || isGuest;
+  bool get isAuthenticated => !isRestoring && (isLoggedIn || isGuest);
 
   String get homeRoute {
     switch (role) {
@@ -85,6 +148,7 @@ class AuthState {
   AuthState copyWith({
     bool? isLoggedIn,
     bool? isGuest,
+    bool? isRestoring,
     UserRole? role,
     String? name,
     String? email,
@@ -93,6 +157,7 @@ class AuthState {
     return AuthState(
       isLoggedIn: isLoggedIn ?? this.isLoggedIn,
       isGuest: isGuest ?? this.isGuest,
+      isRestoring: isRestoring ?? this.isRestoring,
       role: role ?? this.role,
       name: name ?? this.name,
       email: email ?? this.email,
@@ -123,6 +188,7 @@ class AuthNotifier extends Notifier<AuthState> {
     final localState = AuthState(
       isLoggedIn: isLoggedIn,
       isGuest: isGuest,
+      isRestoring: isLoggedIn,
       role: role,
       name: storage.getString(_nameKey),
       email: storage.getString(_emailKey),
@@ -174,36 +240,47 @@ class AuthNotifier extends Notifier<AuthState> {
             const Duration(seconds: 2),
             onTimeout: () => null,
           );
-      if (token != null && token.isNotEmpty) {
-        final apiClient = ref.read(apiClientProvider);
-        final response = await apiClient.get(ApiEndpoints.me).timeout(
-              const Duration(seconds: 3),
-            );
-        if (response.statusCode == 200 &&
-            response.data['status'] == 'success') {
-          final userData =
-              response.data['data']['user'] as Map<String, dynamic>?;
-          final roleStr = response.data['data']['role'] as String?;
-          if (userData != null) {
-            final role = _parseRole(roleStr);
-            final newState = AuthState(
-              isLoggedIn: true,
-              isGuest: false,
-              role: role,
-              name: userData['name'] as String? ?? 'Explorer',
-              email: userData['email'] as String?,
-              userId: userData['id'] as String?,
-            );
-            await _persist(newState);
-            state = newState;
-          }
+      if (token == null || token.isEmpty) {
+        await _clearPersistedSession();
+        return;
+      }
+
+      final apiClient = ref.read(apiClientProvider);
+      final response = await apiClient.get(ApiEndpoints.me).timeout(
+            const Duration(seconds: 3),
+          );
+      if (response.statusCode == 200 && response.data['status'] == 'success') {
+        final userData = response.data['data']['user'] as Map<String, dynamic>?;
+        final roleStr = response.data['data']['role'] as String?;
+        if (userData != null) {
+          final role = _parseRole(roleStr);
+          final newState = AuthState(
+            isLoggedIn: true,
+            isGuest: false,
+            isRestoring: false,
+            role: role,
+            name: userData['name'] as String? ?? 'Explorer',
+            email: userData['email'] as String?,
+            userId: userData['id'] as String?,
+          );
+          await _persist(newState);
+          state = newState;
+        } else {
+          state = const AuthState();
         }
+      } else {
+        state = const AuthState();
       }
     } catch (e) {
       debugPrint('[AUTH] _verifySession error or timeout: $e');
-      if (e.toString().contains('401') ||
+      if ((e is AuthException && e.statusCode == 401) ||
+          e.toString().contains('401') ||
           e.toString().contains('Session expired')) {
-        await _secureStorage.clearAuthData();
+        await _clearPersistedSession();
+      } else {
+        // Never render a privileged shell from unverified persisted role data.
+        // Keep the token for a later retry, but reset the in-memory identity.
+        state = const AuthState();
       }
     }
   }
@@ -282,6 +359,8 @@ class AuthNotifier extends Notifier<AuthState> {
         final name = userMap?['name'] as String? ?? 'Explorer';
         final userId = userMap?['id'] as String?;
 
+        await _clearPreviousIdentityIfNeeded(userId);
+
         final newState = AuthState(
           isLoggedIn: true,
           isGuest: false,
@@ -308,7 +387,19 @@ class AuthNotifier extends Notifier<AuthState> {
         }
       }
       if (e is AuthException && e.message.toLowerCase().contains('verify')) {
-        throw UnverifiedEmailException(cleanEmail, e.message);
+        final rawData = e.responseData?['data'];
+        final data = rawData is Map
+            ? Map<String, dynamic>.from(rawData)
+            : <String, dynamic>{};
+        final pendingEmail = data['email'] as String? ?? cleanEmail;
+        throw UnverifiedEmailException(
+          pendingEmail,
+          e.message,
+          EmailVerificationContext.fromMap(
+            data,
+            fallbackEmail: pendingEmail,
+          ),
+        );
       }
       debugPrint('[AUTH] signIn error: $e');
       throw Exception(_sanitizeAuthException(e));
@@ -354,9 +445,15 @@ class AuthNotifier extends Notifier<AuthState> {
           response.data['status'] == 'success') {
         final data = response.data['data'] as Map<String, dynamic>?;
         return {
+          'requires_email_verification':
+              data?['requires_email_verification'] ?? true,
           'requires_verification': data?['requires_verification'] ?? true,
           'email': data?['email'] ?? cleanEmail,
           'email_sent': data?['email_sent'] ?? false,
+          'verification_context': EmailVerificationContext.fromMap(
+            data,
+            fallbackEmail: data?['email'] as String? ?? cleanEmail,
+          ),
         };
       } else {
         throw Exception('Registration failed.');
@@ -364,6 +461,68 @@ class AuthNotifier extends Notifier<AuthState> {
     } catch (e) {
       throw Exception(_sanitizeAuthException(e));
     }
+  }
+
+  /// Verify the SMTP code and establish the returned Sanctum session.
+  Future<VerifiedEmailSession> verifyEmailCode({
+    required String email,
+    required String code,
+  }) async {
+    final cleanEmail = email.trim();
+    final cleanCode = code.trim();
+    if (cleanEmail.isEmpty || !RegExp(r'^\d{6}$').hasMatch(cleanCode)) {
+      throw Exception('Enter the 6-digit verification code.');
+    }
+
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      final response = await apiClient.post(
+        ApiEndpoints.verifyEmailCode,
+        data: {'email': cleanEmail, 'code': cleanCode},
+      );
+
+      if (response.statusCode != 200 || response.data['status'] != 'success') {
+        throw Exception(response.data['message'] ?? 'Verification failed.');
+      }
+
+      final data = response.data['data'];
+      final token = data['token'] as String;
+      final role = _parseRole(data['role'] as String? ?? 'tourist');
+      final userMap = data['user'] as Map<String, dynamic>?;
+      final userId = userMap?['id'] as String?;
+
+      final newState = AuthState(
+        isLoggedIn: true,
+        isGuest: false,
+        role: role,
+        name: userMap?['name'] as String? ?? 'Explorer',
+        email: userMap?['email'] as String? ?? cleanEmail,
+        userId: userId,
+      );
+      return VerifiedEmailSession(token: token, state: newState);
+    } on AppException catch (e) {
+      final rawData = e.responseData?['data'];
+      final data = rawData is Map
+          ? Map<String, dynamic>.from(rawData)
+          : <String, dynamic>{};
+      throw VerificationCodeException(
+        e.message,
+        EmailVerificationContext.fromMap(
+          data,
+          fallbackEmail: cleanEmail,
+        ),
+      );
+    } catch (e) {
+      throw Exception(_sanitizeAuthException(e));
+    }
+  }
+
+  Future<void> completeVerifiedEmailSession(
+      VerifiedEmailSession session) async {
+    await _secureStorage.writeAuthToken(session.token);
+    await _clearPreviousIdentityIfNeeded(session.state.userId);
+    await _persist(session.state);
+    state = session.state;
   }
 
   /// Starts the official Google account picker and authenticates its ID token.
@@ -396,6 +555,8 @@ class AuthNotifier extends Notifier<AuthState> {
         final email = userMap?['email'] as String? ?? account.email;
         final userId = userMap?['id'] as String?;
 
+        await _clearPreviousIdentityIfNeeded(userId);
+
         final newState = AuthState(
           isLoggedIn: true,
           isGuest: false,
@@ -417,7 +578,7 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 
   /// Resend verification email
-  Future<String> resendVerificationEmail(String email) async {
+  Future<EmailVerificationContext> resendVerificationEmail(String email) async {
     final cleanEmail = email.trim();
     if (cleanEmail.isEmpty) throw Exception('Email address is required.');
 
@@ -429,15 +590,72 @@ class AuthNotifier extends Notifier<AuthState> {
       );
 
       if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return response.data['message'] as String? ??
-            'Verification email sent successfully.';
+        final data = Map<String, dynamic>.from(response.data['data'] as Map);
+        return EmailVerificationContext.fromMap(
+          data,
+          fallbackEmail: cleanEmail,
+        );
       } else if (response.data['status'] == 'already_verified') {
-        return 'Email address is already verified.';
+        throw Exception('Email address is already verified.');
       }
       throw Exception(
           response.data['message'] ?? 'Failed to resend verification email.');
+    } on AppException catch (e) {
+      final rawData = e.responseData?['data'];
+      final data = rawData is Map
+          ? Map<String, dynamic>.from(rawData)
+          : <String, dynamic>{};
+      throw VerificationCodeException(
+        e.message,
+        EmailVerificationContext.fromMap(
+          data,
+          fallbackEmail: cleanEmail,
+        ),
+      );
     } catch (e) {
       throw Exception(_sanitizeAuthException(e));
+    }
+  }
+
+  Future<EmailVerificationContext> getEmailVerificationContext(
+      String email) async {
+    final cleanEmail = email.trim();
+    final apiClient = ref.read(apiClientProvider);
+    final response = await apiClient.get(
+      ApiEndpoints.verificationStatus,
+      queryParameters: {'email': cleanEmail},
+    );
+    final data = Map<String, dynamic>.from(response.data['data'] as Map);
+
+    return EmailVerificationContext.fromMap(
+      data,
+      fallbackEmail: cleanEmail,
+    );
+  }
+
+  Future<EmailVerificationContext> changeUnverifiedEmail({
+    required String email,
+    required String password,
+    required String newEmail,
+  }) async {
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      final response = await apiClient.post(
+        ApiEndpoints.changeUnverifiedEmail,
+        data: {
+          'email': email.trim(),
+          'password': password,
+          'new_email': newEmail.trim(),
+        },
+      );
+      final data = Map<String, dynamic>.from(response.data['data'] as Map);
+
+      return EmailVerificationContext.fromMap(
+        data,
+        fallbackEmail: newEmail.trim(),
+      );
+    } on AppException catch (error) {
+      throw Exception(error.message);
     }
   }
 
@@ -449,7 +667,8 @@ class AuthNotifier extends Notifier<AuthState> {
     try {
       final apiClient = ref.read(apiClientProvider);
       final response = await apiClient.get(
-        '${ApiEndpoints.verificationStatus}?email=$cleanEmail',
+        ApiEndpoints.verificationStatus,
+        queryParameters: {'email': cleanEmail},
       );
 
       if (response.statusCode == 200 && response.data['status'] == 'success') {
@@ -509,17 +728,7 @@ class AuthNotifier extends Notifier<AuthState> {
       await GoogleAuthService.signOut();
     } catch (_) {}
 
-    await _secureStorage.clearAuthData();
-
-    final storage = LocalStorageService.instance;
-    await storage.remove(_loggedInKey);
-    await storage.remove(_guestKey);
-    await storage.remove(_roleKey);
-    await storage.remove(_nameKey);
-    await storage.remove(_emailKey);
-    await storage.remove(_userIdKey);
-
-    state = const AuthState();
+    await _clearPersistedSession();
   }
 
   /// Alias for signOut
@@ -564,6 +773,54 @@ class AuthNotifier extends Notifier<AuthState> {
     } else {
       await db.update('users', values, where: 'id = ?', whereArgs: [id]);
     }
+  }
+
+  Future<void> _clearPersistedSession() async {
+    final localUserId =
+        state.userId ?? LocalStorageService.instance.getString(_userIdKey);
+    final localRole = state.role.name;
+
+    await PrivateSessionDataService.clear(
+      userId: localUserId,
+      role: localRole,
+    );
+
+    await _secureStorage.clearAuthData();
+
+    final storage = LocalStorageService.instance;
+    await storage.remove(_loggedInKey);
+    await storage.remove(_guestKey);
+    await storage.remove(_roleKey);
+    await storage.remove(_nameKey);
+    await storage.remove(_emailKey);
+    await storage.remove(_userIdKey);
+
+    if (DatabaseHelper.isSupported &&
+        localUserId != null &&
+        localUserId.isNotEmpty) {
+      await DatabaseHelper.instance.delete(
+        'users',
+        where: 'id = ?',
+        whereArgs: [localUserId],
+      );
+    }
+
+    state = const AuthState();
+  }
+
+  Future<void> _clearPreviousIdentityIfNeeded(String? nextUserId) async {
+    final storage = LocalStorageService.instance;
+    final previousUserId = storage.getString(_userIdKey);
+    if (previousUserId == null ||
+        previousUserId.isEmpty ||
+        previousUserId == nextUserId) {
+      return;
+    }
+    final previousRole = storage.getString(_roleKey) ?? state.role.name;
+    await PrivateSessionDataService.clear(
+      userId: previousUserId,
+      role: previousRole,
+    );
   }
 }
 

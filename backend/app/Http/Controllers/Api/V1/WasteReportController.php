@@ -6,8 +6,11 @@ use App\Http\Controllers\Concerns\ValidatesTubigonCoordinates;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\WasteReport;
+use App\Models\Notification;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class WasteReportController extends Controller
 {
@@ -19,7 +22,7 @@ class WasteReportController extends Controller
         $user->loadMissing('role');
         $role = $user->role?->name;
 
-        $query = WasteReport::with('user');
+        $query = WasteReport::with('user:id,name');
         if ($role !== 'admin' && $role !== 'lgu_staff') {
             $query->where('user_id', $user->id);
         }
@@ -29,10 +32,20 @@ class WasteReportController extends Controller
         return response()->json(['status' => 'success', 'data' => $reports]);
     }
 
+    public function show(Request $request, string $id): JsonResponse
+    {
+        $user = $request->user();
+        $user->loadMissing('role');
+        $canManage = in_array($user->role?->name, ['admin', 'lgu_staff'], true);
+        $query = WasteReport::with('user:id,name');
+        if (! $canManage) $query->where('user_id', $user->id);
+        return response()->json(['status' => 'success', 'data' => $query->findOrFail($id)]);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'category' => 'required|in:Plastic Waste,Coastal Pollution,Illegal Dumping,Overflowing Bin,Hazardous Material,Other',
+            'category' => 'required|in:garbage,water_pollution,beach_coastal,environmental_damage,road_infrastructure,public_facility,safety,tourism_site,marine_wildlife,other,Plastic Waste,Coastal Pollution,Illegal Dumping,Overflowing Bin,Hazardous Material,Other',
             'description' => 'required|string|min:10|max:2000',
             'location_description' => 'nullable|string|max:500',
             'latitude' => 'required|numeric|between:-90,90',
@@ -42,24 +55,32 @@ class WasteReportController extends Controller
         ]);
         $this->validateTubigonCoordinates($validated);
         $validated['user_id'] = $request->user()->id;
-        $report = WasteReport::create($validated);
+        $validated['status'] = 'submitted';
+        $validated['priority'] = 'normal';
+        $report = DB::transaction(function () use ($request, $validated): WasteReport {
+            $report = WasteReport::create($validated);
+            ActivityLog::create([
+                'user_id' => $request->user()->id,
+                'action' => 'Waste report submitted',
+                'details' => json_encode(['entity_type' => 'waste_report', 'entity_id' => $report->id]),
+            ]);
+            User::whereHas('role', fn ($query) => $query->whereIn('name', ['admin', 'lgu_staff']))
+                ->pluck('id')->each(fn (string $id) => Notification::create([
+                    'user_id' => $id,
+                    'type' => 'waste_report_submitted',
+                    'title' => 'New Waste Report',
+                    'body' => 'A new waste report is awaiting review.',
+                    'data' => ['waste_report_id' => $report->id, 'route' => '/lgu/waste-reports/'.$report->id],
+                ]));
+            return $report;
+        });
 
         return response()->json(['status' => 'success', 'data' => $report], 201);
     }
 
     public function updateStatus(Request $request, string $id): JsonResponse
     {
-        $request->validate(['status' => 'required|in:pending,submitted,in_progress,resolved,rejected']);
-        $report = WasteReport::findOrFail($id);
-        $report->update(['status' => $request->status]);
-
-        ActivityLog::create([
-            'user_id' => $request->user()->id,
-            'action' => 'Waste report updated',
-            'details' => "Updated waste report ID $id status to {$request->status}",
-        ]);
-
-        return response()->json(['status' => 'success', 'message' => 'Waste report status updated']);
+        return (new LguController())->updateWasteStatus($request, $id);
     }
 
     public function uploadImages(Request $request, string $id): JsonResponse

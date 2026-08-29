@@ -153,10 +153,10 @@ class _ReservationList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (reservations.isEmpty) {
-      return Center(
+      return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
+          children: [
             Icon(Icons.calendar_today_outlined,
                 size: 64, color: Color(0xFF475569)),
             SizedBox(height: 16),
@@ -210,9 +210,13 @@ class _ReservationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cleanUuid = reservation.id.length > 8
-        ? reservation.id.substring(0, 8)
-        : reservation.id;
+    final cleanUuid = reservation.publicReference.isNotEmpty
+        ? reservation.publicReference
+        : reservation.id.length > 8
+            ? reservation.id.substring(0, 8)
+            : reservation.id;
+    final hasDisplayedFee =
+        reservation.reservableType != 'spot' || reservation.feeConfigured;
 
     return GestureDetector(
       onTap: () => context.goNamed(
@@ -330,14 +334,16 @@ class _ReservationCard extends StatelessWidget {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      const Text('TOTAL AMOUNT',
-                          style: TextStyle(
+                      Text(hasDisplayedFee ? 'TOTAL AMOUNT' : 'FEE',
+                          style: const TextStyle(
                               color: Color(0xFF64748B),
                               fontSize: 10,
                               fontWeight: FontWeight.w600)),
                       const SizedBox(height: 4),
                       Text(
-                        '₱${reservation.totalAmount.toStringAsFixed(0)}',
+                        hasDisplayedFee
+                            ? '₱${reservation.totalAmount.toStringAsFixed(0)}'
+                            : 'Not listed',
                         style: TextStyle(
                             color: reservation.spotColor,
                             fontSize: 15,

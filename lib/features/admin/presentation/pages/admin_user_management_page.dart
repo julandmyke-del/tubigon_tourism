@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/admin_colors.dart';
@@ -87,7 +88,10 @@ class _AdminUserManagementPageState
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8)),
                       ),
-                      onPressed: () => _showAddUserDialog(context),
+                      onPressed: rolesAsync.hasValue
+                          ? () => _showAddUserDialog(
+                              context, rolesAsync.value ?? const [])
+                          : null,
                       icon: const Icon(Icons.person_add_rounded, size: 18),
                       label: const Text('Add New User',
                           style: TextStyle(fontWeight: FontWeight.bold)),
@@ -158,7 +162,8 @@ class _AdminUserManagementPageState
                           'tourist',
                           'msme_owner',
                           'lgu_staff',
-                          'admin'
+                          'admin',
+                          'tourism_partner'
                         ]
                             .map((r) => DropdownMenuItem(
                                 value: r,
@@ -351,6 +356,10 @@ class _AdminUserManagementPageState
                                               fontSize: 13)),
                                     ],
                                   ),
+                                  onTap: userId.isEmpty
+                                      ? null
+                                      : () =>
+                                          context.push('/admin/users/$userId'),
                                 ),
                                 DataCell(Text(email,
                                     style: const TextStyle(
@@ -360,11 +369,19 @@ class _AdminUserManagementPageState
                                 DataCell(
                                   InkWell(
                                     onTap: () async {
-                                      final repo =
-                                          ref.read(adminRepositoryProvider);
-                                      await repo.updateUserActivation(
-                                          userId, !isVerified);
-                                      ref.invalidate(adminUsersProvider);
+                                      try {
+                                        await ref
+                                            .read(adminRepositoryProvider)
+                                            .updateUserActivation(
+                                                userId, !isVerified);
+                                        ref.invalidate(adminUsersProvider);
+                                        _showMessage(
+                                            'User verification updated.');
+                                      } catch (_) {
+                                        _showMessage(
+                                            'Unable to update user verification.',
+                                            error: true);
+                                      }
                                     },
                                     borderRadius: BorderRadius.circular(6),
                                     child: _VerificationBadge(
@@ -416,9 +433,9 @@ class _AdminUserManagementPageState
                   loading: () => const Center(
                       child:
                           CircularProgressIndicator(color: AdminColors.orange)),
-                  error: (err, _) => Center(
-                      child: Text('Error loading users: $err',
-                          style: const TextStyle(color: AdminColors.danger))),
+                  error: (err, _) => const Center(
+                      child: Text('Unable to load users. Use Refresh to retry.',
+                          style: TextStyle(color: AdminColors.danger))),
                 ),
               ),
             ),
@@ -428,100 +445,172 @@ class _AdminUserManagementPageState
     );
   }
 
-  void _showAddUserDialog(BuildContext context) {
+  void _showAddUserDialog(
+      BuildContext context, List<Map<String, dynamic>> roles) {
+    final formKey = GlobalKey<FormState>();
     final nameCtrl = TextEditingController();
     final emailCtrl = TextEditingController();
     final passCtrl = TextEditingController();
-    String selectedRole = 'tourist';
+    String? selectedRoleId = roles
+        .where((role) => role['name'] == 'tourist')
+        .map((role) => role['id']?.toString())
+        .firstOrNull;
+    selectedRoleId ??= roles.firstOrNull?['id']?.toString();
+    var saving = false;
+    String? errorMessage;
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AdminColors.navy900,
-        title: const Text('Add New System User',
-            style: TextStyle(
-                color: AdminColors.textPrimary, fontWeight: FontWeight.bold)),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameCtrl,
-                style: const TextStyle(color: AdminColors.textPrimary),
-                decoration: const InputDecoration(
-                    labelText: 'Full Name',
-                    labelStyle: TextStyle(color: AdminColors.textSecondary)),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: emailCtrl,
-                style: const TextStyle(color: AdminColors.textPrimary),
-                decoration: const InputDecoration(
-                    labelText: 'Email Address',
-                    labelStyle: TextStyle(color: AdminColors.textSecondary)),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: passCtrl,
-                obscureText: true,
-                style: const TextStyle(color: AdminColors.textPrimary),
-                decoration: const InputDecoration(
-                    labelText: 'Password',
-                    labelStyle: TextStyle(color: AdminColors.textSecondary)),
-              ),
-              const SizedBox(height: 14),
-              DropdownButtonFormField<String>(
-                initialValue: selectedRole,
-                dropdownColor: AdminColors.navy900,
-                style: const TextStyle(color: AdminColors.textPrimary),
-                decoration: const InputDecoration(
-                    labelText: 'System Role',
-                    labelStyle: TextStyle(color: AdminColors.textSecondary)),
-                items: ['tourist', 'msme_owner', 'lgu_staff', 'admin']
-                    .map((r) => DropdownMenuItem(
-                        value: r, child: Text(r.toUpperCase())))
-                    .toList(),
-                onChanged: (val) => selectedRole = val!,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel',
-                style: TextStyle(color: AdminColors.textSecondary)),
-          ),
-          ElevatedButton(
-            style:
-                ElevatedButton.styleFrom(backgroundColor: AdminColors.orange),
-            onPressed: () async {
-              if (nameCtrl.text.isEmpty ||
-                  emailCtrl.text.isEmpty ||
-                  passCtrl.text.isEmpty) {
-                return;
-              }
-              final repo = ref.read(adminRepositoryProvider);
-              final success = await repo.createUser({
-                'name': nameCtrl.text.trim(),
-                'email': emailCtrl.text.trim(),
-                'password': passCtrl.text,
-                'role': selectedRole,
-              });
-              if (ctx.mounted) Navigator.pop(ctx);
-              if (success) ref.invalidate(adminUsersProvider);
-            },
-            child: const Text('Create User',
-                style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
+      builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+                backgroundColor: AdminColors.navy900,
+                title: const Text('Add New System User',
+                    style: TextStyle(
+                        color: AdminColors.textPrimary,
+                        fontWeight: FontWeight.bold)),
+                content: SingleChildScrollView(
+                  child: Form(
+                    key: formKey,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextFormField(
+                          controller: nameCtrl,
+                          style:
+                              const TextStyle(color: AdminColors.textPrimary),
+                          decoration: const InputDecoration(
+                              labelText: 'Full Name',
+                              labelStyle:
+                                  TextStyle(color: AdminColors.textSecondary)),
+                          validator: (value) =>
+                              (value == null || value.trim().isEmpty)
+                                  ? 'Full name is required.'
+                                  : null,
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: emailCtrl,
+                          keyboardType: TextInputType.emailAddress,
+                          style:
+                              const TextStyle(color: AdminColors.textPrimary),
+                          decoration: const InputDecoration(
+                              labelText: 'Email Address',
+                              labelStyle:
+                                  TextStyle(color: AdminColors.textSecondary)),
+                          validator: (value) {
+                            final email = value?.trim() ?? '';
+                            return email.contains('@')
+                                ? null
+                                : 'Enter a valid email.';
+                          },
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: passCtrl,
+                          obscureText: true,
+                          style:
+                              const TextStyle(color: AdminColors.textPrimary),
+                          decoration: const InputDecoration(
+                              labelText: 'Password',
+                              labelStyle:
+                                  TextStyle(color: AdminColors.textSecondary)),
+                          validator: (value) => (value?.length ?? 0) < 8
+                              ? 'Password must be at least 8 characters.'
+                              : null,
+                        ),
+                        const SizedBox(height: 14),
+                        DropdownButtonFormField<String>(
+                          initialValue: selectedRoleId,
+                          dropdownColor: AdminColors.navy900,
+                          style:
+                              const TextStyle(color: AdminColors.textPrimary),
+                          decoration: const InputDecoration(
+                              labelText: 'System Role',
+                              labelStyle:
+                                  TextStyle(color: AdminColors.textSecondary)),
+                          items: roles
+                              .map((role) => DropdownMenuItem(
+                                  value: role['id']?.toString(),
+                                  child: Text((role['name'] ?? 'role')
+                                      .toString()
+                                      .toUpperCase())))
+                              .toList(),
+                          onChanged:
+                              saving ? null : (val) => selectedRoleId = val,
+                          validator: (value) =>
+                              value == null ? 'Select a role.' : null,
+                        ),
+                        if (errorMessage != null) ...[
+                          const SizedBox(height: 12),
+                          Text(errorMessage!,
+                              style:
+                                  const TextStyle(color: AdminColors.danger)),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: saving ? null : () => Navigator.pop(ctx),
+                    child: const Text('Cancel',
+                        style: TextStyle(color: AdminColors.textSecondary)),
+                  ),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: AdminColors.orange),
+                    onPressed: saving
+                        ? null
+                        : () async {
+                            if (!(formKey.currentState?.validate() ?? false)) {
+                              return;
+                            }
+                            setDialogState(() {
+                              saving = true;
+                              errorMessage = null;
+                            });
+                            try {
+                              await ref
+                                  .read(adminRepositoryProvider)
+                                  .createUser({
+                                'name': nameCtrl.text.trim(),
+                                'email': emailCtrl.text.trim(),
+                                'password': passCtrl.text,
+                                'role_id': selectedRoleId,
+                              });
+                              ref.invalidate(adminUsersProvider);
+                              if (ctx.mounted) Navigator.pop(ctx);
+                              _showMessage('User created.');
+                            } catch (_) {
+                              if (ctx.mounted) {
+                                setDialogState(() {
+                                  saving = false;
+                                  errorMessage =
+                                      'Unable to create this user. Check the email and role.';
+                                });
+                              }
+                            }
+                          },
+                    child: saving
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Text('Create User',
+                            style: TextStyle(color: Colors.white)),
+                  ),
+                ],
+              )),
     );
   }
 
   void _showEditRoleDialog(BuildContext context, String userId, String name,
       String currentRole, List<Map<String, dynamic>>? roles) {
-    String selectedRole = currentRole;
+    final availableRoles = roles ?? const <Map<String, dynamic>>[];
+    String? selectedRoleId = availableRoles
+        .where((role) => role['name'] == currentRole)
+        .map((role) => role['id']?.toString())
+        .firstOrNull;
 
     showDialog(
       context: context,
@@ -531,20 +620,19 @@ class _AdminUserManagementPageState
             style: const TextStyle(
                 color: AdminColors.textPrimary, fontWeight: FontWeight.bold)),
         content: DropdownButtonFormField<String>(
-          initialValue: ['tourist', 'msme_owner', 'lgu_staff', 'admin']
-                  .contains(selectedRole)
-              ? selectedRole
-              : 'tourist',
+          initialValue: selectedRoleId,
           dropdownColor: AdminColors.navy900,
           style: const TextStyle(color: AdminColors.textPrimary),
           decoration: const InputDecoration(
               labelText: 'Assigned Role',
               labelStyle: TextStyle(color: AdminColors.textSecondary)),
-          items: ['tourist', 'msme_owner', 'lgu_staff', 'admin']
-              .map((r) =>
-                  DropdownMenuItem(value: r, child: Text(r.toUpperCase())))
+          items: availableRoles
+              .map((role) => DropdownMenuItem(
+                  value: role['id']?.toString(),
+                  child:
+                      Text((role['name'] ?? 'role').toString().toUpperCase())))
               .toList(),
-          onChanged: (val) => selectedRole = val!,
+          onChanged: (val) => selectedRoleId = val,
         ),
         actions: [
           TextButton(
@@ -556,11 +644,17 @@ class _AdminUserManagementPageState
             style:
                 ElevatedButton.styleFrom(backgroundColor: AdminColors.orange),
             onPressed: () async {
-              final repo = ref.read(adminRepositoryProvider);
-              final success =
-                  await repo.updateUser(userId, {'role': selectedRole});
-              if (ctx.mounted) Navigator.pop(ctx);
-              if (success) ref.invalidate(adminUsersProvider);
+              if (selectedRoleId == null) return;
+              try {
+                await ref
+                    .read(adminRepositoryProvider)
+                    .updateUserRole(userId, selectedRoleId!);
+                ref.invalidate(adminUsersProvider);
+                if (ctx.mounted) Navigator.pop(ctx);
+                _showMessage('User role updated.');
+              } catch (_) {
+                _showMessage('Unable to update this user role.', error: true);
+              }
             },
             child: const Text('Save Changes',
                 style: TextStyle(color: Colors.white)),
@@ -575,10 +669,10 @@ class _AdminUserManagementPageState
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AdminColors.navy900,
-        title: const Text('Confirm User Deletion',
+        title: const Text('Archive User',
             style: TextStyle(color: AdminColors.textPrimary)),
         content: Text(
-            'Are you sure you want to permanently delete user "$name"?',
+            'Archive "$name"? The account will no longer be able to sign in.',
             style: const TextStyle(color: AdminColors.textSecondary)),
         actions: [
           TextButton(
@@ -590,16 +684,31 @@ class _AdminUserManagementPageState
             style:
                 ElevatedButton.styleFrom(backgroundColor: AdminColors.danger),
             onPressed: () async {
-              final repo = ref.read(adminRepositoryProvider);
-              final success = await repo.deleteUser(userId);
-              if (ctx.mounted) Navigator.pop(ctx);
-              if (success) ref.invalidate(adminUsersProvider);
+              try {
+                await ref.read(adminRepositoryProvider).deleteUser(userId);
+                ref.invalidate(adminUsersProvider);
+                if (ctx.mounted) Navigator.pop(ctx);
+                _showMessage('User archived.');
+              } catch (_) {
+                if (ctx.mounted) Navigator.pop(ctx);
+                _showMessage(
+                    'Unable to archive this account. It may be your account or the last Admin.',
+                    error: true);
+              }
             },
-            child: const Text('Delete', style: TextStyle(color: Colors.white)),
+            child: const Text('Archive', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
     );
+  }
+
+  void _showMessage(String message, {bool error = false}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message),
+      backgroundColor: error ? AdminColors.danger : AdminColors.success,
+    ));
   }
 }
 

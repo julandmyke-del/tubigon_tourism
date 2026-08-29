@@ -115,7 +115,25 @@ return [
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
     'verification' => [
-        'expire' => (int) env('AUTH_VERIFICATION_EXPIRE_MINUTES', 60),
+        'expire' => (int) env('AUTH_VERIFICATION_EXPIRE_MINUTES', 10),
+        'max_attempts' => (int) env('AUTH_VERIFICATION_MAX_ATTEMPTS', 5),
+        'resend_cooldown' => (int) env('AUTH_VERIFICATION_RESEND_COOLDOWN_SECONDS', 60),
+    ],
+
+    /*
+    | Exact development accounts that may log in while unverified.
+    | The flag is deliberately independent of APP_DEBUG/APP_ENV and defaults
+    | to false, so merely running locally never weakens verification.
+    */
+    'development_allowlist_bypass' => [
+        'enabled' => (bool) env('DEV_AUTH_ALLOWLIST_BYPASS', false),
+        'emails' => array_values(array_filter(array_map(
+            static fn (string $email): string => strtolower(trim($email)),
+            explode(',', (string) env(
+                'DEV_AUTH_ALLOWLIST_EMAILS',
+                'user@gmail.com,msme@gmail.com,lgu@gmail.com,admin@gmail.com,partner@gmail.com'
+            ))
+        ))),
     ],
 
 ];

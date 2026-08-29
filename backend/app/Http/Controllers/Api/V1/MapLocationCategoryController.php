@@ -9,6 +9,7 @@ use App\Models\MapLocationCategory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -46,8 +47,11 @@ class MapLocationCategoryController extends Controller
     {
         $data = $this->validated($request);
         $data['slug'] = $data['slug'] ?? Str::slug($data['name']);
-        $category = MapLocationCategory::create($data);
-        $this->audit($request, 'Map category created', $category->toArray());
+        $category = DB::transaction(function () use ($request, $data): MapLocationCategory {
+            $category = MapLocationCategory::create($data);
+            $this->audit($request, 'Map category created', $category->toArray());
+            return $category;
+        });
 
         return response()->json(['status' => 'success', 'data' => $category], 201);
     }
@@ -56,8 +60,11 @@ class MapLocationCategoryController extends Controller
     {
         $category = MapLocationCategory::findOrFail($id);
         $before = $category->toArray();
-        $category->update($this->validated($request, $category));
-        $this->audit($request, 'Map category updated', ['before' => $before, 'after' => $category->fresh()->toArray()]);
+        $data = $this->validated($request, $category);
+        DB::transaction(function () use ($request, $category, $data, $before): void {
+            $category->update($data);
+            $this->audit($request, 'Map category updated', ['before' => $before, 'after' => $category->fresh()->toArray()]);
+        });
 
         return response()->json(['status' => 'success', 'data' => $category->fresh()]);
     }
@@ -68,8 +75,10 @@ class MapLocationCategoryController extends Controller
         if (MapLocation::where('category_id', $id)->orWhere('subcategory_id', $id)->exists()) {
             return response()->json(['message' => 'This category is in use. Deactivate it instead.'], 422);
         }
-        $category->delete();
-        $this->audit($request, 'Map category archived', ['id' => $id, 'name' => $category->name]);
+        DB::transaction(function () use ($request, $category, $id): void {
+            $category->delete();
+            $this->audit($request, 'Map category archived', ['id' => $id, 'name' => $category->name]);
+        });
 
         return response()->json(['status' => 'success', 'message' => 'Map category archived.']);
     }
