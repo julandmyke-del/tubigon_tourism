@@ -1,0 +1,119 @@
+name: Deploy Tubigon Web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'lib/**'
+      - 'web/**'
+      - 'assets/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - '.github/workflows/flutter-web-deploy.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tubigon-web-deploy
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Validate deployment configuration
+        env:
+          HOSTINGER_FTP_SERVER: ${{ secrets.HOSTINGER_FTP_SERVER }}
+          HOSTINGER_FTP_USERNAME: ${{ secrets.HOSTINGER_FTP_USERNAME }}
+          HOSTINGER_FTP_PASSWORD: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
+          HOSTINGER_FTP_SERVER_DIR: ${{ vars.HOSTINGER_FTP_SERVER_DIR }}
+          WEB_API_BASE_URL: ${{ secrets.WEB_API_BASE_URL }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+
+          test -n "$HOSTINGER_FTP_SERVER" || { echo '::error::HOSTINGER_FTP_SERVER is not configured.'; exit 1; }
+          test -n "$HOSTINGER_FTP_USERNAME" || { echo '::error::HOSTINGER_FTP_USERNAME is not configured.'; exit 1; }
+          test -n "$HOSTINGER_FTP_PASSWORD" || { echo '::error::HOSTINGER_FTP_PASSWORD is not configured.'; exit 1; }
+          test -n "$WEB_API_BASE_URL" || { echo '::error::WEB_API_BASE_URL is not configured.'; exit 1; }
+          test -n "$GOOGLE_CLIENT_ID" || { echo '::error::GOOGLE_CLIENT_ID is not configured.'; exit 1; }
+          test -n "$HOSTINGER_FTP_SERVER_DIR" || { echo '::error::Set the HOSTINGER_FTP_SERVER_DIR repository variable after confirming the assigned FTP document root.'; exit 1; }
+
+          case "$HOSTINGER_FTP_SERVER_DIR" in
+            */) ;;
+            *) echo '::error::HOSTINGER_FTP_SERVER_DIR must end with a slash.'; exit 1 ;;
+          esac
+
+      - name: Prepare ignored Flutter asset
+        run: touch .env
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Flutter Web
+        env:
+          WEB_API_BASE_URL: ${{ secrets.WEB_API_BASE_URL }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+        run: |
+          flutter build web --release \
+            --dart-define=WEB_API_BASE_URL="$WEB_API_BASE_URL" \
+            --dart-define=GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID"
+
+      - name: Verify web build output
+        run: |
+          set -euo pipefail
+          test -f build/web/index.html
+          test -f build/web/flutter_bootstrap.js
+          test -f build/web/main.dart.js
+
+      - name: Cache-bust Flutter entry files
+        run: |
+          set -euo pipefail
+
+          version="${GITHUB_SHA::8}"
+          index_file='build/web/index.html'
+          bootstrap_file='build/web/flutter_bootstrap.js'
+
+          grep -Fq 'src="flutter_bootstrap.js"' "$index_file" || {
+            echo '::error::Expected Flutter bootstrap reference was not found.'
+            exit 1
+          }
+          grep -Fq '"main.dart.js"' "$bootstrap_file" || {
+            echo '::error::Expected Flutter JavaScript entry point was not found.'
+            exit 1
+          }
+
+          sed -i "s|src=\"flutter_bootstrap.js\"|src=\"flutter_bootstrap.js?v=${version}\"|" "$index_file"
+          sed -i "s|\"main.dart.js\"|\"main.dart.js?v=${version}\"|g" "$bootstrap_file"
+
+          grep -Fq "src=\"flutter_bootstrap.js?v=${version}\"" "$index_file"
+          grep -Fq "\"main.dart.js?v=${version}\"" "$bootstrap_file"
+
+          if grep -Fq '"main.dart.js"' "$bootstrap_file"; then
+            echo '::error::An unversioned Flutter JavaScript entry point remains.'
+            exit 1
+          fi
+
+      - name: Deploy to Hostinger via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.HOSTINGER_FTP_SERVER }}
+          username: ${{ secrets.HOSTINGER_FTP_USERNAME }}
+          password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
+          local-dir: build/web/
+          server-dir: ${{ vars.HOSTINGER_FTP_SERVER_DIR }}
+          log-level: minimal
