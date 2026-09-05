@@ -12,6 +12,7 @@ class Notification extends Model
 
     protected $fillable = [
         'user_id',
+        'announcement_id',
         'type',
         'title',
         'body',
@@ -27,5 +28,10 @@ class Notification extends Model
     public function user()
     {
         return $this->belongsTo(Profile::class, 'user_id');
+    }
+
+    public function announcement()
+    {
+        return $this->belongsTo(Announcement::class);
     }
 }

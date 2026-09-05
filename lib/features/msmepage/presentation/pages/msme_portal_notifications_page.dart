@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../notifications/repositories/notification_repository.dart';
+import '../../../map/providers/map_provider.dart';
 import '../../providers/msme_portal_providers.dart';
+import '../../repositories/msme_repository.dart';
 import '../msme_theme.dart';
+import '../widgets/msme_portal_states.dart';
 
 class MsmePortalNotificationsPage extends ConsumerWidget {
   const MsmePortalNotificationsPage({super.key});
@@ -26,11 +30,11 @@ class MsmePortalNotificationsPage extends ConsumerWidget {
           Expanded(
               child: value.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => Center(
-                child: OutlinedButton(
-                    onPressed: () =>
-                        ref.invalidate(msmePortalNotificationsProvider),
-                    child: Text('Retry: $error'))),
+            error: (error, _) => MsmePortalErrorState(
+              message: friendlyMsmeError(
+                  error, 'We couldn’t load your notifications.'),
+              onRetry: () => ref.invalidate(msmePortalNotificationsProvider),
+            ),
             data: (items) => items.isEmpty
                 ? const Center(
                     child: Text('No notifications yet.',
@@ -42,24 +46,28 @@ class MsmePortalNotificationsPage extends ConsumerWidget {
                       final item = items[index];
                       final unread =
                           item['is_read'] != true && item['is_read'] != 1;
-                      return ListTile(
-                        tileColor: unread
-                            ? MsmeTheme.primaryOrange.withValues(alpha: .08)
-                            : MsmeTheme.cardDark,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                        leading: Icon(
-                            unread
-                                ? Icons.notifications_active
-                                : Icons.notifications_none,
-                            color: MsmeTheme.primaryOrange),
-                        title: Text(item['title']?.toString() ?? 'Update',
-                            style: const TextStyle(color: Colors.white)),
-                        subtitle: Text(
-                            '${item['body'] ?? ''}\n${item['created_at'] ?? ''}',
-                            style: const TextStyle(color: MsmeTheme.textMuted)),
-                        isThreeLine: true,
-                        onTap: () => _open(context, ref, item),
+                      return Material(
+                        color: Colors.transparent,
+                        child: ListTile(
+                          tileColor: unread
+                              ? MsmeTheme.primaryOrange.withValues(alpha: .08)
+                              : MsmeTheme.cardDark,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          leading: Icon(
+                              unread
+                                  ? Icons.notifications_active
+                                  : Icons.notifications_none,
+                              color: MsmeTheme.primaryOrange),
+                          title: Text(item['title']?.toString() ?? 'Update',
+                              style: const TextStyle(color: Colors.white)),
+                          subtitle: Text(
+                              '${item['body'] ?? ''}\n${item['created_at'] ?? ''}',
+                              style:
+                                  const TextStyle(color: MsmeTheme.textMuted)),
+                          isThreeLine: true,
+                          onTap: () => _open(context, ref, item),
+                        ),
                       );
                     },
                   ),
@@ -75,7 +83,18 @@ class MsmePortalNotificationsPage extends ConsumerWidget {
       await ref
           .read(msmePortalRepositoryProvider)
           .markNotificationRead(item['id'].toString());
+      if (!context.mounted) return;
       ref.invalidate(msmePortalNotificationsProvider);
+      ref.invalidate(touristNotificationsProvider);
+      ref.invalidate(touristUnreadCountProvider);
+      if (item['type']?.toString().startsWith('msme_') == true) {
+        ref.invalidate(currentMsmeProvider);
+        ref.invalidate(msmePortalProfileProvider);
+        ref.invalidate(msmePortalDashboardStatsProvider);
+        ref.invalidate(msmePortalListingsProvider);
+        ref.invalidate(msmeListProvider);
+        ref.invalidate(mapMarkersProvider);
+      }
       final data = item['data'];
       final route = data is Map ? data['route']?.toString() : null;
       if (context.mounted &&
@@ -85,8 +104,9 @@ class MsmePortalNotificationsPage extends ConsumerWidget {
       }
     } catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(error.toString())));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(friendlyMsmeError(
+                error, 'We couldn’t open this notification.'))));
       }
     }
   }
@@ -94,11 +114,15 @@ class MsmePortalNotificationsPage extends ConsumerWidget {
   Future<void> _markAll(BuildContext context, WidgetRef ref) async {
     try {
       await ref.read(msmePortalRepositoryProvider).markAllNotificationsRead();
+      if (!context.mounted) return;
       ref.invalidate(msmePortalNotificationsProvider);
+      ref.invalidate(touristNotificationsProvider);
+      ref.invalidate(touristUnreadCountProvider);
     } catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(error.toString())));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(friendlyMsmeError(
+                error, 'We couldn’t mark notifications as read.'))));
       }
     }
   }

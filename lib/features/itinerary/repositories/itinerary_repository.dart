@@ -52,6 +52,10 @@ class ItineraryRepository {
         throw const FormatException('Invalid itinerary response.');
       }
       final itinerary = Itinerary.fromJson(Map<String, dynamic>.from(row));
+      if (itinerary.placeCount > itinerary.items.length) {
+        throw const FormatException(
+            'Incomplete itinerary detail response: stop details are missing.');
+      }
       await _cacheDetail(itinerary);
       return itinerary;
     } catch (_) {

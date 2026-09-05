@@ -6,6 +6,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../authentication/auth_provider.dart';
+import '../../notifications/presentation/notification_bell_button.dart';
 
 class LguShell extends ConsumerStatefulWidget {
   const LguShell({super.key, required this.child});
@@ -42,6 +43,7 @@ class _LguShellState extends ConsumerState<LguShell> {
     if (location.startsWith('/lgu/profile')) return 13;
     if (location.startsWith('/lgu/settings')) return 14;
     if (location.startsWith('/lgu/map-locations')) return 16;
+    if (location.startsWith('/lgu/role-applications')) return 17;
     return 0;
   }
 
@@ -98,19 +100,23 @@ class _LguShellState extends ConsumerState<LguShell> {
       case 16:
         context.goNamed(RouteNames.lguMapLocations);
         break;
+      case 17:
+        context.go('/lgu/role-applications');
+        break;
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final selectedIndex = _calculateSelectedIndex(context);
+    final location = GoRouterState.of(context).matchedLocation;
     final auth = ref.watch(authProvider);
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final isDesktop = constraints.maxWidth >= 1024;
 
-        return Scaffold(
+        final shell = Scaffold(
           key: _scaffoldKey,
           backgroundColor: _navyBg,
           drawer: isDesktop
@@ -150,11 +156,10 @@ class _LguShellState extends ConsumerState<LguShell> {
               ],
             ),
             actions: [
-              IconButton(
-                icon: const Icon(Icons.notifications_outlined,
-                    color: AppColors.grey300),
-                onPressed: () => context.goNamed(RouteNames.lguNotifications),
-                tooltip: 'Notifications',
+              NotificationBellButton(
+                onViewAll: () => context.goNamed(RouteNames.lguNotifications),
+                iconColor: AppColors.grey300,
+                badgeColor: _accentOrange,
               ),
               const SizedBox(width: AppSpacing.xs),
               Container(
@@ -221,10 +226,18 @@ class _LguShellState extends ConsumerState<LguShell> {
                   width: 260,
                   child: _buildSidebar(selectedIndex, isDrawer: false),
                 ),
-              Expanded(child: widget.child),
+              Expanded(
+                child: Column(
+                  children: [
+                    if (location == '/lgu') const AnnouncementHighlights(),
+                    Expanded(child: widget.child),
+                  ],
+                ),
+              ),
             ],
           ),
         );
+        return shell;
       },
     );
   }
@@ -294,12 +307,16 @@ class _LguShellState extends ConsumerState<LguShell> {
                       selectedIndex, isDrawer),
                   _buildNavItem(16, Icons.add_location_alt_rounded,
                       'Map Locations', selectedIndex, isDrawer),
-                  _buildNavHeader('TOURISMMANAGEMENT'),
+                  _buildNavHeader('TOURISM MANAGEMENT'),
                   _buildNavItem(1, Icons.map_rounded, 'Tourist Spots',
                       selectedIndex, isDrawer),
                   _buildNavItem(2, Icons.sensors_rounded, 'Tourism Activity',
                       selectedIndex, isDrawer),
+                  _buildNavItem(3, Icons.event_note_rounded, 'Reservations',
+                      selectedIndex, isDrawer),
                   _buildNavHeader('OPERATIONS'),
+                  _buildNavItem(17, Icons.verified_user_outlined,
+                      'Role Applications', selectedIndex, isDrawer),
                   _buildNavItem(5, Icons.storefront_rounded,
                       'MSME Verification', selectedIndex, isDrawer),
                   _buildNavItem(6, Icons.delete_outline_rounded,
@@ -357,25 +374,28 @@ class _LguShellState extends ConsumerState<LguShell> {
             ? Border.all(color: _accentOrange.withValues(alpha: 0.4))
             : null,
       ),
-      child: ListTile(
-        dense: true,
-        leading: Icon(
-          icon,
-          color: isSelected ? _accentOrange : AppColors.grey400,
-          size: 20,
-        ),
-        title: Text(
-          label,
-          style: TextStyle(
-            color: isSelected ? AppColors.white : AppColors.grey300,
-            fontSize: 13,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+      child: Material(
+        color: Colors.transparent,
+        child: ListTile(
+          dense: true,
+          leading: Icon(
+            icon,
+            color: isSelected ? _accentOrange : AppColors.grey400,
+            size: 20,
           ),
+          title: Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? AppColors.white : AppColors.grey300,
+              fontSize: 13,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+          onTap: () {
+            if (isDrawer) Navigator.pop(context);
+            _onItemTapped(index);
+          },
         ),
-        onTap: () {
-          if (isDrawer) Navigator.pop(context);
-          _onItemTapped(index);
-        },
       ),
     );
   }

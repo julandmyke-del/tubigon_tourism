@@ -43,11 +43,12 @@ class MapController extends Controller
         $managed = $this->managedLocations();
         $linkedSpotIds = $managed->where('type', 'tourist_spot')->pluck('source_id')->all();
         $linkedMsmeIds = $managed->where('type', 'msme')->pluck('source_id')->all();
+        $linkedEmergencyContactIds = $managed->pluck('emergency_contact_id')->filter()->all();
         $locations = collect()
             ->concat($managed)
             ->concat($this->touristSpots($linkedSpotIds))
             ->concat($this->publicMsmes($linkedMsmeIds))
-            ->concat($this->emergencyLocations($role))
+            ->concat($this->emergencyLocations($role, $linkedEmergencyContactIds))
             ->concat($this->publicPartnerListings());
 
         if ($role === 'msme_owner' && $userId) {
@@ -66,10 +67,9 @@ class MapController extends Controller
             $locations = $locations->concat($this->allMsmes($linkedMsmeIds));
         }
 
-        // The API is the authoritative scope boundary. The only exception to
-        // the land polygon is the controlled project-owner-approved seed,
-        // which includes legitimate marine attractions around Tubigon's
-        // island barangays.
+        // The API is the authoritative scope boundary. Exceptions are limited
+        // to preapproved marine attractions and the tightly bounded Tubigon
+        // passenger-port service area.
         $locations = $locations
             ->filter(fn (array $location) => $this->boundary->contains(
                 (float) $location['latitude'],
@@ -77,6 +77,12 @@ class MapController extends Controller
             ) || (
                 ($location['type'] ?? null) === 'tourist_spot'
                 && ($location['is_preapproved'] ?? false)
+            ) || (
+                ($location['category_slug'] ?? null) === 'port-transport'
+                && $this->boundary->containsPortServiceArea(
+                    (float) $location['latitude'],
+                    (float) $location['longitude'],
+                )
             ))
             // Later role-specific records win so owners retain their flags.
             ->reverse()->unique('id')->reverse()->values();
@@ -124,8 +130,19 @@ class MapController extends Controller
             ->filter(function (MapLocation $location): bool {
                 $entity = $location->linkedEntity();
 
-                return ! $entity instanceof TouristSpot
-                    || ($entity->is_active && ($entity->is_published ?? true));
+                if ($entity instanceof TouristSpot) {
+                    return $entity->is_active && ($entity->is_published ?? true);
+                }
+                if ($entity instanceof Msme) {
+                    return $entity->is_verified
+                        && $entity->verification_status === 'verified'
+                        && (! Schema::hasColumn('msmes', 'operational_status')
+                            || in_array($entity->operational_status, ['open', 'temporarily_closed', 'fully_booked'], true))
+                        && $entity->latitude !== null && $entity->latitude >= -90 && $entity->latitude <= 90
+                        && $entity->longitude !== null && $entity->longitude >= -180 && $entity->longitude <= 180;
+                }
+
+                return true;
             })
             ->map(fn (MapLocation $location) => $location->toPlaceArray());
     }
@@ -134,7 +151,8 @@ class MapController extends Controller
     {
         $query = TouristSpot::with('category')
             ->where('is_active', true)
-            ->whereNotNull('latitude')->whereNotNull('longitude');
+            ->whereNotNull('latitude')->whereBetween('latitude', [-90, 90])
+            ->whereNotNull('longitude')->whereBetween('longitude', [-180, 180]);
         if (Schema::hasColumn('tourist_spots', 'is_published')) {
             $query->where('is_published', true);
         }
@@ -168,6 +186,8 @@ class MapController extends Controller
                 'is_owned' => false,
                 'is_featured' => (bool) $spot->is_featured,
                 'is_preapproved' => (bool) $spot->is_preapproved,
+                'is_active' => (bool) $spot->is_active,
+                'is_published' => (bool) ($spot->is_published ?? true),
                 'is_bookable' => (bool) $spot->is_bookable,
                 'booking_enabled' => (bool) $spot->booking_enabled,
                 'booking_unavailable_reason_code' => $spot->booking_unavailable_reason_code,
@@ -182,7 +202,13 @@ class MapController extends Controller
     private function publicMsmes(array $excludedIds = []): Collection
     {
         $query = Msme::where('is_verified', true)
-            ->whereNotNull('latitude')->whereNotNull('longitude');
+            ->where('verification_status', 'verified')
+            ->when(
+                Schema::hasColumn('msmes', 'operational_status'),
+                fn ($query) => $query->whereIn('operational_status', ['open', 'temporarily_closed', 'fully_booked']),
+            )
+            ->whereNotNull('latitude')->whereBetween('latitude', [-90, 90])
+            ->whereNotNull('longitude')->whereBetween('longitude', [-180, 180]);
         if ($excludedIds) {
             $query->whereNotIn('id', $excludedIds);
         }
@@ -235,13 +261,15 @@ class MapController extends Controller
             'contact' => $msme->phone,
             'is_verified' => (bool) $msme->is_verified,
             'is_owned' => $owned,
+            'is_bookable' => (bool) ($msme->booking_enabled ?? false),
+            'booking_enabled' => (bool) ($msme->booking_enabled ?? false),
             'is_featured' => false,
             'view_count' => 0,
             'created_at' => $msme->created_at?->toISOString(),
         ], $meta);
     }
 
-    private function emergencyLocations(?string $role): Collection
+    private function emergencyLocations(?string $role, array $excludedIds = []): Collection
     {
         $query = EmergencyContact::where('is_active', true)
             ->whereNotNull('latitude')->whereNotNull('longitude')
@@ -249,6 +277,9 @@ class MapController extends Controller
                 ! in_array($role, ['lgu_staff', 'admin'], true),
                 fn ($query) => $query->where('is_verified', true),
             );
+        if ($excludedIds) {
+            $query->whereNotIn('id', $excludedIds);
+        }
 
         return $query->get()->map(fn (EmergencyContact $contact) => array_merge([
             'id' => "emergency:{$contact->id}",

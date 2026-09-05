@@ -50,12 +50,14 @@ class MapLocationSeeder extends Seeder
                 continue;
             }
 
-            [$entityType, $entity] = $this->matchingEntity($place['name']);
+            [$entityType, $entity] = $this->matchingEntity($place);
             $latitude = $entity->latitude ?? $place['latitude'];
             $longitude = $entity->longitude ?? $place['longitude'];
             $coordinatesValid = $latitude !== null
                 && $longitude !== null
-                && $boundary->contains((float) $latitude, (float) $longitude);
+                && ($boundary->contains((float) $latitude, (float) $longitude)
+                    || ($place['category_slug'] === 'port-transport'
+                        && $boundary->containsPortServiceArea((float) $latitude, (float) $longitude)));
 
             $location = $this->findExistingLocation(
                 $place['seed_key'],
@@ -89,7 +91,9 @@ class MapLocationSeeder extends Seeder
 
             if ($seedOwned) {
                 $location->fill([
-                    'name' => $entity->name ?? $place['name'],
+                    'name' => $entityType === 'emergency_contact'
+                        ? $place['name']
+                        : ($entity->name ?? $place['name']),
                     'description' => filled($entity->description ?? null)
                         ? $entity->description
                         : $place['description'],
@@ -101,6 +105,7 @@ class MapLocationSeeder extends Seeder
                         : 'Tubigon, Bohol',
                     'latitude' => $latitude,
                     'longitude' => $longitude,
+                    'marker_icon' => $place['marker_icon'] ?? null,
                     'is_featured' => $place['featured'],
                     'active' => true,
                 ]);
@@ -171,6 +176,74 @@ class MapLocationSeeder extends Seeder
     private function places(): array
     {
         return [
+            [
+                'seed_key' => 'tubigon-facility-municipal-hall',
+                'name' => 'Tubigon Municipal Hall',
+                'category_slug' => 'government',
+                'latitude' => 9.94303,
+                'longitude' => 123.96065,
+                'marker_icon' => 'account_balance',
+                'featured' => false,
+                'public_demo' => true,
+                'description' => 'Municipal government center of Tubigon, Bohol.',
+            ],
+            [
+                'seed_key' => 'tubigon-facility-fire-station',
+                'name' => 'BFP Tubigon Fire Station',
+                'emergency_contact_name' => 'Tubigon Fire Station',
+                'category_slug' => 'emergency',
+                'latitude' => 9.94434,
+                'longitude' => 123.96064,
+                'marker_icon' => 'local_fire_department',
+                'featured' => false,
+                'public_demo' => true,
+                'description' => 'Fire station and emergency response facility serving Tubigon.',
+            ],
+            [
+                'seed_key' => 'tubigon-facility-community-hospital',
+                'name' => 'Tubigon Community Hospital',
+                'emergency_contact_name' => 'Tubigon Community Hospital',
+                'category_slug' => 'emergency',
+                'latitude' => 9.94373,
+                'longitude' => 123.96116,
+                'marker_icon' => 'local_hospital',
+                'featured' => false,
+                'public_demo' => true,
+                'description' => 'Hospital and health facility serving Tubigon and nearby communities.',
+            ],
+            [
+                'seed_key' => 'tubigon-facility-port-management-office',
+                'name' => 'Tubigon Port Management Office',
+                'category_slug' => 'port-transport',
+                'latitude' => 9.95596,
+                'longitude' => 123.95814,
+                'marker_icon' => 'anchor',
+                'featured' => false,
+                'public_demo' => true,
+                'description' => 'Port management office. The initial pin is approximate reference data and remains editable by LGU/Admin.',
+            ],
+            [
+                'seed_key' => 'tubigon-facility-transport-terminal',
+                'name' => 'Tubigon Transport Terminal',
+                'category_slug' => 'port-transport',
+                'latitude' => 9.95199,
+                'longitude' => 123.96207,
+                'marker_icon' => 'directions_bus',
+                'featured' => false,
+                'public_demo' => true,
+                'description' => 'Public transport terminal in Tubigon. The initial pin is approximate reference data and remains editable by LGU/Admin.',
+            ],
+            [
+                'seed_key' => 'tubigon-facility-southern-bus-terminal',
+                'name' => 'Southern Bus Terminal',
+                'category_slug' => 'port-transport',
+                'latitude' => 9.95235,
+                'longitude' => 123.96213,
+                'marker_icon' => 'directions_bus',
+                'featured' => false,
+                'public_demo' => true,
+                'description' => 'Bus terminal serving southern routes. The initial pin is approximate reference data and remains editable by LGU/Admin.',
+            ],
             [
                 'seed_key' => 'tubigon-initial-alturas-mall',
                 'name' => 'Alturas Mall Tubigon',
@@ -285,11 +358,12 @@ class MapLocationSeeder extends Seeder
                 'seed_key' => 'tubigon-draft-tubigon-port',
                 'name' => 'Tubigon Port',
                 'category_slug' => 'port-transport',
-                'latitude' => null,
-                'longitude' => null,
+                'latitude' => 9.95636,
+                'longitude' => 123.95778,
+                'marker_icon' => 'directions_boat',
                 'featured' => false,
-                'public_demo' => false,
-                'description' => 'Draft visitor location awaiting exact port pin and detail verification by Tubigon LGU.',
+                'public_demo' => true,
+                'description' => 'Tubigon seaport and passenger ferry terminal. The initial pin is approximate reference data and remains editable by LGU/Admin.',
             ],
         ];
     }
@@ -323,8 +397,9 @@ class MapLocationSeeder extends Seeder
             ->first();
     }
 
-    private function matchingEntity(string $name): array
+    private function matchingEntity(array $place): array
     {
+        $name = $place['name'];
         foreach (['msmes' => 'msme', 'tourist_spots' => 'tourist_spot'] as $table => $type) {
             if (! Schema::hasTable($table)) {
                 continue;
@@ -335,6 +410,16 @@ class MapLocationSeeder extends Seeder
                 ->first();
             if ($entity) {
                 return [$type, $entity];
+            }
+        }
+
+        if (Schema::hasTable('emergency_contacts') && isset($place['emergency_contact_name'])) {
+            $entity = DB::table('emergency_contacts')
+                ->whereNull('deleted_at')
+                ->whereRaw('LOWER(name) = ?', [Str::lower($place['emergency_contact_name'])])
+                ->first();
+            if ($entity) {
+                return ['emergency_contact', $entity];
             }
         }
 

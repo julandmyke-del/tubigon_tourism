@@ -49,8 +49,16 @@ class SettingController extends Controller
      */
     public function systemSettings(): JsonResponse
     {
-        $settings = SystemSetting::first();
-        return response()->json(['status' => 'success', 'data' => $settings ?? (object)[]]);
+        $settings = SystemSetting::firstOrCreate([], ['app_name' => 'Tubigon Smart Tourism']);
+        return response()->json(['status' => 'success', 'data' => $settings->only([
+            'id', 'app_name', 'municipality_name', 'contact_email', 'contact_phone',
+            'tourism_office_address', 'support_contact',
+            'tourist_registration_enabled', 'msme_registration_enabled',
+            'msme_applications_enabled', 'partner_applications_enabled',
+            'require_msme_verification', 'reviews_enabled',
+            'waste_reporting_enabled', 'global_booking_enabled',
+            'maintenance_notice', 'privacy_policy', 'terms_of_service', 'updated_at',
+        ])]);
     }
 
     /**
@@ -61,17 +69,33 @@ class SettingController extends Controller
         $settings = SystemSetting::findOrFail($id);
         $validated = $request->validate([
             'app_name' => 'sometimes|string|max:255',
+            'municipality_name' => 'sometimes|string|max:255',
             'contact_email' => 'sometimes|email|max:255',
             'contact_phone' => 'sometimes|string|max:255',
+            'tourism_office_address' => 'nullable|string|max:500',
+            'support_contact' => 'nullable|string|max:255',
+            'tourist_registration_enabled' => 'sometimes|boolean',
+            'msme_registration_enabled' => 'sometimes|boolean',
+            'msme_applications_enabled' => 'sometimes|boolean',
+            'partner_applications_enabled' => 'sometimes|boolean',
+            'require_msme_verification' => 'sometimes|boolean',
+            'reviews_enabled' => 'sometimes|boolean',
+            'waste_reporting_enabled' => 'sometimes|boolean',
+            'global_booking_enabled' => 'sometimes|boolean',
+            'maintenance_notice' => 'nullable|string|max:1000',
             'privacy_policy' => 'nullable|string',
             'terms_of_service' => 'nullable|string',
         ]);
         DB::transaction(function () use ($request, $settings, $validated): void {
-            $settings->update($validated);
+            $settings->update([...$validated, 'updated_by' => $request->user()->id]);
             ActivityLog::create([
                 'user_id' => $request->user()->id,
                 'action' => 'System Settings updated',
-                'details' => 'Updated global application settings',
+                'details' => json_encode([
+                    'target_type' => 'system_settings',
+                    'target_id' => $settings->id,
+                    'changed_keys' => array_keys($validated),
+                ]),
             ]);
         });
 

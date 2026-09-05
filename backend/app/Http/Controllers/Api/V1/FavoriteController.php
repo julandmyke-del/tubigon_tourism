@@ -7,6 +7,7 @@ use App\Models\Favorite;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class FavoriteController extends Controller
@@ -69,7 +70,12 @@ class FavoriteController extends Controller
     private function isPubliclyAvailable(string $type, string $id): bool
     {
         $query = match ($type) {
-            'spot' => DB::table('tourist_spots')->where('is_active', true),
+            'spot' => DB::table('tourist_spots')
+                ->where('is_active', true)
+                ->when(
+                    Schema::hasColumn('tourist_spots', 'is_published'),
+                    fn ($query) => $query->where('is_published', true),
+                ),
             'msme' => DB::table('msmes')
                 ->where('is_verified', true)
                 ->where('verification_status', 'verified'),
@@ -77,6 +83,7 @@ class FavoriteController extends Controller
                 ->where('is_active', true)
                 ->where('approval_status', 'approved'),
             'map_location' => DB::table('map_locations')
+                ->where('verified', true)
                 ->where('published', true)
                 ->where('active', true),
         };

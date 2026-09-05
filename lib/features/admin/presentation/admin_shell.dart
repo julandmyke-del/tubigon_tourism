@@ -7,6 +7,7 @@ import '../../../core/theme/admin_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../authentication/auth_provider.dart';
+import '../../notifications/presentation/notification_bell_button.dart';
 import '../providers/admin_providers.dart';
 
 class AdminShell extends ConsumerWidget {
@@ -21,6 +22,10 @@ class AdminShell extends ConsumerWidget {
         icon: Icons.people_rounded,
         label: 'User Management',
         route: '/admin/users'),
+    _AdminMenuItem(
+        icon: Icons.verified_user_rounded,
+        label: 'Access Requests',
+        route: '/admin/access-requests'),
     _AdminMenuItem(
         icon: Icons.store_rounded,
         label: 'MSME Management',
@@ -124,23 +129,29 @@ class AdminShell extends ConsumerWidget {
                       color: Colors.white, size: 22),
                 ),
                 const SizedBox(width: AppSpacing.sm),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Tubigon Admin',
-                      style: AppTypography.titleMedium.copyWith(
-                        color: AdminColors.textPrimary,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Tubigon Admin',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.titleMedium.copyWith(
+                          color: AdminColors.textPrimary,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.5,
+                        ),
                       ),
-                    ),
-                    Text(
-                      'Management Portal',
-                      style: AppTypography.labelSmall.copyWith(
-                          color: AdminColors.textSecondary, fontSize: 11),
-                    ),
-                  ],
+                      Text(
+                        'Management Portal',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTypography.labelSmall.copyWith(
+                            color: AdminColors.textSecondary, fontSize: 11),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -163,7 +174,7 @@ class AdminShell extends ConsumerWidget {
                     if (!isDesktop) Navigator.of(context).pop();
                     if (GoRouterState.of(context).matchedLocation !=
                         item.route) {
-                      context.push(item.route);
+                      context.go(item.route);
                     }
                   },
                 );
@@ -286,11 +297,10 @@ class AdminShell extends ConsumerWidget {
           ),
           const Spacer(),
           // Notification Bell Icon
-          IconButton(
-            tooltip: 'Announcements',
-            onPressed: () => context.push('/admin/announcements'),
-            icon: const Icon(Icons.notifications_none_rounded,
-                color: AdminColors.textSecondary, size: 22),
+          NotificationBellButton(
+            onViewAll: () => context.go('/admin/announcements'),
+            iconColor: AdminColors.textSecondary,
+            badgeColor: AdminColors.orange,
           ),
           const SizedBox(width: AppSpacing.md),
           // User Badge
@@ -344,6 +354,7 @@ class AdminShell extends ConsumerWidget {
               child: Column(
                 children: [
                   topBar,
+                  if (location == '/admin') const AnnouncementHighlights(),
                   Expanded(child: child),
                 ],
               ),

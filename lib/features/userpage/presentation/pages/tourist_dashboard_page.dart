@@ -8,7 +8,7 @@ import '../../../authentication/auth_provider.dart';
 import '../../../tourist_spots/models/tourist_spot.dart';
 import '../../../tourist_spots/repositories/tourist_spot_repository.dart';
 import '../../../reservations/repositories/reservation_repository.dart';
-import '../../../notifications/repositories/notification_repository.dart';
+import '../../../notifications/presentation/notification_bell_button.dart';
 
 class TouristDashboardPage extends ConsumerWidget {
   const TouristDashboardPage({super.key});
@@ -45,7 +45,6 @@ class TouristDashboardPage extends ConsumerWidget {
     final authState = ref.watch(authProvider);
     final spotsAsync = ref.watch(touristSpotsListProvider);
     final bookingsAsync = ref.watch(userReservationsProvider);
-    final unreadAsync = ref.watch(touristUnreadCountProvider);
 
     final userName = authState.isGuest
         ? 'Explorer'
@@ -111,44 +110,10 @@ class TouristDashboardPage extends ConsumerWidget {
                                 ],
                               ),
                             ),
-                            IconButton(
-                              icon: Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.08),
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.12)),
-                                ),
-                                child:
-                                    Stack(clipBehavior: Clip.none, children: [
-                                  const Icon(Icons.notifications_outlined,
-                                      color: Colors.white, size: 20),
-                                  if ((unreadAsync.valueOrNull ?? 0) > 0)
-                                    Positioned(
-                                      right: -5,
-                                      top: -5,
-                                      child: Container(
-                                        constraints: const BoxConstraints(
-                                            minWidth: 16, minHeight: 16),
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 3),
-                                        decoration: const BoxDecoration(
-                                            color: Color(0xFFF87171),
-                                            shape: BoxShape.circle),
-                                        child: Text(
-                                            '${unreadAsync.valueOrNull}',
-                                            textAlign: TextAlign.center,
-                                            style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 9,
-                                                fontWeight: FontWeight.bold)),
-                                      ),
-                                    ),
-                                ]),
-                              ),
-                              onPressed: () => context.go('/notifications'),
+                            NotificationBellButton(
+                              onViewAll: () => context.go('/notifications'),
+                              iconColor: Colors.white,
+                              badgeColor: const Color(0xFFF87171),
                             ),
                             const SizedBox(width: 8),
                             GestureDetector(
@@ -181,6 +146,7 @@ class TouristDashboardPage extends ConsumerWidget {
               ),
             ),
           ),
+          const SliverToBoxAdapter(child: AnnouncementHighlights()),
 
           // ── Content ───────────────────────────────────────────────────────
           SliverPadding(

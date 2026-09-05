@@ -3,6 +3,16 @@ import 'package:dio/dio.dart';
 import '../../../core/constants/api_endpoints.dart';
 import '../../../core/network/api_client.dart';
 
+class CurrentMsmeState {
+  const CurrentMsmeState(
+      {required this.business, required this.profileRequired});
+
+  final Map<String, dynamic>? business;
+  final bool profileRequired;
+
+  bool get hasBusiness => business != null;
+}
+
 class MsmePortalRepository {
   MsmePortalRepository({required this.apiClient});
 
@@ -18,8 +28,10 @@ class MsmePortalRepository {
     return profile.isEmpty ? const [] : [profile];
   }
 
-  Future<void> createListing(Map<String, dynamic> data) async {
-    await _success(apiClient.post(ApiEndpoints.createMsmeBusiness, data: data));
+  Future<void> createListing(Map<String, dynamic> data,
+      {bool saveAsDraft = true}) async {
+    await _success(apiClient.post(ApiEndpoints.createMsmeBusiness,
+        data: {...data, 'save_as_draft': saveAsDraft}));
   }
 
   Future<void> updateListing(String id, Map<String, dynamic> data) =>
@@ -55,15 +67,19 @@ class MsmePortalRepository {
     }).toList(growable: false);
   }
 
-  Future<void> updateReservationStatus(String id, String status) async {
+  Future<void> updateReservationStatus(String id, String status,
+      {String? reason}) async {
     await _success(apiClient.put(
       ApiEndpoints.msmePortalUpdateReservationStatus(id),
-      data: {'status_name': status.toLowerCase()},
+      data: {
+        'status_name': status.toLowerCase(),
+        if (reason != null) 'reason': reason,
+      },
     ));
   }
 
   Future<List<Map<String, dynamic>>> getReviews() async {
-    final data = await _map(ApiEndpoints.msmePortalReviews);
+    final data = await getReviewData();
     final rows = (data['reviews'] as List? ?? const []);
     return rows.whereType<Map>().map((raw) {
       final row = Map<String, dynamic>.from(raw);
@@ -78,15 +94,23 @@ class MsmePortalRepository {
   }
 
   Future<Map<String, dynamic>> getReviewStats() async {
-    final data = await _map(ApiEndpoints.msmePortalReviews);
+    final data = await getReviewData();
     return {
       'averageRating': data['averageRating'] ?? 0,
       'totalReviews': data['reviewCount'] ?? 0,
     };
   }
 
-  Future<Map<String, dynamic>> getAnalytics() =>
-      _map(ApiEndpoints.msmePortalAnalytics);
+  Future<Map<String, dynamic>> getAnalytics({
+    String period = '30_days',
+    String? from,
+    String? to,
+  }) =>
+      _map(ApiEndpoints.msmePortalAnalytics, queryParameters: {
+        'period': period,
+        if (from != null) 'from': from,
+        if (to != null) 'to': to,
+      });
 
   Future<List<Map<String, dynamic>>> getNotifications() =>
       _list(ApiEndpoints.msmePortalNotifications);
@@ -98,14 +122,26 @@ class MsmePortalRepository {
       _success(apiClient.put(ApiEndpoints.markAllRead));
 
   Future<Map<String, dynamic>> getProfile() async {
+    return (await getCurrentBusiness()).business ?? <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> getReviewData() =>
+      _map(ApiEndpoints.msmePortalReviews);
+
+  Future<CurrentMsmeState> getCurrentBusiness() async {
     final response = await apiClient.get(ApiEndpoints.msmePortalProfile);
     _assertSuccess(response);
     final data = response.data['data'];
-    return data is Map<String, dynamic>
+    final business = data is Map<String, dynamic>
         ? data
         : data is Map
             ? Map<String, dynamic>.from(data)
-            : <String, dynamic>{};
+            : null;
+    return CurrentMsmeState(
+      business: business,
+      profileRequired:
+          response.data['profile_required'] == true || business == null,
+    );
   }
 
   Future<void> updateProfile(Map<String, dynamic> profileData) async {
@@ -131,8 +167,10 @@ class MsmePortalRepository {
     return url;
   }
 
-  Future<Map<String, dynamic>> _map(String endpoint) async {
-    final response = await apiClient.get(endpoint);
+  Future<Map<String, dynamic>> _map(String endpoint,
+      {Map<String, dynamic>? queryParameters}) async {
+    final response =
+        await apiClient.get(endpoint, queryParameters: queryParameters);
     _assertSuccess(response);
     final data = response.data['data'];
     if (data is! Map) throw const FormatException('Invalid API response.');

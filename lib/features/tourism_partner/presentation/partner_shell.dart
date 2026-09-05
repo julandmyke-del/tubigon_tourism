@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/responsive/responsive_layout.dart';
 import '../../authentication/auth_provider.dart';
+import '../providers/tourism_partner_providers.dart';
 import 'partner_theme.dart';
 
 class PartnerShell extends ConsumerStatefulWidget {
@@ -18,6 +19,7 @@ class PartnerShell extends ConsumerStatefulWidget {
 
 class _PartnerShellState extends ConsumerState<PartnerShell> {
   static const double _sidebarWidth = 260.0;
+  final Set<String> _dismissedUrgent = {};
 
   static final List<_PartnerNavItem> _navItems = [
     const _PartnerNavItem(
@@ -28,7 +30,7 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
     ),
     const _PartnerNavItem(
       id: 'listings',
-      label: 'My Listings',
+      label: 'My Destination',
       icon: Icons.store_rounded,
       route: '/tourism-partner/listings',
     ),
@@ -98,6 +100,8 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
             child: Column(
               children: [
                 _buildTopAppBar(context, activeItem, isDesktop),
+                if (location == '/tourism-partner')
+                  _partnerAnnouncementHighlights(),
                 Expanded(
                   child: Container(
                     color: PartnerTheme.bgDark,
@@ -112,8 +116,50 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
     );
   }
 
+  void _runPortalSearch(String value) {
+    final query = value.trim().toLowerCase();
+    if (query.isEmpty) return;
+    String? route;
+    if (query.contains('reserv') || query.contains('booking')) {
+      route = '/tourism-partner/reservations';
+    } else if (query.contains('review') || query.contains('rating')) {
+      route = '/tourism-partner/reviews';
+    } else if (query.contains('destination') ||
+        query.contains('listing') ||
+        query.contains('availability')) {
+      route = '/tourism-partner/listings';
+    } else if (query.contains('analytic') || query.contains('performance')) {
+      route = '/tourism-partner/analytics';
+    } else if (query.contains('notif') ||
+        query.contains('announcement') ||
+        query.contains('advisory')) {
+      route = '/tourism-partner/notifications';
+    } else if (query.contains('profile') || query.contains('account')) {
+      route = '/tourism-partner/profile';
+    } else if (query.contains('map') || query.contains('direction')) {
+      route = '/map';
+    }
+    if (route == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Try “reservations”, “reviews”, “destination”, “analytics”, or “map”.',
+          ),
+        ),
+      );
+      return;
+    }
+    context.go(route);
+  }
+
   Widget _buildTopAppBar(
       BuildContext context, _PartnerNavItem activeItem, bool isDesktop) {
+    final unread = ref
+            .watch(partnerNotificationsProvider)
+            .valueOrNull
+            ?.where((item) => item['is_read'] != true && item['is_read'] != 1)
+            .length ??
+        0;
     return Container(
       height: 72,
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -189,13 +235,15 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
                       style: GoogleFonts.inter(
                           fontSize: 13, color: PartnerTheme.textWhite),
                       decoration: InputDecoration(
-                        hintText: 'Search…',
+                        hintText: 'Search portal…',
                         hintStyle: GoogleFonts.inter(
                             fontSize: 13, color: PartnerTheme.textDisabled),
                         border: InputBorder.none,
                         isDense: true,
                         contentPadding: EdgeInsets.zero,
                       ),
+                      textInputAction: TextInputAction.search,
+                      onSubmitted: _runPortalSearch,
                     ),
                   ),
                 ],
@@ -204,13 +252,17 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
           const SizedBox(width: 16),
 
           // Notification Bell
-          IconButton(
-            onPressed: () => context.go('/tourism-partner/notifications'),
-            icon: const Badge(
-              label: Text('3'),
-              backgroundColor: PartnerTheme.primaryOrange,
-              child: Icon(Icons.notifications_outlined,
-                  color: PartnerTheme.textMuted),
+          Builder(
+            builder: (buttonContext) => IconButton(
+              tooltip: '$unread unread notifications',
+              onPressed: () => _showNotificationPanel(buttonContext),
+              icon: Badge(
+                isLabelVisible: unread > 0,
+                label: Text(unread > 99 ? '99+' : '$unread'),
+                backgroundColor: PartnerTheme.primaryOrange,
+                child: const Icon(Icons.notifications_outlined,
+                    color: PartnerTheme.textMuted),
+              ),
             ),
           ),
         ],
@@ -218,7 +270,188 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
     );
   }
 
+  Future<void> _showNotificationPanel(BuildContext buttonContext) async {
+    final items =
+        ref.read(partnerNotificationsProvider).valueOrNull ?? const [];
+    final box = buttonContext.findRenderObject() as RenderBox?;
+    final overlay =
+        Overlay.of(buttonContext).context.findRenderObject() as RenderBox?;
+    if (box == null || overlay == null) return;
+    final selected = await showMenu<String>(
+      context: buttonContext,
+      position: RelativeRect.fromRect(
+        Rect.fromPoints(
+          box.localToGlobal(Offset.zero, ancestor: overlay),
+          box.localToGlobal(box.size.bottomRight(Offset.zero),
+              ancestor: overlay),
+        ),
+        Offset.zero & overlay.size,
+      ),
+      constraints: const BoxConstraints(minWidth: 320, maxWidth: 380),
+      items: [
+        const PopupMenuItem(
+            enabled: false, child: Text('Recent Notifications')),
+        if (items.isEmpty)
+          const PopupMenuItem(
+              enabled: false, child: Text('No notifications yet.'))
+        else
+          ...items.take(5).map((item) => PopupMenuItem<String>(
+                value: item['id']?.toString(),
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  leading: Icon(
+                    item['is_read'] == true
+                        ? Icons.circle_outlined
+                        : Icons.circle,
+                    size: 9,
+                    color: item['is_read'] == true
+                        ? PartnerTheme.textMuted
+                        : PartnerTheme.primaryOrange,
+                  ),
+                  title: Text(item['title']?.toString() ?? 'Update',
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: Text(item['created_at']?.toString() ?? 'Recently',
+                      maxLines: 1),
+                ),
+              )),
+        const PopupMenuDivider(),
+        const PopupMenuItem<String>(
+            value: '__all__', child: Center(child: Text('View All'))),
+      ],
+    );
+    if (!mounted || selected == null) return;
+    if (selected == '__all__') {
+      context.go('/tourism-partner/notifications');
+      return;
+    }
+    final item =
+        items.where((entry) => entry['id']?.toString() == selected).firstOrNull;
+    if (item == null) return;
+    await ref
+        .read(tourismPartnerRepositoryProvider)
+        .markNotificationRead(selected);
+    if (!mounted) return;
+    ref.invalidate(partnerNotificationsProvider);
+    final data = item['data'];
+    final route = data is Map ? data['route']?.toString() : null;
+    if (route != null &&
+        (route == '/tourism-partner' ||
+            route.startsWith('/tourism-partner/'))) {
+      context.go(route);
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(item['title']?.toString() ?? 'Announcement'),
+        content: Text(item['body']?.toString() ?? ''),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              context.go('/tourism-partner/notifications');
+            },
+            child: const Text('View All'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _partnerAnnouncementHighlights() {
+    final items =
+        ref.watch(partnerNotificationsProvider).valueOrNull ?? const [];
+    String priority(Map<String, dynamic> item) {
+      final data = item['data'];
+      return data is Map ? data['priority']?.toString() ?? 'normal' : 'normal';
+    }
+
+    final announcements = items
+        .where((item) => item['type'] == 'announcement')
+        .toList(growable: false);
+    final urgent = announcements
+        .where((item) => priority(item) == 'urgent')
+        .where((item) => !_dismissedUrgent.contains(item['id']?.toString()))
+        .firstOrNull;
+    final important = announcements
+        .where((item) => priority(item) == 'important')
+        .take(2)
+        .toList(growable: false);
+    if (urgent == null && important.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+      child: Column(children: [
+        if (urgent != null)
+          Material(
+            color: const Color(0xFF7F1D1D),
+            borderRadius: BorderRadius.circular(12),
+            child: ListTile(
+              leading: const Icon(Icons.warning_amber_rounded,
+                  color: Color(0xFFFCA5A5)),
+              title: Text('Urgent: ${urgent['title'] ?? 'Announcement'}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.bold)),
+              onTap: () => _openPartnerAnnouncement(urgent),
+              trailing: IconButton(
+                tooltip: 'Dismiss this banner for this session',
+                onPressed: () => setState(
+                    () => _dismissedUrgent.add(urgent['id']?.toString() ?? '')),
+                icon: const Icon(Icons.close, color: Colors.white),
+              ),
+            ),
+          ),
+        ...important.map((item) => Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Material(
+                color: PartnerTheme.cardDark,
+                borderRadius: BorderRadius.circular(12),
+                child: ListTile(
+                  leading: const Icon(Icons.campaign_rounded,
+                      color: PartnerTheme.primaryOrange),
+                  title: const Text('Important Notice',
+                      style: TextStyle(
+                          color: PartnerTheme.primaryOrange,
+                          fontWeight: FontWeight.bold)),
+                  subtitle: Text(item['title']?.toString() ?? 'Announcement',
+                      style: const TextStyle(color: Colors.white)),
+                  onTap: () => _openPartnerAnnouncement(item),
+                ),
+              ),
+            )),
+      ]),
+    );
+  }
+
+  Future<void> _openPartnerAnnouncement(Map<String, dynamic> item) async {
+    await ref
+        .read(tourismPartnerRepositoryProvider)
+        .markNotificationRead(item['id'].toString());
+    if (!mounted) return;
+    ref.invalidate(partnerNotificationsProvider);
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(item['title']?.toString() ?? 'Announcement'),
+        content: Text(item['body']?.toString() ?? ''),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSidebar(BuildContext context, int activeIndex, AuthState auth) {
+    final assignment = ref.watch(currentPartnerAssignmentProvider).valueOrNull;
+    final destination = assignment?['destination'];
+    final destinationName =
+        destination is Map ? destination['name']?.toString() : null;
     return Container(
       width: _sidebarWidth,
       decoration: const BoxDecoration(
@@ -317,9 +550,11 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
                               overflow: TextOverflow.ellipsis,
                             ),
                             Text(
-                              'Business Partner',
+                              destinationName ?? 'No destination assigned',
                               style: GoogleFonts.inter(
                                   fontSize: 11, color: PartnerTheme.textMuted),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),

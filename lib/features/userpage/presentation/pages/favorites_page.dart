@@ -6,6 +6,7 @@ import '../../../../core/utils/auth_action_guard.dart';
 import '../../../authentication/auth_provider.dart';
 import '../../../favorites/repositories/favorites_repository.dart';
 import '../../../itinerary/presentation/itinerary_add_sheet.dart';
+import '../../../map/map_focus.dart';
 import '../../../map/place_category_style.dart';
 import '../../../map/providers/map_provider.dart';
 
@@ -82,14 +83,15 @@ class FavoritesPage extends ConsumerWidget {
                             '/reservations/create?spot=${Uri.encodeQueryComponent(favorites[index].sourceId)}',
                           )
                       : null,
-                  onMap: () => context.push(
-                    '/map?marker=${Uri.encodeQueryComponent(favorites[index].id)}',
-                  ),
-                  onItinerary: () => showAddToItinerarySheet(
-                    context,
-                    ref,
-                    favorites[index],
-                  ),
+                  onMap: () =>
+                      context.push(mapFocusPathForMarker(favorites[index])),
+                  onItinerary: favorites[index].isItineraryEligible
+                      ? () => showAddToItinerarySheet(
+                            context,
+                            ref,
+                            favorites[index],
+                          )
+                      : null,
                   onRemove: () =>
                       ref.read(favoriteKeysProvider.notifier).toggle(
                             favorites[index].favoriteType,
@@ -116,7 +118,7 @@ class FavoritesPage extends ConsumerWidget {
     } else if (place.category == MapMarkerCategory.msme && integerId != null) {
       context.push('/explore/msme/$integerId');
     } else {
-      context.push('/map?marker=${Uri.encodeQueryComponent(place.id)}');
+      context.push(mapFocusPathForMarker(place));
     }
   }
 }
@@ -135,7 +137,7 @@ class _FavoritePlaceCard extends StatelessWidget {
   final VoidCallback onOpen;
   final VoidCallback? onBook;
   final VoidCallback onMap;
-  final VoidCallback onItinerary;
+  final VoidCallback? onItinerary;
   final Future<void> Function() onRemove;
 
   @override
@@ -208,11 +210,13 @@ class _FavoritePlaceCard extends StatelessWidget {
               onPressed: onMap,
               icon: const Icon(Icons.map_rounded, color: Color(0xFF38BDF8)),
             ),
-            IconButton(
-              tooltip: 'Add to Itinerary',
-              onPressed: onItinerary,
-              icon: const Icon(Icons.luggage_rounded, color: Color(0xFFF59E0B)),
-            ),
+            if (onItinerary != null)
+              IconButton(
+                tooltip: 'Add to Itinerary',
+                onPressed: onItinerary,
+                icon:
+                    const Icon(Icons.luggage_rounded, color: Color(0xFFF59E0B)),
+              ),
             IconButton(
               tooltip: 'Remove Favorite',
               onPressed: onRemove,

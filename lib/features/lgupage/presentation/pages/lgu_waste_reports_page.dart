@@ -13,9 +13,11 @@ class LguWasteReportsPage extends ConsumerStatefulWidget {
 
 class _State extends ConsumerState<LguWasteReportsPage> {
   String _filter = 'all';
+  String _query = '';
   @override
   Widget build(BuildContext context) {
     final reports = ref.watch(lguWasteReportsProvider);
+    final allReports = reports.valueOrNull ?? const <Map<String, dynamic>>[];
     return Scaffold(
       backgroundColor: const Color(0xFF0B132B),
       body: Padding(
@@ -29,7 +31,44 @@ class _State extends ConsumerState<LguWasteReportsPage> {
           const Text('Reporter contact details are intentionally minimized.',
               style: TextStyle(color: AppColors.grey400)),
           const SizedBox(height: 14),
-          Wrap(spacing: 8, children: [
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            _WasteSummary(
+                label: 'Pending',
+                count: allReports
+                    .where((item) =>
+                        ['pending', 'submitted'].contains(item['status']))
+                    .length),
+            _WasteSummary(
+                label: 'In Review',
+                count: allReports
+                    .where((item) => ['under_review', 'assigned', 'in_progress']
+                        .contains(item['status']))
+                    .length),
+            _WasteSummary(
+                label: 'Resolved',
+                count: allReports
+                    .where((item) =>
+                        ['resolved', 'closed'].contains(item['status']))
+                    .length),
+            _WasteSummary(
+                label: 'Rejected',
+                count: allReports
+                    .where((item) => item['status'] == 'rejected')
+                    .length),
+          ]),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: 340,
+            child: TextField(
+              decoration: const InputDecoration(
+                  labelText: 'Search report ID, category, or location',
+                  prefixIcon: Icon(Icons.search_rounded)),
+              onChanged: (value) =>
+                  setState(() => _query = value.trim().toLowerCase()),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(spacing: 8, runSpacing: 8, children: [
             for (final value in const [
               'all',
               'submitted',
@@ -37,7 +76,8 @@ class _State extends ConsumerState<LguWasteReportsPage> {
               'assigned',
               'in_progress',
               'resolved',
-              'closed'
+              'closed',
+              'rejected'
             ])
               ChoiceChip(
                   label: Text(value.replaceAll('_', ' ')),
@@ -57,7 +97,11 @@ class _State extends ConsumerState<LguWasteReportsPage> {
                 final status = item['status'] == 'pending'
                     ? 'submitted'
                     : item['status']?.toString();
-                return _filter == 'all' || status == _filter;
+                final haystack =
+                    '${item['id'] ?? ''} ${item['category'] ?? ''} ${item['location_description'] ?? ''} ${item['description'] ?? ''}'
+                        .toLowerCase();
+                return (_filter == 'all' || status == _filter) &&
+                    haystack.contains(_query);
               }).toList();
               if (filtered.isEmpty) {
                 return const Center(
@@ -102,4 +146,29 @@ class _State extends ConsumerState<LguWasteReportsPage> {
       ),
     );
   }
+}
+
+class _WasteSummary extends StatelessWidget {
+  const _WasteSummary({required this.label, required this.count});
+  final String label;
+  final int count;
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 145,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1C2541),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFF334155)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('$count',
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 21,
+                  fontWeight: FontWeight.w800)),
+          Text(label,
+              style: const TextStyle(color: AppColors.grey400, fontSize: 11)),
+        ]),
+      );
 }

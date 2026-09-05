@@ -9,9 +9,7 @@ use App\Models\TouristSpotPartnerAssignment;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
 use Ramsey\Uuid\Uuid;
 use RuntimeException;
 
@@ -58,9 +56,11 @@ class DevelopmentFeaturedDestinationPartnerSeeder extends Seeder
                     if ($user->trashed()) {
                         $user->restore();
                     }
-                    // Never reset an existing seeded account's password on rerun.
                     $user->forceFill([
                         'name' => $name,
+                        // This controlled development seeder intentionally
+                        // reprovisions only its eight named accounts.
+                        'password' => Hash::make($password),
                         'role_id' => $role->id,
                         'is_verified' => true,
                         'email_verified_at' => $user->email_verified_at ?? now(),
@@ -112,28 +112,10 @@ class DevelopmentFeaturedDestinationPartnerSeeder extends Seeder
     private function developmentPassword(): string
     {
         $configured = trim((string) config('tourist_spot_partners.development_password'));
-        if ($configured !== '') {
-            if (strlen($configured) < 12) {
-                throw new RuntimeException('DEV_FEATURED_PARTNER_PASSWORD must be at least 12 characters.');
-            }
-
-            return $configured;
+        if (strlen($configured) < 8) {
+            throw new RuntimeException('DEV_FEATURED_PARTNER_PASSWORD must be at least 8 characters.');
         }
 
-        $path = storage_path('app/private/featured_partner_seed_password.txt');
-        File::ensureDirectoryExists(dirname($path), 0700);
-        if (File::exists($path)) {
-            $stored = trim(File::get($path));
-            if (strlen($stored) >= 12) {
-                return $stored;
-            }
-        }
-
-        $generated = Str::password(24, true, true, true, false);
-        File::put($path, $generated);
-        @chmod($path, 0600);
-        $this->command?->warn('Generated a local Featured Partner seed password at storage/app/private/featured_partner_seed_password.txt.');
-
-        return $generated;
+        return $configured;
     }
 }

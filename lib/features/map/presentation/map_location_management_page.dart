@@ -21,11 +21,14 @@ class _MapLocationManagementPageState
     extends ConsumerState<MapLocationManagementPage> {
   String _search = '';
   _ManagedLocationFilter _filter = _ManagedLocationFilter.all;
+  String? _categoryId;
   bool _busy = false;
 
   @override
   Widget build(BuildContext context) {
     final locations = ref.watch(managedMapLocationsProvider);
+    final categories =
+        ref.watch(managedMapCategoriesProvider).valueOrNull ?? const [];
     final role = ref.watch(authProvider).role;
     final title = role == UserRole.admin
         ? 'Map Location Management'
@@ -104,29 +107,47 @@ class _MapLocationManagementPageState
           ),
         ),
         SizedBox(
-          height: 46,
+          height: 48,
           child: ListView(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             scrollDirection: Axis.horizontal,
-            children: _ManagedLocationFilter.values
-                .map((filter) => Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ChoiceChip(
-                        selected: _filter == filter,
-                        onSelected: (_) => setState(() => _filter = filter),
-                        label: Text(_filterLabel(filter)),
-                        selectedColor: const Color(0xFFF59E0B),
-                        backgroundColor: const Color(0xFF0F172A),
-                        labelStyle: TextStyle(
-                          color: _filter == filter
-                              ? Colors.black
-                              : const Color(0xFFCBD5E1),
-                          fontWeight: FontWeight.w700,
-                        ),
-                        side: const BorderSide(color: Color(0xFF334155)),
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: DropdownButton<String?>(
+                  value: _categoryId,
+                  dropdownColor: const Color(0xFF0F172A),
+                  hint: const Text('All categories',
+                      style: TextStyle(color: Color(0xFFCBD5E1))),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                        value: null, child: Text('All categories')),
+                    ...categories
+                        .where((item) => item.parentId == null && item.active)
+                        .map((item) => DropdownMenuItem<String?>(
+                            value: item.id, child: Text(item.name))),
+                  ],
+                  onChanged: (value) => setState(() => _categoryId = value),
+                ),
+              ),
+              ..._ManagedLocationFilter.values.map((filter) => Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      selected: _filter == filter,
+                      onSelected: (_) => setState(() => _filter = filter),
+                      label: Text(_filterLabel(filter)),
+                      selectedColor: const Color(0xFFF59E0B),
+                      backgroundColor: const Color(0xFF0F172A),
+                      labelStyle: TextStyle(
+                        color: _filter == filter
+                            ? Colors.black
+                            : const Color(0xFFCBD5E1),
+                        fontWeight: FontWeight.w700,
                       ),
-                    ))
-                .toList(growable: false),
+                      side: const BorderSide(color: Color(0xFF334155)),
+                    ),
+                  )),
+            ],
           ),
         ),
         Expanded(
@@ -144,9 +165,11 @@ class _MapLocationManagementPageState
               final query = _search.toLowerCase();
               final filtered = items.where((item) {
                 final value =
-                    '${item.name} ${item.categoryName ?? ''} ${item.address ?? ''}'
+                    '${item.name} ${item.categoryName ?? ''} ${item.address ?? ''} ${item.description ?? ''}'
                         .toLowerCase();
-                return value.contains(query) && _matchesFilter(item);
+                return value.contains(query) &&
+                    (_categoryId == null || item.categoryId == _categoryId) &&
+                    _matchesFilter(item);
               }).toList();
               if (filtered.isEmpty) {
                 return const Center(
@@ -201,7 +224,8 @@ class _MapLocationManagementPageState
   Future<void> _reviewLocation(ManagedMapLocation item) async {
     final result = await context.push<Map<String, dynamic>>(
       '/map/pick?mode=place&lat=${item.latitude ?? 9.9515}'
-      '&lng=${item.longitude ?? 123.9618}',
+      '&lng=${item.longitude ?? 123.9618}'
+      '&port_service_area=${item.categoryName == 'Port / Transport'}',
     );
     if (result == null || !mounted) return;
     await _save(item, {
@@ -317,6 +341,9 @@ class _MapLocationManagementPageState
                       DropdownMenuItem(
                           value: 'tourist_spot',
                           child: Text('Existing Tourist Spot')),
+                      DropdownMenuItem(
+                          value: 'emergency_contact',
+                          child: Text('Existing Emergency Contact')),
                     ],
                     onChanged: (value) => setDialogState(() {
                       entityType = value;
@@ -372,8 +399,20 @@ class _MapLocationManagementPageState
                       DropdownMenuItem(
                           value: 'emergency', child: Text('Emergency')),
                       DropdownMenuItem(
+                          value: 'local_fire_department',
+                          child: Text('Fire Station')),
+                      DropdownMenuItem(
+                          value: 'local_hospital', child: Text('Hospital')),
+                      DropdownMenuItem(
+                          value: 'local_police', child: Text('Police')),
+                      DropdownMenuItem(
                           value: 'directions_boat',
                           child: Text('Port / Transport')),
+                      DropdownMenuItem(
+                          value: 'directions_bus',
+                          child: Text('Bus / Terminal')),
+                      DropdownMenuItem(
+                          value: 'anchor', child: Text('Port Office')),
                     ],
                     onChanged: (value) =>
                         setDialogState(() => markerIcon = value),
@@ -402,7 +441,8 @@ class _MapLocationManagementPageState
                         onPressed: () async {
                           final result =
                               await this.context.push<Map<String, dynamic>>(
-                                    '/map/pick?mode=place&lat=${latitude ?? 9.9515}&lng=${longitude ?? 123.9618}',
+                                    '/map/pick?mode=place&lat=${latitude ?? 9.9515}&lng=${longitude ?? 123.9618}'
+                                    '&port_service_area=${activeCategories.firstWhere((item) => item.id == categoryId).slug == 'port-transport'}',
                                   );
                           if (result != null) {
                             setDialogState(() {
@@ -735,7 +775,12 @@ class _MapLocationManagementPageState
                   'forest',
                   'account_balance',
                   'emergency',
+                  'local_fire_department',
+                  'local_hospital',
+                  'local_police',
                   'directions_boat',
+                  'directions_bus',
+                  'anchor',
                   'account_balance_wallet'
                 ]
                     .map((value) =>

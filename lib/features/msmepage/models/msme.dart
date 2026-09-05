@@ -14,12 +14,16 @@ class Msme {
   final String? businessHours;
   final double? rating;
   final int reviewCount;
-  final double latitude;
-  final double longitude;
+  final double? latitude;
+  final double? longitude;
   final Color color;
   final IconData icon;
   final String tagline;
   final bool isVerified;
+  final bool bookingEnabled;
+  final String operationalStatus;
+  final Map<String, dynamic> openingHours;
+  final List<String> unavailableDates;
   final List<MsmeProduct> products;
   final List<MsmeReview> reviews;
   final DateTime? createdAt;
@@ -40,12 +44,16 @@ class Msme {
     this.businessHours,
     this.rating,
     required this.reviewCount,
-    this.latitude = 9.9500,
-    this.longitude = 123.9550,
+    this.latitude,
+    this.longitude,
     required this.color,
     required this.icon,
     required this.tagline,
     required this.isVerified,
+    this.bookingEnabled = false,
+    this.operationalStatus = 'open',
+    this.openingHours = const {},
+    this.unavailableDates = const [],
     required this.products,
     required this.reviews,
     this.createdAt,
@@ -107,12 +115,17 @@ class Msme {
       businessHours: json['business_hours'] as String?,
       rating: (json['rating'] as num?)?.toDouble(),
       reviewCount: json['review_count'] as int? ?? 0,
-      latitude: (json['latitude'] as num?)?.toDouble() ?? 9.9500,
-      longitude: (json['longitude'] as num?)?.toDouble() ?? 123.9550,
+      latitude: (json['latitude'] as num?)?.toDouble(),
+      longitude: (json['longitude'] as num?)?.toDouble(),
       color: _parseColor(json['color'], _getDefaultColor(cat)),
       icon: _parseIcon(json['icon'], _getDefaultIcon(cat)),
       tagline: json['tagline'] as String? ?? '',
       isVerified: (json['is_verified'] == true) || (json['is_verified'] == 1),
+      bookingEnabled:
+          (json['booking_enabled'] == true) || (json['booking_enabled'] == 1),
+      operationalStatus: json['operational_status']?.toString() ?? 'open',
+      openingHours: _asMap(json['opening_hours']),
+      unavailableDates: _asStringList(json['unavailable_dates']),
       products: parseProducts(json['products']),
       reviews: parseReviews(json['reviews']),
       createdAt: json['created_at'] != null
@@ -126,6 +139,50 @@ class Msme {
 
   static int? _asInt(dynamic value) =>
       value is num ? value.toInt() : int.tryParse(value?.toString() ?? '');
+
+  static Map<String, dynamic> _asMap(dynamic value) {
+    if (value is Map) return Map<String, dynamic>.from(value);
+    if (value is String && value.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(value);
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+    }
+    return const {};
+  }
+
+  static List<String> _asStringList(dynamic value) {
+    if (value is List) {
+      return value.map((item) => item.toString()).toList(growable: false);
+    }
+    if (value is String && value.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(value);
+        if (decoded is List) {
+          return decoded.map((item) => item.toString()).toList(growable: false);
+        }
+      } catch (_) {}
+    }
+    return const [];
+  }
+
+  bool isAvailableOn(DateTime date) {
+    if (!bookingEnabled || operationalStatus != 'open') return false;
+    final key =
+        '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    if (unavailableDates.contains(key)) return false;
+    const weekdays = [
+      'monday',
+      'tuesday',
+      'wednesday',
+      'thursday',
+      'friday',
+      'saturday',
+      'sunday',
+    ];
+    final hours = openingHours[weekdays[date.weekday - 1]];
+    return hours is! Map || hours['closed'] != true;
+  }
 
   Map<String, dynamic> toJson() {
     return {
@@ -146,6 +203,10 @@ class Msme {
       'icon': _getIconString(icon),
       'tagline': tagline,
       'is_verified': isVerified ? 1 : 0,
+      'booking_enabled': bookingEnabled ? 1 : 0,
+      'operational_status': operationalStatus,
+      'opening_hours': jsonEncode(openingHours),
+      'unavailable_dates': jsonEncode(unavailableDates),
       'products': jsonEncode(products.map((p) => p.toJson()).toList()),
       'created_at': createdAt?.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),

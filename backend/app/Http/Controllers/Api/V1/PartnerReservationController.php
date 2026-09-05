@@ -11,48 +11,83 @@ use App\Models\ReservationStatusHistory;
 use App\Models\TourismListing;
 use App\Models\TouristSpot;
 use App\Models\TouristSpotPartnerAssignment;
+use App\Services\EmailNotificationService;
 use App\Support\ReservationStatusTransitions;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\Rule;
 
 class PartnerReservationController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
+        $validated = $request->validate([
+            'status_filter' => ['nullable', Rule::in(['pending', 'approved', 'confirmed', 'rejected', 'completed', 'cancelled'])],
+            'search' => 'nullable|string|max:200',
+            'scope' => ['nullable', Rule::in(['today', 'upcoming'])],
+            'from' => 'nullable|date',
+            'to' => 'nullable|date|after_or_equal:from',
+            'sort' => ['nullable', Rule::in(['visit_asc', 'visit_desc', 'newest'])],
+        ]);
         [$spotIds, $listingIds] = $this->ownedTargetIds($request);
         $query = Reservation::with(['user:id,name,phone', 'status']);
         $this->scopeOwned($query, $spotIds, $listingIds);
 
-        if ($request->filled('status_filter')) {
+        if (! empty($validated['status_filter'])) {
             $query->whereHas('status', fn ($status) => $status
-                ->where('name', $request->string('status_filter')->toString()));
+                ->where('name', $validated['status_filter']));
         }
+        if (! empty($validated['search'])) {
+            $needle = '%'.strtolower(trim($validated['search'])).'%';
+            $query->where(function (Builder $search) use ($needle): void {
+                $search->whereRaw('LOWER(COALESCE(public_reference, ?)) LIKE ?', ['', $needle])
+                    ->orWhereHas('user', fn ($user) => $user->whereRaw('LOWER(name) LIKE ?', [$needle]));
+            });
+        }
+        if (($validated['scope'] ?? null) === 'today') {
+            $query->whereDate('reservation_date', now()->toDateString());
+        } elseif (($validated['scope'] ?? null) === 'upcoming') {
+            $query->whereDate('reservation_date', '>=', now()->toDateString());
+        }
+        if (! empty($validated['from'])) $query->whereDate('reservation_date', '>=', $validated['from']);
+        if (! empty($validated['to'])) $query->whereDate('reservation_date', '<=', $validated['to']);
+
+        match ($validated['sort'] ?? 'visit_asc') {
+            'visit_desc' => $query->orderByDesc('reservation_date'),
+            'newest' => $query->latest('created_at'),
+            default => $query->orderBy('reservation_date'),
+        };
 
         return response()->json([
             'status' => 'success',
-            'data' => $query->latest('reservation_date')->get()
+            'data' => $query->get()
                 ->map(fn (Reservation $reservation) => $this->payload($reservation)),
+            'meta' => ['summary' => $this->summary($request)],
         ]);
     }
 
     public function show(Request $request, string $id): JsonResponse
     {
-        $reservation = Reservation::with(['user:id,name,phone', 'status'])->findOrFail($id);
+        $reservation = Reservation::with([
+            'user:id,name,phone', 'status',
+            'statusHistory.status', 'statusHistory.changedBy:id,name',
+        ])->findOrFail($id);
         $this->authorizeOwnership($request, $reservation);
 
         return response()->json(['status' => 'success', 'data' => $this->payload($reservation)]);
     }
 
-    public function updateStatus(Request $request, string $id): JsonResponse
+    public function updateStatus(Request $request, string $id, EmailNotificationService $emailDelivery): JsonResponse
     {
         $validated = $request->validate([
             'status_name' => 'required|string|in:approved,confirmed,rejected,completed,cancelled',
+            'reason' => 'nullable|required_if:status_name,rejected|string|max:1000',
         ]);
 
-        DB::transaction(function () use ($request, $id, $validated): void {
+        $reservation = DB::transaction(function () use ($request, $id, $validated): Reservation {
             $reservation = Reservation::with('status')->lockForUpdate()->findOrFail($id);
             $this->authorizeOwnership($request, $reservation);
             $status = ReservationStatus::where('name', $validated['status_name'])->firstOrFail();
@@ -71,7 +106,9 @@ class PartnerReservationController extends Controller
                     'reservation_id' => $reservation->id,
                     'status_id' => $status->id,
                     'changed_by' => $request->user()->id,
-                    'notes' => 'Status updated by assigned Tourism Partner',
+                    'notes' => $validated['status_name'] === 'rejected'
+                        ? 'Rejected by assigned Tourism Partner: '.trim($validated['reason'])
+                        : 'Status updated by assigned Tourism Partner',
                 ]);
             }
 
@@ -84,6 +121,7 @@ class PartnerReservationController extends Controller
                 'data' => [
                     'reservation_id' => $reservation->id,
                     'status' => $status->name,
+                    'reason' => $validated['status_name'] === 'rejected' ? trim($validated['reason']) : null,
                     'route' => "/reservations/{$reservation->id}",
                 ],
             ]);
@@ -95,9 +133,20 @@ class PartnerReservationController extends Controller
                     'reservable_type' => $reservation->reservable_type,
                     'reservable_id' => $reservation->reservable_id,
                     'status' => $status->name,
+                    'reason' => $validated['status_name'] === 'rejected' ? trim($validated['reason']) : null,
                 ], JSON_THROW_ON_ERROR),
             ]);
+
+            return $reservation;
         }, 3);
+
+        if (in_array($validated['status_name'], ['approved', 'confirmed', 'rejected', 'cancelled'], true)) {
+            $emailDelivery->reservation(
+                $reservation,
+                $validated['status_name'],
+                $validated['status_name'] === 'rejected' ? trim($validated['reason']) : null,
+            );
+        }
 
         return response()->json(['status' => 'success', 'message' => 'Reservation status updated']);
     }
@@ -145,6 +194,28 @@ class PartnerReservationController extends Controller
             'reservable_name' => $this->targetName($reservation),
             'allowed_transitions' => ReservationStatusTransitions::allowedFrom($reservation->status?->name),
         ]);
+    }
+
+    /** @return array<string, int> */
+    private function summary(Request $request): array
+    {
+        [$spotIds, $listingIds] = $this->ownedTargetIds($request);
+        $query = Reservation::query();
+        $this->scopeOwned($query, $spotIds, $listingIds);
+        $counts = (clone $query)
+            ->join('reservation_status', 'reservation_status.id', '=', 'reservations.status_id')
+            ->selectRaw('reservation_status.name as status_name, COUNT(*) as total')
+            ->groupBy('reservation_status.name')
+            ->pluck('total', 'status_name');
+
+        return [
+            'total' => (clone $query)->count(),
+            'pending' => (int) ($counts['pending'] ?? 0),
+            'confirmed' => (int) (($counts['confirmed'] ?? 0) + ($counts['approved'] ?? 0)),
+            'completed' => (int) ($counts['completed'] ?? 0),
+            'cancelled' => (int) ($counts['cancelled'] ?? 0),
+            'rejected' => (int) ($counts['rejected'] ?? 0),
+        ];
     }
 
     private function targetName(Reservation $reservation): string

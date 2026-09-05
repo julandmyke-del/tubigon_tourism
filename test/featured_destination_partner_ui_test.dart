@@ -7,6 +7,7 @@ import 'package:tubigon_tourism/features/tourism_partner/providers/tourism_partn
 
 const _managedSpot = <String, dynamic>{
   'id': '5db393e3-27e9-5bde-bc6e-b3aa619996c3',
+  'integer_id': 101,
   'name': 'Mundong Sandbar',
   'is_published': true,
   'is_featured': true,
@@ -43,22 +44,31 @@ void main() {
 
   testWidgets('Partner disabling booking requires a reason confirmation',
       (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1200, 1400);
+    addTearDown(() {
+      tester.view.resetDevicePixelRatio();
+      tester.view.resetPhysicalSize();
+    });
     await tester.pumpWidget(ProviderScope(
       overrides: [
-        partnerManagedDestinationsProvider
-            .overrideWith((ref) async => [_managedSpot]),
-        partnerListingsProvider.overrideWith((ref) async => []),
+        currentPartnerAssignmentProvider.overrideWith((ref) async => {
+              'id': 'assignment-id',
+              'status': 'active',
+              'assigned_at': '2026-09-02T10:00:00Z',
+              'destination': _managedSpot,
+            }),
       ],
       child: const MaterialApp(home: PartnerListingsPage()),
     ));
     await tester.pumpAndSettle();
 
-    expect(find.text('Managed Destinations'), findsOneWidget);
+    expect(find.text('Assigned Destination'), findsOneWidget);
     expect(find.text('Mundong Sandbar'), findsOneWidget);
-    await tester.tap(find.text('Disable Booking'));
+    await tester.tap(find.text('Pause Reservations'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Disable Booking?'), findsOneWidget);
+    expect(find.text('Pause reservations?'), findsOneWidget);
     expect(find.text('Reason'), findsOneWidget);
     expect(find.text('Weather Conditions'), findsOneWidget);
   });

@@ -54,6 +54,37 @@ void main() {
     });
     expect(emergency.isItineraryEligible, isFalse);
   });
+
+  test('itinerary places preserve authoritative detail and booking links', () {
+    final touristSpot = ItineraryPlace.fromJson({
+      'entity_type': 'tourist_spot',
+      'entity_id': 'spot-uuid',
+      'source_integer_id': 12,
+      'marker_id': 'tourist_spot:spot-uuid',
+      'name': 'Mangrove Forest Batasan',
+      'category': 'Eco Tourism',
+      'latitude': null,
+      'longitude': null,
+      'is_bookable': true,
+      'booking_enabled': true,
+    });
+    final msme = ItineraryPlace.fromJson({
+      'entity_type': 'msme',
+      'entity_id': 'msme-uuid',
+      'source_integer_id': 8,
+      'marker_id': 'msme:msme-uuid',
+      'name': 'BAZAK Food Park',
+      'category': 'Food & Dining',
+    });
+
+    expect(touristSpot.hasCoordinates, isFalse);
+    expect(touristSpot.detailPath, '/explore/spot/12');
+    expect(touristSpot.bookingPath, '/reservations/create?spot=spot-uuid');
+    expect(msme.hasCoordinates, isFalse);
+    expect(msme.detailPath, '/explore/msme/8');
+    expect(
+        ItineraryPlace.fromJson(msme.toJson()).detailPath, '/explore/msme/8');
+  });
 }
 
 Map<String, dynamic> _item(String id, int day, int order,

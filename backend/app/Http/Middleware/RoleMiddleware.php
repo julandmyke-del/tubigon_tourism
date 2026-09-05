@@ -19,9 +19,10 @@ class RoleMiddleware
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 
-        // Load the user's role name
-        $user->loadMissing('role');
-        $userRole = $user->role?->name;
+        // Resolve the role from the authoritative database for every request.
+        // This makes an approved application's role effective on the next API
+        // call even when a long-lived Sanctum user instance cached the old role.
+        $userRole = $user->role()->value('name');
 
         if (!$userRole || !in_array($userRole, $roles)) {
             return response()->json(['message' => 'Access denied. Insufficient permissions.'], 403);

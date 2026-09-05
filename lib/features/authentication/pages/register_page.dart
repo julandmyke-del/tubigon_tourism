@@ -13,6 +13,7 @@ import '../../../core/theme/app_spacing.dart';
 import '../auth_provider.dart';
 import '../google_auth_service.dart';
 import '../widgets/google_web_button.dart';
+import '../../settings/repositories/settings_repository.dart';
 
 class RegisterPage extends ConsumerStatefulWidget {
   const RegisterPage({super.key});
@@ -68,6 +69,13 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
   }
 
   Future<void> _register() async {
+    if (ref
+            .read(systemSettingsProvider)
+            .valueOrNull?['tourist_registration_enabled'] ==
+        false) {
+      _registrationDisabledMessage();
+      return;
+    }
     final form = _formKey.currentState;
     if (form == null || !form.validate()) return;
 
@@ -124,6 +132,13 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
   }
 
   Future<void> _googleSignUp() async {
+    if (ref
+            .read(systemSettingsProvider)
+            .valueOrNull?['tourist_registration_enabled'] ==
+        false) {
+      _registrationDisabledMessage();
+      return;
+    }
     setState(() => _loading = true);
     try {
       await ref.read(authProvider.notifier).googleSignIn();
@@ -141,6 +156,13 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
   }
 
   Future<void> _completeGoogleSignUp(GoogleSignInAccount account) async {
+    if (ref
+            .read(systemSettingsProvider)
+            .valueOrNull?['tourist_registration_enabled'] ==
+        false) {
+      _registrationDisabledMessage();
+      return;
+    }
     if (_loading) return;
     setState(() => _loading = true);
     try {
@@ -158,11 +180,24 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     }
   }
 
+  void _registrationDisabledMessage() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text(
+          'Tourist registration is temporarily disabled by the Tourism Office.'),
+      backgroundColor: AppColors.error,
+    ));
+  }
+
   static final RegExp _emailRegex = RegExp(r"^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$");
 
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
+    final registrationEnabled = ref
+            .watch(systemSettingsProvider)
+            .valueOrNull?['tourist_registration_enabled'] !=
+        false;
 
     return Scaffold(
       backgroundColor: AppColors.primary,
@@ -596,7 +631,9 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                               ],
                             ),
                             child: ElevatedButton(
-                              onPressed: _loading ? null : _register,
+                              onPressed: _loading || !registrationEnabled
+                                  ? null
+                                  : _register,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.transparent,
                                 shadowColor: Colors.transparent,

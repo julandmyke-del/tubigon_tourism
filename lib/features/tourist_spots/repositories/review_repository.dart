@@ -262,8 +262,8 @@ final reviewRepositoryProvider = Provider<ReviewRepository>((ref) {
   return ReviewRepository(apiClient: client, ref: ref);
 });
 
-final spotReviewsProvider =
-    FutureProvider.family<List<Review>, (String, String)>((ref, arg) async {
+final spotReviewsProvider = FutureProvider.autoDispose
+    .family<List<Review>, (String, String)>((ref, arg) async {
   final repo = ref.watch(reviewRepositoryProvider);
   return repo.getReviews(arg.$1, arg.$2);
 });

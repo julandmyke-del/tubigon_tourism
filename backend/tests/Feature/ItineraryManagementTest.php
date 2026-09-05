@@ -117,6 +117,29 @@ class ItineraryManagementTest extends TestCase
             'day_number' => 1,
         ])->assertUnprocessable()->assertJsonValidationErrors('entity_id');
 
+        $emergencyCategory = MapLocationCategory::create([
+            'name' => 'Emergency',
+            'slug' => 'emergency',
+            'icon' => 'emergency',
+            'marker_color' => '#E11D48',
+            'active' => true,
+        ]);
+        $emergency = MapLocation::create([
+            'name' => 'Emergency Facility',
+            'slug' => 'emergency-facility',
+            'category_id' => $emergencyCategory->id,
+            'latitude' => 9.94434,
+            'longitude' => 123.96064,
+            'active' => true,
+            'verified' => true,
+            'published' => true,
+        ]);
+        $this->postJson("/api/v1/itineraries/{$itinerary->id}/items", [
+            'entity_type' => 'map_location',
+            'entity_id' => $emergency->id,
+            'day_number' => 1,
+        ])->assertUnprocessable()->assertJsonValidationErrors('entity_id');
+
         $this->assertDatabaseCount('itinerary_items', 2);
     }
 
@@ -149,6 +172,30 @@ class ItineraryManagementTest extends TestCase
 
         $this->assertDatabaseHas('itinerary_items', [
             'id' => $first->id, 'day_number' => 2, 'sort_order' => 1, 'visit_status' => 'visited',
+        ]);
+    }
+
+    public function test_removing_a_stop_only_removes_the_itinerary_association(): void
+    {
+        $tourist = $this->user('remove-stop', $this->touristRole);
+        Sanctum::actingAs($tourist);
+        $itinerary = $this->itinerary($tourist);
+        $place = $this->place('Keep Authoritative Place', true);
+        $item = $itinerary->items()->create([
+            'entity_type' => 'map_location',
+            'entity_id' => $place->id,
+            'day_number' => 1,
+            'sort_order' => 1,
+        ]);
+
+        $this->deleteJson("/api/v1/itineraries/{$itinerary->id}/items/{$item->id}")
+            ->assertOk();
+
+        $this->assertSoftDeleted('itinerary_items', ['id' => $item->id]);
+        $this->assertDatabaseHas('map_locations', [
+            'id' => $place->id,
+            'name' => 'Keep Authoritative Place',
+            'deleted_at' => null,
         ]);
     }
 
@@ -187,7 +234,14 @@ class ItineraryManagementTest extends TestCase
             'latitude' => 9.951,
             'longitude' => 123.962,
             'is_active' => true,
+            'is_published' => true,
+            'is_bookable' => true,
+            'booking_enabled' => true,
         ]);
+        Schema::getConnection()->table('tourist_spots')
+            ->where('id', $spot->id)
+            ->update(['integer_id' => 42]);
+        $spot->refresh();
         $status = ReservationStatus::create(['name' => 'confirmed']);
         $reservation = Reservation::create([
             'user_id' => $tourist->id,
@@ -204,13 +258,45 @@ class ItineraryManagementTest extends TestCase
             'day_number' => 1,
         ])->assertCreated()
             ->assertJsonPath('data.reservation.id', $reservation->id)
-            ->assertJsonPath('data.reservation.status', 'confirmed');
+            ->assertJsonPath('data.reservation.status', 'confirmed')
+            ->assertJsonPath('data.place.source_integer_id', 42)
+            ->assertJsonPath('data.place.is_bookable', true)
+            ->assertJsonPath('data.place.booking_enabled', true);
 
         $this->assertDatabaseCount('reservations', 1);
         $this->assertDatabaseHas('itinerary_items', [
             'itinerary_id' => $itinerary->id,
             'reservation_id' => $reservation->id,
         ]);
+    }
+
+    public function test_verified_msme_without_coordinates_still_resolves_as_an_itinerary_card(): void
+    {
+        $tourist = $this->user('coordinate-free-msme', $this->touristRole);
+        Sanctum::actingAs($tourist);
+        $itinerary = $this->itinerary($tourist);
+        $msmeId = (string) \Illuminate\Support\Str::uuid();
+        Schema::getConnection()->table('msmes')->insert([
+            'id' => $msmeId,
+            'integer_id' => 77,
+            'name' => 'Coordinate-Free MSME',
+            'category' => 'Food & Dining',
+            'is_verified' => true,
+            'verification_status' => 'verified',
+            'operational_status' => 'open',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->postJson("/api/v1/itineraries/{$itinerary->id}/items", [
+            'entity_type' => 'msme',
+            'entity_id' => $msmeId,
+            'day_number' => 1,
+        ])->assertCreated()
+            ->assertJsonPath('data.place.name', 'Coordinate-Free MSME')
+            ->assertJsonPath('data.place.source_integer_id', 77)
+            ->assertJsonPath('data.place.latitude', null)
+            ->assertJsonPath('data.place.longitude', null);
     }
 
     public function test_tomorrow_reminder_reuses_notifications_and_is_idempotent(): void
@@ -277,7 +363,7 @@ class ItineraryManagementTest extends TestCase
 
     private function createSchema(): void
     {
-        foreach (['itinerary_items', 'itineraries', 'notifications', 'reservations', 'reservation_status', 'tourist_spots', 'spot_categories', 'map_locations', 'map_location_categories', 'users', 'roles'] as $table) {
+        foreach (['itinerary_items', 'itineraries', 'notifications', 'reservations', 'reservation_status', 'tourist_spots', 'spot_categories', 'map_locations', 'map_location_categories', 'msmes', 'users', 'roles'] as $table) {
             Schema::dropIfExists($table);
         }
         Schema::create('roles', function (Blueprint $table) {
@@ -345,6 +431,7 @@ class ItineraryManagementTest extends TestCase
         });
         Schema::create('tourist_spots', function (Blueprint $table) {
             $table->uuid('id')->primary();
+            $table->unsignedInteger('integer_id')->nullable();
             $table->string('name');
             $table->string('slug')->unique();
             $table->text('description')->nullable();
@@ -360,6 +447,27 @@ class ItineraryManagementTest extends TestCase
             $table->unsignedInteger('review_count')->default(0);
             $table->boolean('is_featured')->default(false);
             $table->boolean('is_active')->default(true);
+            $table->boolean('is_published')->default(true);
+            $table->boolean('is_bookable')->default(false);
+            $table->boolean('booking_enabled')->default(false);
+            $table->text('booking_unavailable_reason')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+        });
+        Schema::create('msmes', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->unsignedInteger('integer_id')->nullable();
+            $table->string('name');
+            $table->string('category')->nullable();
+            $table->text('description')->nullable();
+            $table->text('address')->nullable();
+            $table->double('latitude')->nullable();
+            $table->double('longitude')->nullable();
+            $table->string('business_hours')->nullable();
+            $table->json('images')->nullable();
+            $table->boolean('is_verified')->default(false);
+            $table->string('verification_status')->default('pending');
+            $table->string('operational_status')->default('open');
             $table->timestamps();
             $table->softDeletes();
         });

@@ -84,6 +84,19 @@ class AdminRepository {
     }
   }
 
+  Future<void> updatePartnerAssignment(
+    String userId,
+    String? touristSpotId,
+  ) async {
+    final response = await apiClient.put(
+      ApiEndpoints.adminUpdatePartnerAssignment(userId),
+      data: {'tourist_spot_id': touristSpotId},
+    );
+    if (response.statusCode != 200 || response.data['status'] != 'success') {
+      throw Exception('Unable to update the Partner assignment.');
+    }
+  }
+
   Future<bool> updateUserActivation(String userId, bool isVerified) async {
     try {
       await apiClient.put(
@@ -94,6 +107,17 @@ class AdminRepository {
     } catch (e) {
       throw Exception('Failed to update user activation: $e');
     }
+  }
+
+  Future<void> updateUserStatus(String userId, bool active) async {
+    await apiClient.put(
+      ApiEndpoints.adminUpdateUserStatus(userId),
+      data: {'active': active},
+    );
+  }
+
+  Future<void> revokeUserSessions(String userId) async {
+    await apiClient.delete(ApiEndpoints.adminRevokeUserSessions(userId));
   }
 
   Future<bool> deleteUser(String userId) async {

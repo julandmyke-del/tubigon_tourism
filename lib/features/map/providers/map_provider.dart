@@ -46,12 +46,16 @@ class MapMarker {
     this.isVerified = false,
     this.isOwned = false,
     this.mapLocationId,
+    this.emergencyContactId,
     this.categorySlug = 'important-places',
     this.categoryKeys = const ['important-places'],
     this.categoryIcon = 'place',
     this.markerColor = '#F59E0B',
     this.categorySortOrder = 999,
     this.isFeatured = false,
+    this.isPreapproved = false,
+    this.isActive = true,
+    this.isPublished = true,
     this.isBookable = false,
     this.bookingEnabled = false,
     this.bookingUnavailableReasonCode,
@@ -80,12 +84,16 @@ class MapMarker {
   final bool isVerified;
   final bool isOwned;
   final String? mapLocationId;
+  final String? emergencyContactId;
   final String categorySlug;
   final List<String> categoryKeys;
   final String categoryIcon;
   final String markerColor;
   final int categorySortOrder;
   final bool isFeatured;
+  final bool isPreapproved;
+  final bool isActive;
+  final bool isPublished;
   final bool isBookable;
   final bool bookingEnabled;
   final String? bookingUnavailableReasonCode;
@@ -99,13 +107,38 @@ class MapMarker {
       category == MapMarkerCategory.tourismListing ||
       category == MapMarkerCategory.mapLocation;
 
-  bool get hasCoordinates => latitude != 0 && longitude != 0;
+  bool get isEmergencyFacility =>
+      category == MapMarkerCategory.emergency || categorySlug == 'emergency';
+
+  bool get hasCallableContact =>
+      isEmergencyFacility && (contact?.trim().isNotEmpty ?? false);
+
+  bool get hasFerrySchedules => categorySlug == 'port-transport';
+
+  bool get hasCoordinates =>
+      latitude.isFinite &&
+      longitude.isFinite &&
+      latitude >= -90 &&
+      latitude <= 90 &&
+      longitude >= -180 &&
+      longitude <= 180 &&
+      !(latitude == 0 && longitude == 0);
+
+  bool isWithinMapScope(TubigonBoundary boundary) =>
+      hasCoordinates &&
+      (boundary.contains(latitude: latitude, longitude: longitude) ||
+          (hasFerrySchedules &&
+              boundary.containsPortServiceArea(
+                  latitude: latitude, longitude: longitude)) ||
+          (category == MapMarkerCategory.touristSpot && isPreapproved));
 
   bool get isItineraryEligible =>
-      category == MapMarkerCategory.touristSpot ||
-      category == MapMarkerCategory.msme ||
-      category == MapMarkerCategory.tourismListing ||
-      category == MapMarkerCategory.mapLocation;
+      hasCoordinates &&
+      !isEmergencyFacility &&
+      (category == MapMarkerCategory.touristSpot ||
+          category == MapMarkerCategory.msme ||
+          category == MapMarkerCategory.tourismListing ||
+          category == MapMarkerCategory.mapLocation);
 
   String get itineraryEntityType => switch (category) {
         MapMarkerCategory.touristSpot => 'tourist_spot',
@@ -156,6 +189,7 @@ class MapMarker {
       isVerified: json['is_verified'] == true || json['is_verified'] == 1,
       isOwned: json['is_owned'] == true || json['is_owned'] == 1,
       mapLocationId: json['map_location_id']?.toString(),
+      emergencyContactId: json['emergency_contact_id']?.toString(),
       categorySlug:
           json['category_slug']?.toString() ?? _fallbackCategorySlug(type),
       categoryKeys: (json['category_keys'] as List<dynamic>? ??
@@ -167,6 +201,14 @@ class MapMarker {
       markerColor: json['marker_color']?.toString() ?? '#F59E0B',
       categorySortOrder: _asInt(json['category_sort_order']) ?? 999,
       isFeatured: json['is_featured'] == true || json['is_featured'] == 1,
+      isPreapproved:
+          json['is_preapproved'] == true || json['is_preapproved'] == 1,
+      isActive: json['is_active'] == null ||
+          json['is_active'] == true ||
+          json['is_active'] == 1,
+      isPublished: json['is_published'] == null ||
+          json['is_published'] == true ||
+          json['is_published'] == 1,
       isBookable: json['is_bookable'] == true || json['is_bookable'] == 1,
       bookingEnabled:
           json['booking_enabled'] == true || json['booking_enabled'] == 1,
@@ -199,12 +241,16 @@ class MapMarker {
         'is_verified': isVerified,
         'is_owned': isOwned,
         'map_location_id': mapLocationId,
+        'emergency_contact_id': emergencyContactId,
         'category_slug': categorySlug,
         'category_keys': categoryKeys,
         'category_icon': categoryIcon,
         'marker_color': markerColor,
         'category_sort_order': categorySortOrder,
         'is_featured': isFeatured,
+        'is_preapproved': isPreapproved,
+        'is_active': isActive,
+        'is_published': isPublished,
         'is_bookable': isBookable,
         'booking_enabled': bookingEnabled,
         'booking_unavailable_reason_code': bookingUnavailableReasonCode,
@@ -354,10 +400,7 @@ class MapRepository {
           final locations = raw
               .whereType<Map<String, dynamic>>()
               .map(MapMarker.fromJson)
-              .where((item) => boundary.contains(
-                    latitude: item.latitude,
-                    longitude: item.longitude,
-                  ))
+              .where((item) => item.isWithinMapScope(boundary))
               .toList(growable: false);
           if (kDebugMode && locations.isEmpty) {
             debugPrint('[MAP] Map API returned 0 public markers for '
@@ -381,10 +424,7 @@ class MapRepository {
       return (jsonDecode(cached) as List<dynamic>)
           .whereType<Map<String, dynamic>>()
           .map(MapMarker.fromJson)
-          .where((item) => boundary.contains(
-                latitude: item.latitude,
-                longitude: item.longitude,
-              ))
+          .where((item) => item.isWithinMapScope(boundary))
           .toList(growable: false);
     } catch (error) {
       debugPrint('[MAP] Invalid cached map data: $error');
@@ -501,6 +541,9 @@ class MapFilterState {
   final String searchQuery;
   final Set<String> activeCategoryKeys;
 
+  bool get isActive =>
+      searchQuery.trim().isNotEmpty || activeCategoryKeys.isNotEmpty;
+
   MapFilterState copyWith({
     String? searchQuery,
     Set<String>? activeCategoryKeys,
@@ -509,6 +552,47 @@ class MapFilterState {
         searchQuery: searchQuery ?? this.searchQuery,
         activeCategoryKeys: activeCategoryKeys ?? this.activeCategoryKeys,
       );
+}
+
+/// Applies the public Smart Map visibility rules to authoritative map-feed
+/// markers. This function is shared by the provider and search suggestions so
+/// those surfaces cannot drift into different matching behavior.
+List<MapMarker> filterMapMarkers(
+  Iterable<MapMarker> markers,
+  MapFilterState filter,
+) {
+  final activeKeys = filter.activeCategoryKeys
+      .map((key) => key.trim().toLowerCase())
+      .where((key) => key.isNotEmpty)
+      .toSet();
+  final query = filter.searchQuery.trim().toLowerCase();
+
+  return markers.where((item) {
+    if (!item.hasCoordinates) return false;
+    if (activeKeys.isNotEmpty) {
+      final categoryMatches =
+          activeKeys.contains(item.categorySlug.trim().toLowerCase()) ||
+              item.categoryKeys.any(
+                (key) => activeKeys.contains(key.trim().toLowerCase()),
+              );
+      if (!categoryMatches) return false;
+    }
+    if (query.isEmpty) return true;
+    return item.name.toLowerCase().contains(query) ||
+        item.aliases.any((alias) => alias.toLowerCase().contains(query)) ||
+        item.description.toLowerCase().contains(query) ||
+        (item.address?.toLowerCase().contains(query) ?? false) ||
+        (item.categoryName?.toLowerCase().contains(query) ?? false) ||
+        item.categorySlug.toLowerCase().contains(query) ||
+        item.categoryKeys.any((key) => key.toLowerCase().contains(query));
+  }).toList(growable: false);
+}
+
+bool mapMarkerMatchesFocus(MapMarker marker, String focus) {
+  final normalized = focus.trim().toLowerCase();
+  return marker.id.toLowerCase() == normalized ||
+      marker.sourceId.toLowerCase() == normalized ||
+      marker.name.toLowerCase() == normalized;
 }
 
 final mapRepositoryProvider = Provider<MapRepository>((ref) {
@@ -540,34 +624,63 @@ final mapPlaceCategoriesProvider =
 final filteredMapMarkersProvider = Provider<AsyncValue<List<MapMarker>>>((ref) {
   final markers = ref.watch(mapMarkersProvider);
   final filter = ref.watch(mapFilterProvider);
-  return markers.whenData((items) {
-    Iterable<MapMarker> result = items;
-    if (filter.activeCategoryKeys.isNotEmpty) {
-      result = result.where(
-          (item) => item.categoryKeys.any(filter.activeCategoryKeys.contains));
-    }
-    final query = filter.searchQuery.trim().toLowerCase();
-    if (query.isNotEmpty) {
-      result = result.where((item) =>
-          item.name.toLowerCase().contains(query) ||
-          item.aliases.any((alias) => alias.toLowerCase().contains(query)) ||
-          item.description.toLowerCase().contains(query) ||
-          (item.address?.toLowerCase().contains(query) ?? false) ||
-          (item.categoryName?.toLowerCase().contains(query) ?? false));
-    }
-    return result.toList(growable: false);
-  });
+  return markers.whenData((items) => filterMapMarkers(items, filter));
 });
 
-class UserLocationNotifier extends StateNotifier<UserLocationState> {
-  UserLocationNotifier() : super(const UserLocationState());
+abstract interface class LocationGateway {
+  Future<bool> isServiceEnabled();
+  Future<LocationPermission> checkPermission();
+  Future<LocationPermission> requestPermission();
+  Future<Position> currentPosition();
+  Stream<Position> positionStream();
+}
 
+class GeolocatorLocationGateway implements LocationGateway {
+  const GeolocatorLocationGateway();
+
+  @override
+  Future<bool> isServiceEnabled() => Geolocator.isLocationServiceEnabled();
+
+  @override
+  Future<LocationPermission> checkPermission() => Geolocator.checkPermission();
+
+  @override
+  Future<LocationPermission> requestPermission() =>
+      Geolocator.requestPermission();
+
+  @override
+  Future<Position> currentPosition() => Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+  @override
+  Stream<Position> positionStream() => Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 10,
+        ),
+      );
+}
+
+class UserLocationNotifier extends StateNotifier<UserLocationState> {
+  UserLocationNotifier([LocationGateway? gateway])
+      : _gateway = gateway ?? const GeolocatorLocationGateway(),
+        super(const UserLocationState());
+
+  final LocationGateway _gateway;
   StreamSubscription<Position>? _positionStream;
+  int _locationGeneration = 0;
+  bool _disposed = false;
+
+  UserLocationState get current => state;
 
   Future<bool> locate({bool track = false}) async {
+    if (_disposed) return false;
+    final generation = ++_locationGeneration;
     state = state.copyWith(isLoading: true, error: null);
     try {
-      if (!await Geolocator.isLocationServiceEnabled()) {
+      if (!await _gateway.isServiceEnabled()) {
+        if (!_isCurrent(generation)) return false;
         state = state.copyWith(
           isLoading: false,
           isTracking: false,
@@ -576,9 +689,11 @@ class UserLocationNotifier extends StateNotifier<UserLocationState> {
         return false;
       }
 
-      var permission = await Geolocator.checkPermission();
+      var permission = await _gateway.checkPermission();
+      if (!_isCurrent(generation)) return false;
       if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
+        permission = await _gateway.requestPermission();
+        if (!_isCurrent(generation)) return false;
       }
       if (permission == LocationPermission.denied) {
         state = state.copyWith(
@@ -598,10 +713,10 @@ class UserLocationNotifier extends StateNotifier<UserLocationState> {
         return false;
       }
 
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
+      final position = await _gateway.currentPosition();
+      if (!_isCurrent(generation)) return false;
       final boundary = await TubigonBoundary.load();
+      if (!_isCurrent(generation)) return false;
       state = UserLocationState(
         latitude: position.latitude,
         longitude: position.longitude,
@@ -611,9 +726,10 @@ class UserLocationNotifier extends StateNotifier<UserLocationState> {
           longitude: position.longitude,
         ),
       );
-      if (track) _startPositionStream(boundary);
+      if (track) _startPositionStream(boundary, generation);
       return true;
     } catch (error) {
+      if (!_isCurrent(generation)) return false;
       state = state.copyWith(
         isLoading: false,
         isTracking: false,
@@ -626,14 +742,13 @@ class UserLocationNotifier extends StateNotifier<UserLocationState> {
 
   Future<void> startTracking() async => locate(track: true);
 
-  void _startPositionStream(TubigonBoundary boundary) {
-    _positionStream?.cancel();
-    _positionStream = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 10,
-      ),
-    ).listen((position) {
+  bool _isCurrent(int generation) =>
+      !_disposed && generation == _locationGeneration;
+
+  void _startPositionStream(TubigonBoundary boundary, int generation) {
+    unawaited(_positionStream?.cancel());
+    _positionStream = _gateway.positionStream().listen((position) {
+      if (!_isCurrent(generation)) return;
       state = UserLocationState(
         latitude: position.latitude,
         longitude: position.longitude,
@@ -649,14 +764,20 @@ class UserLocationNotifier extends StateNotifier<UserLocationState> {
   }
 
   void stopTracking() {
-    _positionStream?.cancel();
+    _locationGeneration++;
+    unawaited(_positionStream?.cancel());
     _positionStream = null;
-    state = state.copyWith(isTracking: false, isLoading: false);
+    if (!_disposed) {
+      state = state.copyWith(isTracking: false, isLoading: false);
+    }
   }
 
   @override
   void dispose() {
-    _positionStream?.cancel();
+    _disposed = true;
+    _locationGeneration++;
+    unawaited(_positionStream?.cancel());
+    _positionStream = null;
     super.dispose();
   }
 }

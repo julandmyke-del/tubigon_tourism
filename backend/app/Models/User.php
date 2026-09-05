@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Notifications\ResetPasswordNotification;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -11,7 +12,7 @@ use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable, HasUuids, SoftDeletes;
+    use HasApiTokens, HasFactory, HasUuids, Notifiable, SoftDeletes;
 
     protected $fillable = [
         'name',
@@ -74,5 +75,25 @@ class User extends Authenticatable
             'partner_profile_id',
             'tourist_spot_id',
         )->withPivot(['is_primary', 'assigned_by', 'assigned_at'])->withTimestamps();
+    }
+
+    public function msmes()
+    {
+        return $this->hasMany(Msme::class, 'profile_id');
+    }
+
+    public function msmeBusiness()
+    {
+        return $this->hasOne(Msme::class, 'profile_id');
+    }
+
+    public function roleApplications()
+    {
+        return $this->hasMany(RoleApplication::class, 'applicant_user_id');
+    }
+
+    public function sendPasswordResetNotification($token): void
+    {
+        $this->notify(new ResetPasswordNotification($token));
     }
 }

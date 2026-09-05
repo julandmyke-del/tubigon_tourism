@@ -6,6 +6,7 @@ use App\Actions\UpdateTouristSpotBookingAvailabilityAction;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\TouristSpot;
+use App\Models\TouristSpotPartnerAssignment;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +15,45 @@ use Illuminate\Validation\Rule;
 
 class PartnerTouristSpotController extends Controller
 {
+    public function assignment(Request $request): JsonResponse
+    {
+        $assignment = TouristSpotPartnerAssignment::with([
+            'touristSpot.category',
+            'touristSpot.bookingAvailabilityUpdatedBy:id,name',
+            'assignedBy:id,name',
+        ])->where('partner_profile_id', $request->user()->id)->first();
+
+        if (! $assignment) {
+            return response()->json(['status' => 'success', 'data' => null]);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'id' => $assignment->id,
+                'status' => 'active',
+                'is_primary' => $assignment->is_primary,
+                'assigned_at' => $assignment->assigned_at?->toIso8601String(),
+                'assigned_by' => $assignment->assignedBy?->only(['id', 'name']),
+                'destination' => $assignment->touristSpot,
+            ],
+        ]);
+    }
+
+    public function activity(Request $request): JsonResponse
+    {
+        $items = ActivityLog::where('user_id', $request->user()->id)
+            ->where(function ($query): void {
+                $query->where('action', 'like', 'Partner %')
+                    ->orWhere('action', 'like', 'Tourist Spot booking %');
+            })
+            ->latest()
+            ->limit(20)
+            ->get(['id', 'action', 'details', 'created_at']);
+
+        return response()->json(['status' => 'success', 'data' => $items]);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $spots = TouristSpot::with(['category', 'bookingAvailabilityUpdatedBy:id,name'])

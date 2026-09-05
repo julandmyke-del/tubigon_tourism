@@ -7,6 +7,7 @@ import '../../../reservations/repositories/reservation_repository.dart';
 import '../../../itinerary/presentation/itinerary_add_sheet.dart';
 import '../../../itinerary/repositories/itinerary_repository.dart';
 import '../../../map/providers/map_provider.dart';
+import '../../../map/map_focus.dart';
 import '../../../notifications/repositories/notification_repository.dart';
 
 class ReservationDetailPage extends ConsumerWidget {
@@ -343,9 +344,8 @@ class ReservationDetailPage extends ConsumerWidget {
                   Row(children: [
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: () => context.push(
-                          '/map?marker=${Uri.encodeQueryComponent(reservedPlace!.id)}',
-                        ),
+                        onPressed: () =>
+                            context.push(mapFocusPathForMarker(reservedPlace!)),
                         icon: const Icon(Icons.map_rounded),
                         label: const Text('View on Map'),
                       ),
@@ -354,7 +354,10 @@ class ReservationDetailPage extends ConsumerWidget {
                     Expanded(
                       child: FilledButton.icon(
                         onPressed: () => context.push(
-                          '/map?marker=${Uri.encodeQueryComponent(reservedPlace!.id)}&navigate=true',
+                          mapFocusPathForMarker(
+                            reservedPlace!,
+                            directions: true,
+                          ),
                         ),
                         icon: const Icon(Icons.directions_rounded),
                         label: const Text('Directions'),

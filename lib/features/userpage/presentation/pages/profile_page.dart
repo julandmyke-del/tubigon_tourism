@@ -131,6 +131,11 @@ class ProfilePage extends ConsumerWidget {
                       onTap: () => context.goNamed(RouteNames.editProfile),
                     ),
                     _MenuItem(
+                      icon: Icons.password_rounded,
+                      label: 'Change Password',
+                      onTap: () => _showChangePasswordDialog(context, ref),
+                    ),
+                    _MenuItem(
                       icon: Icons.favorite_outline_rounded,
                       label: 'My Favorites',
                       onTap: () => context.push('/favorites'),
@@ -149,6 +154,11 @@ class ProfilePage extends ConsumerWidget {
                       icon: Icons.offline_pin_outlined,
                       label: 'Offline Maps',
                       onTap: () => context.push('/offline-maps'),
+                    ),
+                    _MenuItem(
+                      icon: Icons.storefront_outlined,
+                      label: 'Apply for Business / Partner Access',
+                      onTap: () => context.push('/applications'),
                     ),
                   ],
                 ).animate().fadeIn(duration: 350.ms, delay: 100.ms),
@@ -247,6 +257,117 @@ class ProfilePage extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _showChangePasswordDialog(
+      BuildContext context, WidgetRef ref) async {
+    final currentController = TextEditingController();
+    final passwordController = TextEditingController();
+    final confirmationController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    var submitting = false;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Change Password'),
+          content: Form(
+            key: formKey,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: currentController,
+                    enabled: !submitting,
+                    obscureText: true,
+                    decoration:
+                        const InputDecoration(labelText: 'Current password'),
+                    validator: (value) => value?.isEmpty == true
+                        ? 'Enter your current password.'
+                        : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: passwordController,
+                    enabled: !submitting,
+                    obscureText: true,
+                    decoration:
+                        const InputDecoration(labelText: 'New password'),
+                    validator: (value) => (value?.length ?? 0) < 8
+                        ? 'Use at least 8 characters.'
+                        : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: confirmationController,
+                    enabled: !submitting,
+                    obscureText: true,
+                    decoration:
+                        const InputDecoration(labelText: 'Confirm password'),
+                    validator: (value) => value != passwordController.text
+                        ? 'Passwords do not match.'
+                        : null,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: submitting ? null : () => dialogContext.pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: submitting
+                  ? null
+                  : () async {
+                      if (formKey.currentState?.validate() != true) return;
+                      setDialogState(() => submitting = true);
+                      try {
+                        await ref.read(authProvider.notifier).changePassword(
+                              currentPassword: currentController.text,
+                              newPassword: passwordController.text,
+                            );
+                        if (!dialogContext.mounted) return;
+                        dialogContext.pop();
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Password updated successfully.'),
+                            ),
+                          );
+                        }
+                      } catch (error) {
+                        if (dialogContext.mounted) {
+                          ScaffoldMessenger.of(dialogContext).showSnackBar(
+                            SnackBar(
+                              content: Text(error
+                                  .toString()
+                                  .replaceFirst('Exception: ', '')),
+                            ),
+                          );
+                          setDialogState(() => submitting = false);
+                        }
+                      }
+                    },
+              child: submitting
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Update'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    currentController.dispose();
+    passwordController.dispose();
+    confirmationController.dispose();
   }
 
   void _showLanguageDialog(BuildContext context) {
@@ -411,19 +532,22 @@ class _MenuSection extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: const Color(0xFF1E293B)),
           ),
-          child: Column(
-            children: items.asMap().entries.map((e) {
-              final item = e.value;
-              final isLast = e.key == items.length - 1;
-              return Column(
-                children: [
-                  item,
-                  if (!isLast)
-                    const Divider(
-                        color: Color(0xFF1E293B), height: 1, indent: 56),
-                ],
-              );
-            }).toList(),
+          child: Material(
+            type: MaterialType.transparency,
+            child: Column(
+              children: items.asMap().entries.map((e) {
+                final item = e.value;
+                final isLast = e.key == items.length - 1;
+                return Column(
+                  children: [
+                    item,
+                    if (!isLast)
+                      const Divider(
+                          color: Color(0xFF1E293B), height: 1, indent: 56),
+                  ],
+                );
+              }).toList(),
+            ),
           ),
         ),
       ],

@@ -61,11 +61,12 @@ class MapLocation extends Model
         return $this->belongsTo(User::class, 'verified_by');
     }
 
-    public function linkedEntity(): TouristSpot|Msme|null
+    public function linkedEntity(): TouristSpot|Msme|EmergencyContact|null
     {
         return match ($this->entity_type) {
             'tourist_spot' => TouristSpot::find($this->entity_id),
             'msme' => Msme::find($this->entity_id),
+            'emergency_contact' => EmergencyContact::find($this->entity_id),
             default => null,
         };
     }
@@ -92,6 +93,8 @@ class MapLocation extends Model
         $name = $this->name;
         $description = $this->description ?? '';
         $address = $this->address;
+        $latitude = $this->latitude;
+        $longitude = $this->longitude;
 
         if ($entity instanceof TouristSpot) {
             $name = $entity->name;
@@ -120,6 +123,20 @@ class MapLocation extends Model
             $integerId = $entity->integer_id;
             $operatingHours = $entity->business_hours;
             $contact = $entity->phone;
+            $images = $images ?: ($entity->images ?? []);
+            // A linked map-management record must not become a second source
+            // of MSME coordinates. The business record remains authoritative.
+            $latitude = $entity->latitude;
+            $longitude = $entity->longitude;
+        } elseif ($entity instanceof EmergencyContact) {
+            // The managed facility remains the map/favorite/itinerary entity.
+            // Contact details are public only after the independent emergency
+            // contact verification workflow approves them.
+            $sourceId = $this->id;
+            if ($entity->is_active && $entity->is_verified) {
+                $contact = $entity->phone;
+                $operatingHours = $entity->operating_hours;
+            }
         }
 
         $category = $this->category;
@@ -136,7 +153,7 @@ class MapLocation extends Model
             'map_location_id' => (string) $this->id,
             'source_id' => (string) $sourceId,
             'source_integer_id' => $integerId,
-            'type' => $entityType ?: 'map_location',
+            'type' => $entity instanceof EmergencyContact ? 'map_location' : ($entityType ?: 'map_location'),
             'name' => $name,
             'category' => $displayCategory?->name ?? 'Important Place',
             'category_id' => $category?->id,
@@ -149,13 +166,14 @@ class MapLocation extends Model
             'description' => $description,
             'aliases' => $aliases,
             'address' => $address,
-            'latitude' => $this->latitude,
-            'longitude' => $this->longitude,
+            'latitude' => $latitude,
+            'longitude' => $longitude,
             'images' => $images,
             'rating' => $rating,
             'review_count' => $reviewCount,
             'operating_hours' => $operatingHours,
             'contact' => $contact,
+            'emergency_contact_id' => $entity instanceof EmergencyContact ? (string) $entity->id : null,
             'is_featured' => $isFeatured,
             'is_preapproved' => $isPreapproved,
             'is_bookable' => $isBookable,

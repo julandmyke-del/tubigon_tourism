@@ -21,6 +21,26 @@ class AdminUserDetailPage extends ConsumerWidget {
         title: const Text('User Detail'),
         actions: [
           IconButton(
+            tooltip: 'Revoke active sessions',
+            onPressed: () async {
+              try {
+                await ref
+                    .read(adminRepositoryProvider)
+                    .revokeUserSessions(userId);
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('User sessions revoked.')),
+                );
+              } catch (_) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Unable to revoke sessions.')),
+                );
+              }
+            },
+            icon: const Icon(Icons.logout_rounded),
+          ),
+          IconButton(
             tooltip: 'Edit user',
             onPressed: () => context.push('/admin/users/$userId/edit'),
             icon: const Icon(Icons.edit_rounded),
@@ -36,15 +56,20 @@ class AdminUserDetailPage extends ConsumerWidget {
           onRetry: () => ref.invalidate(adminUserProvider(userId)),
         ),
         data: (data) {
-          final role = data['role'] is Map
-              ? Map<String, dynamic>.from(data['role'])
-              : const <String, dynamic>{};
+          final roleName = data['role'] is Map
+              ? (data['role']['name'] ?? 'unknown').toString()
+              : (data['role'] ?? data['role_name'] ?? 'unknown').toString();
+          final msmes = data['linked_msmes'] as List<dynamic>? ?? const [];
+          final spots =
+              data['linked_tourist_spots'] as List<dynamic>? ?? const [];
+          final activity =
+              data['recent_activity'] as List<dynamic>? ?? const [];
           return ListView(
             padding: const EdgeInsets.all(24),
             children: [
               _Header(
                 name: (data['name'] ?? 'Unnamed user').toString(),
-                role: _label((role['name'] ?? 'unknown').toString()),
+                role: _label(roleName),
                 verified: data['is_verified'] == true ||
                     data['is_verified'] == 1 ||
                     data['is_verified'] == '1',
@@ -57,13 +82,132 @@ class AdminUserDetailPage extends ConsumerWidget {
                 'Language': (data['language'] ?? 'Not recorded').toString(),
                 'Bio': (data['bio'] ?? 'Not provided').toString(),
                 'Created': (data['created_at'] ?? 'Not recorded').toString(),
-                'Updated': (data['updated_at'] ?? 'Not recorded').toString(),
+                'Account status': (data['status'] ?? 'Unknown').toString(),
               }),
+              const SizedBox(height: 16),
+              _DetailsCard(rows: {
+                'Linked MSME': msmes.isEmpty
+                    ? 'None'
+                    : msmes.map((item) => item['name']).join(', '),
+                'Linked Spots': spots.isEmpty
+                    ? 'None'
+                    : spots.map((item) => item['name']).join(', '),
+              }),
+              if (roleName == 'tourism_partner') ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _managePartnerAssignment(
+                      context,
+                      ref,
+                      spots.isEmpty ? null : spots.first['id']?.toString(),
+                    ),
+                    icon: const Icon(Icons.assignment_ind_outlined),
+                    label: const Text('Manage Destination Assignment'),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              Card(
+                color: AdminColors.navy900,
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Recent Activity',
+                          style: TextStyle(
+                              color: AdminColors.textPrimary,
+                              fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 10),
+                      if (activity.isEmpty)
+                        const Text('No recent activity.',
+                            style: TextStyle(color: AdminColors.textSecondary))
+                      else
+                        ...activity.map((item) => ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(
+                                  (item['action'] ?? 'Activity').toString(),
+                                  style: const TextStyle(
+                                      color: AdminColors.textPrimary)),
+                              subtitle: Text(
+                                  (item['created_at'] ?? '').toString(),
+                                  style: const TextStyle(
+                                      color: AdminColors.textSecondary)),
+                            )),
+                    ],
+                  ),
+                ),
+              ),
             ],
           );
         },
       ),
     );
+  }
+
+  Future<void> _managePartnerAssignment(
+    BuildContext context,
+    WidgetRef ref,
+    String? currentSpotId,
+  ) async {
+    final repository = ref.read(adminRepositoryProvider);
+    final spotsFuture = ref.read(adminSpotsProvider.future);
+    try {
+      final spots = await spotsFuture;
+      if (!context.mounted) return;
+      String? selected = currentSpotId;
+      final save = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('Destination Assignment'),
+            content: SizedBox(
+              width: 480,
+              child: DropdownButtonFormField<String?>(
+                initialValue: selected,
+                decoration:
+                    const InputDecoration(labelText: 'Assigned Tourist Spot'),
+                items: [
+                  const DropdownMenuItem<String?>(
+                      value: null, child: Text('No destination assigned')),
+                  ...spots.map((spot) => DropdownMenuItem<String?>(
+                        value: spot['id']?.toString(),
+                        child: Text('${spot['name'] ?? 'Tourist Spot'}'),
+                      )),
+                ],
+                onChanged: (value) => setDialogState(() => selected = value),
+              ),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text('Cancel')),
+              FilledButton(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  child: const Text('Save Assignment')),
+            ],
+          ),
+        ),
+      );
+      if (save != true || !context.mounted) return;
+      await repository.updatePartnerAssignment(userId, selected);
+      if (!context.mounted) return;
+      ref.invalidate(adminUserProvider(userId));
+      ref.invalidate(adminUsersProvider);
+      ref.invalidate(adminSpotsProvider);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Partner destination assignment updated.')),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Unable to update this destination assignment.')),
+      );
+    }
   }
 }
 

@@ -5,6 +5,7 @@ namespace App\Actions;
 use App\Models\ActivityLog;
 use App\Models\Favorite;
 use App\Models\Notification;
+use App\Models\PartnerNotification;
 use App\Models\Reservation;
 use App\Models\TouristSpot;
 use App\Models\TouristSpotBookingAvailabilityHistory;
@@ -59,6 +60,7 @@ class UpdateTouristSpotBookingAvailabilityAction
                     ], JSON_THROW_ON_ERROR),
                 ]);
                 $this->notifyRelevantTourists($locked, $actor, $enabled, $reasonCode, $reason);
+                $this->notifyOperationalCounterparts($locked, $actor, $enabled, $reasonCode);
             }
 
             return $locked->fresh(['category', 'bookingAvailabilityUpdatedBy']);
@@ -103,6 +105,46 @@ class UpdateTouristSpotBookingAvailabilityAction
                     'route' => "/tourist-spots/{$spot->id}",
                 ],
             ]);
+        }
+    }
+
+    private function notifyOperationalCounterparts(
+        TouristSpot $spot,
+        User $actor,
+        bool $enabled,
+        ?string $reasonCode,
+    ): void {
+        $actor->loadMissing('role');
+        $label = $reasonCode ? str($reasonCode)->replace('_', ' ')->title()->toString() : null;
+        $body = $enabled
+            ? "{$spot->name} is accepting reservations again."
+            : "{$spot->name} booking was closed".($label ? " ({$label})" : '').'.';
+
+        if ($actor->role?->name === 'tourism_partner') {
+            User::whereHas('role', fn ($query) => $query->where('name', 'lgu_staff'))
+                ->pluck('id')
+                ->reject(fn ($id) => (string) $id === (string) $actor->id)
+                ->each(fn (string $id) => Notification::create([
+                    'user_id' => $id,
+                    'type' => 'partner_booking_availability_changed',
+                    'title' => 'Partner Updated Booking Availability',
+                    'body' => $body,
+                    'data' => ['tourist_spot_id' => $spot->id, 'booking_enabled' => $enabled, 'route' => '/lgu/tourist-spots'],
+                ]));
+
+            return;
+        }
+
+        if ($actor->role?->name === 'lgu_staff') {
+            $spot->partnerAssignments()->pluck('partner_profile_id')->each(
+                fn (string $id) => PartnerNotification::create([
+                    'user_id' => $id,
+                    'type' => 'lgu_booking_availability_changed',
+                    'title' => 'LGU Updated Booking Availability',
+                    'body' => $body,
+                    'data' => ['tourist_spot_id' => $spot->id, 'booking_enabled' => $enabled, 'route' => '/tourism-partner'],
+                ]),
+            );
         }
     }
 }

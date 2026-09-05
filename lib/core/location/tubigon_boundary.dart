@@ -13,6 +13,10 @@ class TubigonBoundary {
   static const maxLatitude = 10.072237;
   static const minLongitude = 123.881415;
   static const maxLongitude = 124.029692;
+  static const portMinLatitude = 9.9545;
+  static const portMaxLatitude = 9.9575;
+  static const portMinLongitude = 123.9565;
+  static const portMaxLongitude = 123.9595;
 
   static Future<TubigonBoundary>? _cached;
 
@@ -73,6 +77,16 @@ class TubigonBoundary {
     }
     return false;
   }
+
+  /// Narrow shoreline exception for Tubigon's passenger-port service area.
+  bool containsPortServiceArea({
+    required double latitude,
+    required double longitude,
+  }) =>
+      latitude >= portMinLatitude &&
+      latitude <= portMaxLatitude &&
+      longitude >= portMinLongitude &&
+      longitude <= portMaxLongitude;
 
   bool _ringContains(
     List<TubigonCoordinate> ring,

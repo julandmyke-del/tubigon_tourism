@@ -24,16 +24,16 @@ class NotificationsPage extends ConsumerWidget {
         title: const Text('Notifications'),
         actions: [
           TextButton(
-            onPressed:
-                notifications.valueOrNull?.any((item) => !item.isRead) == true
-                    ? () async {
-                        await ref
-                            .read(notificationRepositoryProvider)
-                            .markAllRead();
-                        ref.invalidate(touristNotificationsProvider);
-                        ref.invalidate(touristUnreadCountProvider);
-                      }
-                    : null,
+            onPressed: notifications.valueOrNull?.any((item) => !item.isRead) ==
+                    true
+                ? () async {
+                    final repository = ref.read(notificationRepositoryProvider);
+                    await repository.markAllRead();
+                    if (!context.mounted) return;
+                    ref.invalidate(touristNotificationsProvider);
+                    ref.invalidate(touristUnreadCountProvider);
+                  }
+                : null,
             child: const Text('Read all'),
           ),
         ],
@@ -65,14 +65,27 @@ class NotificationsPage extends ConsumerWidget {
                     return _NotificationCard(
                       notification: item,
                       onTap: () async {
+                        final repository =
+                            ref.read(notificationRepositoryProvider);
                         if (!item.isRead) {
-                          await ref
-                              .read(notificationRepositoryProvider)
-                              .markRead(item.id);
+                          await repository.markRead(item.id);
+                          if (!context.mounted) return;
                           ref.invalidate(touristNotificationsProvider);
                           ref.invalidate(touristUnreadCountProvider);
                         }
                         if (!context.mounted) return;
+                        final route = item.data['route']?.toString();
+                        if (item.type == 'role_application' &&
+                            route?.startsWith('/') == true) {
+                          if (item.data['role_changed'] == true) {
+                            final authNotifier =
+                                ref.read(authProvider.notifier);
+                            await authNotifier.reloadProfile();
+                            if (!context.mounted) return;
+                          }
+                          context.go(route!);
+                          return;
+                        }
                         final reservationId =
                             item.data['reservation_id']?.toString();
                         if (reservationId != null && reservationId.isNotEmpty) {

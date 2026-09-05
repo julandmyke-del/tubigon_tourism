@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\V1\PartnerNotificationController;
 use App\Http\Controllers\Api\V1\PartnerReservationController;
 use App\Http\Controllers\Api\V1\PartnerTouristSpotController;
 use App\Http\Controllers\Api\V1\ReservationController;
+use App\Http\Controllers\Api\V1\RoleApplicationController;
 use App\Http\Controllers\Api\V1\ReviewController;
 use App\Http\Controllers\Api\V1\SettingController;
 use App\Http\Controllers\Api\V1\SpotCategoryController;
@@ -38,6 +39,7 @@ Route::prefix('v1')->group(function () {
     Route::post('/auth/register', [AuthController::class, 'register'])->middleware('throttle:5,1');
     Route::post('/auth/google', [AuthController::class, 'googleAuth'])->middleware('throttle:10,1');
     Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
+    Route::post('/auth/reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:5,1');
     Route::get('/auth/email/verify/{id}/{hash}', [AuthController::class, 'verifyEmail'])->name('verification.verify');
     Route::post('/auth/verify-email-code', [AuthController::class, 'verifyEmailCode'])->middleware('throttle:10,1');
     Route::post('/auth/resend-verification-code', [AuthController::class, 'resendVerificationEmail'])->middleware('throttle:3,1');
@@ -60,7 +62,6 @@ Route::prefix('v1')->group(function () {
     Route::get('/ferry-schedules', [FerryScheduleController::class, 'index']);
     Route::get('/eco-tips', [EcoTipController::class, 'index']);
     Route::get('/emergency-contacts', [EmergencyContactController::class, 'index']);
-    Route::get('/announcements', [AnnouncementController::class, 'index']);
     Route::get('/reviews', [ReviewController::class, 'index']);
     Route::get('/system-settings', [SettingController::class, 'systemSettings']);
     Route::get('/map/locations', [MapController::class, 'publicIndex']);
@@ -80,6 +81,16 @@ Route::prefix('v1')->group(function () {
         Route::get('/users/{id}', [UserController::class, 'show']);
         Route::put('/users/{id}', [UserController::class, 'update']);
         Route::post('/users/{id}/avatar', [UserController::class, 'uploadAvatar']);
+
+        // Controlled privileged-role application workflow. Every applicant
+        // endpoint scopes records to the authenticated user in the controller.
+        Route::get('/role-applications/options', [RoleApplicationController::class, 'options']);
+        Route::get('/role-applications', [RoleApplicationController::class, 'index']);
+        Route::post('/role-applications', [RoleApplicationController::class, 'store']);
+        Route::get('/role-applications/{id}', [RoleApplicationController::class, 'show']);
+        Route::put('/role-applications/{id}', [RoleApplicationController::class, 'update']);
+        Route::post('/role-applications/{id}/submit', [RoleApplicationController::class, 'submit']);
+        Route::post('/role-applications/{id}/withdraw', [RoleApplicationController::class, 'withdraw']);
 
         // Reservations
         Route::get('/reservations', [ReservationController::class, 'index']);
@@ -124,6 +135,8 @@ Route::prefix('v1')->group(function () {
         Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
         Route::put('/notifications/read-all', [NotificationController::class, 'markAllRead']);
         Route::put('/notifications/{id}/read', [NotificationController::class, 'markRead']);
+        Route::get('/announcements', [AnnouncementController::class, 'index']);
+        Route::get('/announcements/{id}', [AnnouncementController::class, 'show']);
 
         // Settings
         Route::get('/settings', [SettingController::class, 'index']);
@@ -155,7 +168,7 @@ Route::prefix('v1')->group(function () {
         });
 
         // ─── Tourism Partner Scoped Routes ────────────────────────────────────
-        Route::middleware('role:tourism_partner,admin')->prefix('partner')->group(function () {
+        Route::middleware('role:tourism_partner')->prefix('partner')->group(function () {
             Route::get('/dashboard-stats', [TourismListingController::class, 'dashboardStats']);
             Route::get('/listings', [TourismListingController::class, 'index']);
             Route::get('/listings/{id}', [TourismListingController::class, 'show']);
@@ -164,6 +177,10 @@ Route::prefix('v1')->group(function () {
             Route::delete('/listings/{id}', [TourismListingController::class, 'destroy']);
             Route::post('/listings/{id}/submit', [TourismListingController::class, 'submit']);
 
+            Route::get('/assignment', [PartnerTouristSpotController::class, 'assignment'])
+                ->middleware('role:tourism_partner');
+            Route::get('/activity', [PartnerTouristSpotController::class, 'activity'])
+                ->middleware('role:tourism_partner');
             Route::get('/tourist-spots', [PartnerTouristSpotController::class, 'index'])
                 ->middleware('role:tourism_partner');
             Route::get('/tourist-spots/{id}', [PartnerTouristSpotController::class, 'show'])
@@ -182,6 +199,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/analytics', [TourismListingController::class, 'analytics']);
 
             Route::get('/notifications', [PartnerNotificationController::class, 'index']);
+            Route::get('/notifications/unread-count', [PartnerNotificationController::class, 'unreadCount']);
             Route::put('/notifications/read-all', [PartnerNotificationController::class, 'markAllRead']);
             Route::put('/notifications/{id}/read', [PartnerNotificationController::class, 'markRead']);
             Route::delete('/notifications/{id}', [PartnerNotificationController::class, 'destroy']);
@@ -217,7 +235,10 @@ Route::prefix('v1')->group(function () {
             Route::put('/users/{id}', [UserController::class, 'updateManaged']);
             Route::get('/roles', [UserController::class, 'roles']);
             Route::put('/users/{id}/role', [UserController::class, 'updateRole']);
+            Route::put('/users/{id}/partner-assignment', [UserController::class, 'updatePartnerAssignment']);
             Route::put('/users/{id}/verify', [UserController::class, 'updateVerification']);
+            Route::put('/users/{id}/status', [UserController::class, 'updateStatus']);
+            Route::delete('/users/{id}/sessions', [UserController::class, 'revokeSessions']);
             Route::delete('/users/{id}', [UserController::class, 'destroy']);
 
             // MSME Management
@@ -274,11 +295,19 @@ Route::prefix('v1')->group(function () {
 
             // System Settings Management
             Route::put('/system-settings/{id}', [SettingController::class, 'updateSystemSettings']);
+
+            // Admin alone performs final role and ownership provisioning.
+            Route::get('/access-requests', [RoleApplicationController::class, 'adminIndex']);
+            Route::get('/access-requests/{id}', [RoleApplicationController::class, 'adminShow']);
+            Route::post('/access-requests/{id}/approve', [RoleApplicationController::class, 'approve']);
+            Route::post('/access-requests/{id}/reject', [RoleApplicationController::class, 'adminReject']);
         });
 
         // ─── LGU Staff Scoped Routes ─────────────────────────────────────────
         Route::middleware('role:lgu_staff,admin')->prefix('lgu')->group(function () {
             Route::get('/dashboard-stats', [LguController::class, 'dashboardStats']);
+            Route::get('/activity', [LguController::class, 'activity']);
+            Route::get('/announcements', [AnnouncementController::class, 'lguIndex']);
             Route::get('/map-locations', [MapLocationController::class, 'managementIndex']);
             Route::post('/map-locations/duplicates', [MapLocationController::class, 'duplicates']);
             Route::post('/map-locations', [MapLocationController::class, 'store']);
@@ -307,12 +336,23 @@ Route::prefix('v1')->group(function () {
             Route::get('/reservations/{id}', [ReservationController::class, 'show']);
             Route::put('/reservations/{id}/status', [ReservationController::class, 'updateStatus']);
             Route::get('/msmes', [MsmeController::class, 'managementIndex']);
+            Route::get('/msmes/{id}', [MsmeController::class, 'managementShow']);
             Route::put('/msmes/{id}/verify', [LguController::class, 'verifyMsme']);
             Route::get('/tourism-listings', [TourismListingController::class, 'managementIndex']);
             Route::put('/tourism-listings/{id}/review', [TourismListingController::class, 'review']);
             Route::put('/waste-reports/{id}/status', [LguController::class, 'updateWasteStatus']);
             Route::get('/analytics', [LguController::class, 'analytics']);
             Route::get('/reports', [LguController::class, 'reports']);
+
+            // LGU verification is intentionally separate from Admin access approval.
+            Route::middleware('role:lgu_staff')->group(function () {
+                Route::get('/role-applications', [RoleApplicationController::class, 'lguIndex']);
+                Route::get('/role-applications/{id}', [RoleApplicationController::class, 'lguShow']);
+                Route::post('/role-applications/{id}/start-review', [RoleApplicationController::class, 'startReview']);
+                Route::post('/role-applications/{id}/needs-changes', [RoleApplicationController::class, 'needsChanges']);
+                Route::post('/role-applications/{id}/recommend', [RoleApplicationController::class, 'recommend']);
+                Route::post('/role-applications/{id}/reject', [RoleApplicationController::class, 'lguReject']);
+            });
         });
 
     });

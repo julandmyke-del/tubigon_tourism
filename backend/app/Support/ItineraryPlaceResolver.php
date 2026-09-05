@@ -6,6 +6,7 @@ use App\Models\MapLocation;
 use App\Models\Msme;
 use App\Models\TourismListing;
 use App\Models\TouristSpot;
+use Illuminate\Support\Facades\Schema;
 
 final class ItineraryPlaceResolver
 {
@@ -28,8 +29,8 @@ final class ItineraryPlaceResolver
             ->where('active', true)
             ->where('verified', true)
             ->where('published', true)
-            ->whereNotNull('latitude')
-            ->whereNotNull('longitude')
+            ->whereNotNull('latitude')->whereBetween('latitude', [-90, 90])
+            ->whereNotNull('longitude')->whereBetween('longitude', [-180, 180])
             ->find($id);
 
         if (! $place) {
@@ -37,6 +38,9 @@ final class ItineraryPlaceResolver
         }
 
         $data = $place->toPlaceArray();
+        if (($data['category_slug'] ?? null) === 'emergency') {
+            return null;
+        }
 
         return $this->shape(
             'map_location',
@@ -50,6 +54,10 @@ final class ItineraryPlaceResolver
             $data['operating_hours'],
             $data['images'],
             (bool) $data['is_verified'],
+            $data['source_integer_id'] ?? null,
+            (bool) ($data['is_bookable'] ?? false),
+            (bool) ($data['booking_enabled'] ?? false),
+            $data['booking_unavailable_reason'] ?? null,
         );
     }
 
@@ -57,8 +65,10 @@ final class ItineraryPlaceResolver
     {
         $place = TouristSpot::with('category')
             ->where('is_active', true)
-            ->whereNotNull('latitude')
-            ->whereNotNull('longitude')
+            ->when(
+                Schema::hasColumn('tourist_spots', 'is_published'),
+                fn ($query) => $query->where('is_published', true),
+            )
             ->find($id);
 
         return $place ? $this->shape(
@@ -73,14 +83,21 @@ final class ItineraryPlaceResolver
             $place->opening_hours,
             $place->images ?? [],
             true,
+            $place->integer_id === null ? null : (int) $place->integer_id,
+            (bool) ($place->is_bookable ?? false),
+            (bool) ($place->booking_enabled ?? false),
+            $place->booking_unavailable_reason,
         ) : null;
     }
 
     private function msme(string $id): ?array
     {
         $place = Msme::where('is_verified', true)
-            ->whereNotNull('latitude')
-            ->whereNotNull('longitude')
+            ->where('verification_status', 'verified')
+            ->when(
+                Schema::hasColumn('msmes', 'operational_status'),
+                fn ($query) => $query->whereIn('operational_status', ['open', 'temporarily_closed', 'fully_booked']),
+            )
             ->find($id);
 
         return $place ? $this->shape(
@@ -93,8 +110,11 @@ final class ItineraryPlaceResolver
             $place->latitude,
             $place->longitude,
             $place->business_hours,
-            [],
+            $place->images ?? [],
             true,
+            $place->integer_id === null ? null : (int) $place->integer_id,
+            (bool) ($place->booking_enabled ?? false),
+            (bool) ($place->booking_enabled ?? false),
         ) : null;
     }
 
@@ -102,8 +122,6 @@ final class ItineraryPlaceResolver
     {
         $place = TourismListing::where('is_active', true)
             ->whereIn('status', ['active', 'approved'])
-            ->whereNotNull('latitude')
-            ->whereNotNull('longitude')
             ->find($id);
 
         return $place ? $this->shape(
@@ -118,6 +136,7 @@ final class ItineraryPlaceResolver
             $place->operating_hours,
             $place->images ?? [],
             true,
+            $place->integer_id,
         ) : null;
     }
 
@@ -128,15 +147,20 @@ final class ItineraryPlaceResolver
         string $category,
         ?string $description,
         ?string $address,
-        float $latitude,
-        float $longitude,
+        ?float $latitude,
+        ?float $longitude,
         ?string $operatingHours,
         array $images,
         bool $verified,
+        ?int $integerId = null,
+        bool $isBookable = false,
+        bool $bookingEnabled = false,
+        ?string $bookingUnavailableReason = null,
     ): array {
         return [
             'entity_type' => $type,
             'entity_id' => $id,
+            'source_integer_id' => $integerId,
             'marker_id' => "$type:$id",
             'name' => $name,
             'category' => $category,
@@ -147,6 +171,9 @@ final class ItineraryPlaceResolver
             'operating_hours' => $operatingHours,
             'images' => $images,
             'is_verified' => $verified,
+            'is_bookable' => $isBookable,
+            'booking_enabled' => $bookingEnabled,
+            'booking_unavailable_reason' => $bookingUnavailableReason,
         ];
     }
 }

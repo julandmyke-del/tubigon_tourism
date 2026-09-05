@@ -8,7 +8,7 @@ import '../../../../core/theme/app_spacing.dart';
 import '../../../emergency/models/emergency_contact.dart';
 import '../../../emergency/repositories/emergency_repository.dart';
 import '../../../map/providers/map_provider.dart';
-import '../../repositories/lgu_repository.dart';
+import '../../providers/lgu_providers.dart';
 
 class LguEmergencyContactsPage extends ConsumerStatefulWidget {
   const LguEmergencyContactsPage({super.key});
@@ -27,6 +27,9 @@ class _LguEmergencyContactsPageState
   bool _loading = true;
   bool _saving = false;
   String? _error;
+  String _query = '';
+  String _category = 'all';
+  String _verification = 'all';
 
   @override
   void initState() {
@@ -79,9 +82,12 @@ class _LguEmergencyContactsPageState
     var success = false;
     try {
       success = await operation();
+      if (!mounted) return;
       if (success) {
         ref.invalidate(emergencyContactsListProvider);
         ref.invalidate(mapMarkersProvider);
+        ref.invalidate(lguDashboardStatsProvider);
+        ref.invalidate(lguActivityProvider);
       }
     } catch (_) {
       success = false;
@@ -130,6 +136,19 @@ class _LguEmergencyContactsPageState
 
   @override
   Widget build(BuildContext context) {
+    final categories = _contacts.map((item) => item.category).toSet().toList()
+      ..sort();
+    final filtered = _contacts.where((contact) {
+      final matchesQuery =
+          '${contact.name} ${contact.phone} ${contact.address} ${contact.category}'
+              .toLowerCase()
+              .contains(_query);
+      final matchesCategory =
+          _category == 'all' || contact.category == _category;
+      final matchesVerification = _verification == 'all' ||
+          (_verification == 'verified') == contact.isVerified;
+      return matchesQuery && matchesCategory && matchesVerification;
+    }).toList();
     return Scaffold(
       backgroundColor: _navyDark,
       floatingActionButton: FloatingActionButton.extended(
@@ -158,6 +177,53 @@ class _LguEmergencyContactsPageState
               style: TextStyle(color: AppColors.grey400),
             ),
             const SizedBox(height: AppSpacing.lg),
+            Wrap(spacing: 10, runSpacing: 10, children: [
+              SizedBox(
+                width: 290,
+                child: TextField(
+                  decoration: const InputDecoration(
+                      labelText: 'Search agency, number, or address',
+                      prefixIcon: Icon(Icons.search_rounded)),
+                  onChanged: (value) =>
+                      setState(() => _query = value.trim().toLowerCase()),
+                ),
+              ),
+              SizedBox(
+                width: 200,
+                child: DropdownButtonFormField<String>(
+                  initialValue:
+                      categories.contains(_category) || _category == 'all'
+                          ? _category
+                          : 'all',
+                  decoration: const InputDecoration(labelText: 'Category'),
+                  items: ['all', ...categories]
+                      .map((value) => DropdownMenuItem(
+                          value: value,
+                          child:
+                              Text(value == 'all' ? 'All categories' : value)))
+                      .toList(),
+                  onChanged: (value) =>
+                      setState(() => _category = value ?? 'all'),
+                ),
+              ),
+              SizedBox(
+                width: 190,
+                child: DropdownButtonFormField<String>(
+                  initialValue: _verification,
+                  decoration: const InputDecoration(labelText: 'Verification'),
+                  items: const [
+                    DropdownMenuItem(value: 'all', child: Text('All')),
+                    DropdownMenuItem(
+                        value: 'verified', child: Text('Verified')),
+                    DropdownMenuItem(
+                        value: 'unverified', child: Text('Unverified')),
+                  ],
+                  onChanged: (value) =>
+                      setState(() => _verification = value ?? 'all'),
+                ),
+              ),
+            ]),
+            const SizedBox(height: AppSpacing.md),
             if (_saving) const LinearProgressIndicator(color: _orange),
             if (_loading)
               const Padding(
@@ -166,13 +232,15 @@ class _LguEmergencyContactsPageState
               )
             else if (_error != null)
               _StateCard(message: _error!, onRetry: _load)
-            else if (_contacts.isEmpty)
+            else if (filtered.isEmpty)
               _StateCard(
-                message: 'No emergency contacts have been added yet.',
+                message: _contacts.isEmpty
+                    ? 'No emergency contacts have been added yet.'
+                    : 'No emergency contacts match these filters.',
                 onRetry: _load,
               )
             else
-              ..._contacts.map((contact) => _ContactCard(
+              ...filtered.map((contact) => _ContactCard(
                     contact: contact,
                     disabled: _saving,
                     onEdit: () => _openForm(contact),

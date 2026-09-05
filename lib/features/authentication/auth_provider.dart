@@ -705,6 +705,46 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
+  Future<void> completePasswordReset({
+    required String email,
+    required String token,
+    required String password,
+  }) async {
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      await apiClient.post(
+        ApiEndpoints.resetPassword,
+        data: {
+          'email': email.trim(),
+          'token': token,
+          'password': password,
+          'password_confirmation': password,
+        },
+      );
+    } on AppException catch (error) {
+      throw Exception(error.message);
+    }
+  }
+
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      await apiClient.put(
+        ApiEndpoints.updatePassword,
+        data: {
+          'current_password': currentPassword,
+          'password': newPassword,
+          'password_confirmation': newPassword,
+        },
+      );
+    } on AppException catch (error) {
+      throw Exception(error.message);
+    }
+  }
+
   /// Continue as guest
   Future<void> continueAsGuest() async {
     const newState = AuthState(

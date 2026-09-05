@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,6 +22,7 @@ import '../../../favorites/repositories/favorites_repository.dart';
 import '../../../itinerary/models/itinerary.dart';
 import '../../../itinerary/presentation/itinerary_add_sheet.dart';
 import '../../../itinerary/repositories/itinerary_repository.dart';
+import '../../../map/map_camera_policy.dart';
 import '../../../map/providers/map_provider.dart';
 import '../../../map/place_category_style.dart';
 import '../../../map/services/directions_service.dart';
@@ -66,6 +68,7 @@ class _MapPageState extends ConsumerState<MapPage> {
   final List<Line> _boundaryLines = [];
   final Set<String> _installedMarkerImages = {};
   List<MapMarker>? _pendingMarkerSync;
+  List<MapMarker>? _pendingCameraFocus;
   bool _syncingMarkers = false;
   bool _styleLoaded = false;
   bool _tileError = false;
@@ -80,40 +83,49 @@ class _MapPageState extends ConsumerState<MapPage> {
   bool _searchResultsExpanded = false;
   bool _initialMarkerUnavailableShown = false;
   String? _pendingSelectionId;
+  String? _focusedMarkerId;
   String? _renderedMarkerFingerprint;
   Timer? _searchDebounce;
   Timer? _styleLoadTimer;
+  CancelToken? _routeCancelToken;
+  late final UserLocationNotifier _userLocationNotifier;
+  late final StateController<MapMarker?> _selectedMarkerController;
+  late final StateController<NavigationState> _navigationController;
+  late final StateController<MapFilterState> _mapFilterController;
+  late final StateController<bool> _offlineMapModeController;
+  late final DirectionsService _directionsService;
+  late final RouteCacheService _routeCacheService;
 
   @override
   void initState() {
     super.initState();
+    _userLocationNotifier = ref.read(userLocationProvider.notifier);
+    _selectedMarkerController = ref.read(selectedMarkerProvider.notifier);
+    _navigationController = ref.read(navigationProvider.notifier);
+    _mapFilterController = ref.read(mapFilterProvider.notifier);
+    _offlineMapModeController = ref.read(offlineMapModeProvider.notifier);
+    _directionsService = ref.read(directionsServiceProvider);
+    _routeCacheService = ref.read(routeCacheServiceProvider);
     if (widget.offlineMode) {
       Future.microtask(() {
         if (!mounted) return;
-        ref.read(offlineMapModeProvider.notifier).state = true;
+        _offlineMapModeController.state = true;
         if (OfflineMapNotifier.supportsNativeMapResources) {
           unawaited(setOffline(true));
         }
       });
     }
-    final filter = ref.read(mapFilterProvider);
     _showPlaceLabels = LocalStorageService.instance
             .getBool(AppConstants.mapLabelsVisibleKey) ??
         true;
     if (widget.initialMarkerId != null) {
-      // A direct destination must not be hidden by search/category state from
-      // an earlier ordinary map session.
       _pendingSelectionId = widget.initialMarkerId;
-      Future.microtask(() {
-        if (!mounted) return;
-        ref.read(mapFilterProvider.notifier).state = filter.copyWith(
-          searchQuery: '',
-          activeCategoryKeys: const <String>{},
-        );
-      });
-    } else {
-      _searchController.text = filter.searchQuery;
+      // Keep a focused deep-link marker visible locally without resetting the
+      // user's remembered search/category state. The pending request itself is
+      // consumed once after the matching annotation is selected.
+      _focusedMarkerId = widget.initialMarkerId;
     }
+    _searchController.text = _mapFilterController.state.searchQuery;
   }
 
   @override
@@ -121,16 +133,35 @@ class _MapPageState extends ConsumerState<MapPage> {
     _searchDebounce?.cancel();
     _searchController.dispose();
     _styleLoadTimer?.cancel();
-    ref.read(userLocationProvider.notifier).stopTracking();
-    ref.read(selectedMarkerProvider.notifier).state = null;
-    ref.read(navigationProvider.notifier).state = const NavigationState();
-    if (widget.offlineMode) {
-      ref.read(offlineMapModeProvider.notifier).state = false;
-      if (!kIsWeb && OfflineMapNotifier.supportsNativeMapResources) {
-        unawaited(setOffline(false));
+    _routeCancelToken?.cancel('Smart Map was closed.');
+    _routeCancelToken = null;
+    // Consumer listeners are detached after State.dispose returns. Mutating a
+    // watched provider synchronously here can therefore try to rebuild this
+    // already-defunct element. Finish the page-owned provider cleanup in a
+    // microtask, after Riverpod has removed those listeners.
+    Future.microtask(() {
+      if (_userLocationNotifier.mounted) {
+        _userLocationNotifier.stopTracking();
       }
-    }
-    _mapController?.dispose();
+      if (_selectedMarkerController.mounted) {
+        _selectedMarkerController.state = null;
+      }
+      if (_navigationController.mounted) {
+        _navigationController.state = const NavigationState();
+      }
+      if (widget.offlineMode && _offlineMapModeController.mounted) {
+        _offlineMapModeController.state = false;
+        if (!kIsWeb && OfflineMapNotifier.supportsNativeMapResources) {
+          unawaited(setOffline(false));
+        }
+      }
+    });
+    _styleLoaded = false;
+    _pendingMarkerSync = null;
+    final controller = _mapController;
+    _mapController = null;
+    controller?.onSymbolTapped.remove(_onSymbolTapped);
+    controller?.dispose();
     super.dispose();
   }
 
@@ -153,7 +184,11 @@ class _MapPageState extends ConsumerState<MapPage> {
         ref.watch(favoriteKeysProvider).valueOrNull ?? const <FavoriteKey>{};
     final isOffline = widget.offlineMode ||
         connectivity.valueOrNull == ConnectivityStatus.offline;
-    final searchQuery = ref.watch(mapFilterProvider).searchQuery.trim();
+    final filter = ref.watch(mapFilterProvider);
+    final visibleLocations = locations.valueOrNull ?? const <MapMarker>[];
+    final searchResults = _searchResultsExpanded
+        ? _matchingSearchResults(allLocations, filter)
+        : const <MapMarker>[];
     final itinerary = widget.itineraryId == null
         ? null
         : ref.watch(itineraryDetailProvider(widget.itineraryId!)).valueOrNull;
@@ -165,7 +200,12 @@ class _MapPageState extends ConsumerState<MapPage> {
 
     ref.listen<AsyncValue<List<MapMarker>>>(filteredMapMarkersProvider,
         (_, next) {
-      next.whenData(_queueMarkerSync);
+      next.whenData((items) => _queueMarkerSync(
+            _mapItemsForPage(
+                items,
+                ref.read(mapMarkersProvider).valueOrNull ??
+                    const <MapMarker>[]),
+          ));
     });
 
     ref.listen<UserLocationState>(userLocationProvider, (previous, next) {
@@ -175,17 +215,17 @@ class _MapPageState extends ConsumerState<MapPage> {
         _hasCenteredOnUser = true;
         unawaited(_centerOnUser(next));
       }
-      final nav = ref.read(navigationProvider);
+      final nav = _navigationController.state;
       if (nav.isNavigating && nav.destination != null) {
         final remaining =
             nav.destination!.distanceTo(next.latitude!, next.longitude!);
-        ref.read(navigationProvider.notifier).state = nav.copyWith(
+        _navigationController.state = nav.copyWith(
           distanceKm: remaining,
           etaMinutes: math.max(1, (remaining / 30 * 60).ceil()),
           isNavigating: remaining >= 0.05,
         );
         if (remaining < 0.05) {
-          ref.read(userLocationProvider.notifier).stopTracking();
+          _userLocationNotifier.stopTracking();
           if (mounted) {
             _showMessage('You have arrived at ${nav.destination!.name}.');
           }
@@ -209,7 +249,10 @@ class _MapPageState extends ConsumerState<MapPage> {
               rotateGesturesEnabled: true,
               tiltGesturesEnabled: false,
               trackCameraPosition: true,
-              onMapCreated: (controller) => _onMapCreated(controller, items),
+              onMapCreated: (controller) => _onMapCreated(
+                controller,
+                _mapItemsForPage(items, allLocations),
+              ),
               onStyleLoadedCallback: () => unawaited(_onStyleLoaded()),
               onCameraIdle: () => unawaited(_refreshLabelVisibility()),
               onMapClick: (_, __) => unawaited(_clearSelectedMarker()),
@@ -276,23 +319,25 @@ class _MapPageState extends ConsumerState<MapPage> {
                 const SizedBox(height: 8),
                 _CategoryBar(
                   role: auth.role,
-                  active: ref.watch(mapFilterProvider).activeCategoryKeys,
-                  onSelected: (categoryKey) {
-                    final current = ref.read(mapFilterProvider);
-                    final next = Set<String>.of(current.activeCategoryKeys);
-                    if (categoryKey == null) {
-                      next.clear();
-                    } else if (!next.add(categoryKey)) {
-                      next.remove(categoryKey);
-                    }
-                    ref.read(mapFilterProvider.notifier).state =
-                        current.copyWith(activeCategoryKeys: next);
-                  },
+                  active: filter.activeCategoryKeys,
+                  onSelected: (categoryKey) =>
+                      _onCategorySelected(categoryKey, allLocations),
                 ),
+                if (filter.isActive)
+                  _MapResultCount(
+                    count: visibleLocations.length,
+                    onClear: filter.activeCategoryKeys.isNotEmpty
+                        ? () => _clearCategoryFilters(allLocations)
+                        : _clearSearch,
+                    clearLabel: filter.activeCategoryKeys.isNotEmpty
+                        ? 'Clear filters'
+                        : 'Clear search',
+                  ),
                 if (_searchResultsExpanded &&
-                    _searchController.text.trim().isNotEmpty)
+                    _searchController.text.trim().isNotEmpty &&
+                    searchResults.isNotEmpty)
                   _MapSearchResults(
-                    results: _matchingSearchResults(allLocations),
+                    results: searchResults,
                     onSelected: _selectSearchResult,
                   ),
               ],
@@ -335,6 +380,12 @@ class _MapPageState extends ConsumerState<MapPage> {
                           : Icons.my_location_rounded,
                   active: userLocation.isTracking,
                   onPressed: userLocation.isLoading ? null : _toggleLocation,
+                ),
+                const SizedBox(height: 8),
+                _RoundControl(
+                  tooltip: 'Near me',
+                  icon: Icons.near_me_rounded,
+                  onPressed: userLocation.isLoading ? null : _focusNearMe,
                 ),
                 const SizedBox(height: 8),
                 _RoundControl(
@@ -404,7 +455,7 @@ class _MapPageState extends ConsumerState<MapPage> {
             ),
           if (!_tileError &&
               userLocation.isWithinTubigon != false &&
-              searchQuery.isEmpty &&
+              !filter.isActive &&
               (locations.valueOrNull?.isEmpty ?? false))
             const Positioned(
               left: 12,
@@ -418,16 +469,19 @@ class _MapPageState extends ConsumerState<MapPage> {
             ),
           if (!_tileError &&
               userLocation.isWithinTubigon != false &&
-              searchQuery.isNotEmpty &&
+              filter.isActive &&
               (locations.valueOrNull?.isEmpty ?? false))
-            const Positioned(
+            Positioned(
               left: 12,
               right: 72,
-              top: 168,
-              child: _ScopeNotice(
-                icon: Icons.travel_explore_rounded,
-                message:
-                    'No Tubigon location matches this search. Locations outside Tubigon are not included.',
+              top: 202,
+              child: _EmptyFilterNotice(
+                onClear: filter.activeCategoryKeys.isNotEmpty
+                    ? () => _clearCategoryFilters(allLocations)
+                    : _clearSearch,
+                actionLabel: filter.activeCategoryKeys.isNotEmpty
+                    ? 'Clear Filters'
+                    : 'Clear Search',
               ),
             ),
           if (navigation.isNavigating && selected == null)
@@ -473,8 +527,7 @@ class _MapPageState extends ConsumerState<MapPage> {
                             auth.role == UserRole.guest)
                     ? () => showAddToItinerarySheet(context, ref, selected)
                     : null,
-                onCall: selected.category == MapMarkerCategory.emergency &&
-                        (selected.contact?.trim().isNotEmpty ?? false)
+                onCall: selected.hasCallableContact
                     ? () => _callMarker(selected)
                     : null,
                 onFerry: selected.categorySlug == 'port-transport'
@@ -506,8 +559,9 @@ class _MapPageState extends ConsumerState<MapPage> {
     _searchDebounce = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
       final current = ref.read(mapFilterProvider);
-      ref.read(mapFilterProvider.notifier).state =
-          current.copyWith(searchQuery: value);
+      final all =
+          ref.read(mapMarkersProvider).valueOrNull ?? const <MapMarker>[];
+      _applyIntentionalFilter(current.copyWith(searchQuery: value), all);
     });
   }
 
@@ -515,21 +569,59 @@ class _MapPageState extends ConsumerState<MapPage> {
     _searchDebounce?.cancel();
     _searchController.clear();
     final current = ref.read(mapFilterProvider);
-    ref.read(mapFilterProvider.notifier).state =
-        current.copyWith(searchQuery: '');
+    final all = ref.read(mapMarkersProvider).valueOrNull ?? const <MapMarker>[];
+    _applyIntentionalFilter(current.copyWith(searchQuery: ''), all);
     setState(() => _searchResultsExpanded = false);
   }
 
-  List<MapMarker> _matchingSearchResults(List<MapMarker> markers) {
-    final query = _searchController.text.trim().toLowerCase();
+  void _onCategorySelected(String? categoryKey, List<MapMarker> allMarkers) {
+    final current = _mapFilterController.state;
+    final nextKeys = Set<String>.of(current.activeCategoryKeys);
+    if (categoryKey == null) {
+      nextKeys.clear();
+    } else if (!nextKeys.add(categoryKey)) {
+      nextKeys.remove(categoryKey);
+    }
+    _applyIntentionalFilter(
+      current.copyWith(activeCategoryKeys: nextKeys),
+      allMarkers,
+    );
+  }
+
+  void _clearCategoryFilters(List<MapMarker> allMarkers) {
+    final current = _mapFilterController.state;
+    _applyIntentionalFilter(
+      current.copyWith(activeCategoryKeys: const <String>{}),
+      allMarkers,
+    );
+  }
+
+  void _applyIntentionalFilter(
+    MapFilterState next,
+    List<MapMarker> allMarkers,
+  ) {
+    if (!mounted) return;
+    _focusedMarkerId = null;
+    final visible = filterMapMarkers(allMarkers, next);
+    _mapFilterController.state = next;
+    final selected = _selectedMarkerController.state;
+    if (selected != null && !visible.any((item) => item.id == selected.id)) {
+      unawaited(_clearSelectedMarker());
+    }
+    _pendingCameraFocus = visible;
+    unawaited(_focusPendingFilterResults());
+  }
+
+  List<MapMarker> _matchingSearchResults(
+    List<MapMarker> markers,
+    MapFilterState filter,
+  ) {
+    final query = _searchController.text.trim();
     if (query.isEmpty) return const [];
-    final matches = markers.where((item) =>
-        item.name.toLowerCase().contains(query) ||
-        item.description.toLowerCase().contains(query) ||
-        (item.address?.toLowerCase().contains(query) ?? false) ||
-        (item.categoryName?.toLowerCase().contains(query) ?? false));
-    final sorted = matches.toList()
-      ..sort((a, b) {
+    final sorted = filterMapMarkers(
+      markers,
+      filter.copyWith(searchQuery: query),
+    )..sort((a, b) {
         final featured = (b.isFeatured ? 1 : 0).compareTo(a.isFeatured ? 1 : 0);
         return featured != 0 ? featured : a.name.compareTo(b.name);
       });
@@ -540,11 +632,15 @@ class _MapPageState extends ConsumerState<MapPage> {
     FocusScope.of(context).unfocus();
     setState(() => _searchResultsExpanded = false);
     _searchDebounce?.cancel();
+    _focusedMarkerId = null;
 
     final current = ref.read(mapFilterProvider);
     final categories = Set<String>.of(current.activeCategoryKeys);
-    final hiddenByCategory =
-        categories.isNotEmpty && !marker.categoryKeys.any(categories.contains);
+    final hiddenByCategory = categories.isNotEmpty &&
+        !filterMapMarkers(
+          [marker],
+          current.copyWith(searchQuery: ''),
+        ).contains(marker);
     if (hiddenByCategory) categories.add(marker.categorySlug);
     final query = _searchController.text.trim();
     final needsMarkerSync = hiddenByCategory || current.searchQuery != query;
@@ -561,7 +657,105 @@ class _MapPageState extends ConsumerState<MapPage> {
     if (symbol != null) await _onSymbolTapped(symbol);
   }
 
+  List<MapMarker> _mapItemsForPage(
+    List<MapMarker> filtered,
+    List<MapMarker> allMarkers,
+  ) {
+    final result = List<MapMarker>.of(filtered);
+
+    void addIfMissing(MapMarker marker) {
+      if (marker.hasCoordinates &&
+          !result.any((existing) => existing.id == marker.id)) {
+        result.add(marker);
+      }
+    }
+
+    final focus = _focusedMarkerId;
+    if (focus != null) {
+      for (final marker in allMarkers) {
+        if (mapMarkerMatchesFocus(marker, focus)) {
+          addIfMissing(marker);
+          break;
+        }
+      }
+    }
+
+    final navigation = _navigationController.state;
+    if (navigation.isNavigating && navigation.destination != null) {
+      addIfMissing(navigation.destination!);
+    }
+    return result;
+  }
+
+  Future<void> _focusPendingFilterResults() async {
+    if (!mounted) return;
+    final markers = _pendingCameraFocus;
+    if (markers == null) return;
+    final plan = planMapCameraForFilterChange(
+      markers,
+      navigationActive: _navigationController.state.isNavigating,
+    );
+    if (plan.move == MapCameraMove.keep) {
+      _pendingCameraFocus = null;
+      return;
+    }
+    final controller = _mapController;
+    if (controller == null || !_styleLoaded) return;
+    _pendingCameraFocus = null;
+    await _moveCameraToMarkers(controller, plan);
+  }
+
+  Future<void> _moveCameraToMarkers(
+    MapLibreMapController controller,
+    MapCameraPlan plan,
+  ) async {
+    if (!mounted || !identical(controller, _mapController)) return;
+    if (plan.move == MapCameraMove.center) {
+      final marker = plan.markers.single;
+      await controller.animateCamera(
+        CameraUpdate.newLatLngZoom(
+          LatLng(marker.latitude, marker.longitude),
+          16,
+        ),
+      );
+      return;
+    }
+    if (plan.move != MapCameraMove.fitBounds || plan.markers.isEmpty) return;
+    var minLat = plan.markers.first.latitude;
+    var maxLat = plan.markers.first.latitude;
+    var minLng = plan.markers.first.longitude;
+    var maxLng = plan.markers.first.longitude;
+    for (final marker in plan.markers.skip(1)) {
+      minLat = math.min(minLat, marker.latitude);
+      maxLat = math.max(maxLat, marker.latitude);
+      minLng = math.min(minLng, marker.longitude);
+      maxLng = math.max(maxLng, marker.longitude);
+    }
+    if (minLat == maxLat && minLng == maxLng) {
+      await controller.animateCamera(
+        CameraUpdate.newLatLngZoom(LatLng(minLat, minLng), 16),
+      );
+      return;
+    }
+    await controller.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(minLat, minLng),
+          northeast: LatLng(maxLat, maxLng),
+        ),
+        left: 48,
+        top: 190,
+        right: 78,
+        bottom: _selectedMarkerController.state == null ? 120 : 320,
+      ),
+    );
+  }
+
   void _onMapCreated(MapLibreMapController controller, List<MapMarker> items) {
+    if (!mounted) {
+      controller.dispose();
+      return;
+    }
     _mapController = controller;
     controller.onSymbolTapped.add(_onSymbolTapped);
     _pendingMarkerSync = List<MapMarker>.of(items);
@@ -572,6 +766,7 @@ class _MapPageState extends ConsumerState<MapPage> {
   }
 
   Future<void> _onStyleLoaded() async {
+    if (!mounted) return;
     final controller = _mapController;
     if (controller == null) return;
 
@@ -596,15 +791,23 @@ class _MapPageState extends ConsumerState<MapPage> {
       await controller.setSymbolIconIgnorePlacement(true);
       await controller.setSymbolTextAllowOverlap(false);
       await controller.setSymbolTextIgnorePlacement(false);
+      await _useOpenFreeMapAnnotationFont(controller);
       await _drawTubigonBoundary(controller);
-      final selected = ref.read(selectedMarkerProvider);
+      if (!mounted || !identical(controller, _mapController)) return;
+      final selected = _selectedMarkerController.state;
       if (selected != null) _pendingSelectionId = selected.id;
       final queued = _pendingMarkerSync ??
-          ref.read(filteredMapMarkersProvider).valueOrNull ??
-          const <MapMarker>[];
+          _mapItemsForPage(
+            ref.read(filteredMapMarkersProvider).valueOrNull ??
+                const <MapMarker>[],
+            ref.read(mapMarkersProvider).valueOrNull ?? const <MapMarker>[],
+          );
       _queueMarkerSync(queued);
-      await _syncUserLocation(ref.read(userLocationProvider));
+      await _syncUserLocation(_userLocationNotifier.current);
+      if (!mounted) return;
       await _syncRouteLine();
+      if (!mounted) return;
+      await _focusPendingFilterResults();
     } catch (_) {
       if (mounted) setState(() => _tileError = true);
     }
@@ -613,6 +816,7 @@ class _MapPageState extends ConsumerState<MapPage> {
   Future<void> _ensureMarkerImages(
       MapLibreMapController controller, List<MapMarker> markers) async {
     for (final marker in markers) {
+      if (!mounted || !identical(controller, _mapController)) return;
       final imageId = _markerImageId(marker);
       if (!_installedMarkerImages.add(imageId)) continue;
       final image = _markerImageCache.putIfAbsent(
@@ -630,9 +834,33 @@ class _MapPageState extends ConsumerState<MapPage> {
     }
   }
 
+  Future<void> _useOpenFreeMapAnnotationFont(
+      MapLibreMapController controller) async {
+    if (!kIsWeb ||
+        !AppConstants.mapStyleUrl.contains('tiles.openfreemap.org')) {
+      return;
+    }
+    final manager = controller.symbolManager;
+    if (manager == null) return;
+    final layerIds = manager.layerIds;
+    final properties = manager.allLayerProperties;
+    for (var index = 0; index < layerIds.length; index++) {
+      final property = properties[index];
+      if (property is! SymbolLayerProperties) continue;
+      await controller.setLayerProperties(
+        layerIds[index],
+        property.copyWith(
+          const SymbolLayerProperties(textFont: ['Noto Sans Regular']),
+        ),
+      );
+    }
+  }
+
   Future<void> _drawTubigonBoundary(MapLibreMapController controller) async {
     final boundary = await TubigonBoundary.load();
+    if (!mounted || !identical(controller, _mapController)) return;
     for (final ring in boundary.outerRings) {
+      if (!mounted || !identical(controller, _mapController)) return;
       _boundaryLines.add(await controller.addLine(LineOptions(
         geometry: ring
             .map((point) => LatLng(point.latitude, point.longitude))
@@ -703,7 +931,7 @@ class _MapPageState extends ConsumerState<MapPage> {
   Future<void> _drainMarkerSync() async {
     _syncingMarkers = true;
     try {
-      while (_styleLoaded && _pendingMarkerSync != null) {
+      while (mounted && _styleLoaded && _pendingMarkerSync != null) {
         final items = _pendingMarkerSync!;
         _pendingMarkerSync = null;
         await _replaceMarkerSymbols(items);
@@ -716,6 +944,7 @@ class _MapPageState extends ConsumerState<MapPage> {
   }
 
   Future<void> _replaceMarkerSymbols(List<MapMarker> items) async {
+    if (!mounted) return;
     final controller = _mapController;
     if (controller == null || !_styleLoaded) return;
     final fingerprint = items
@@ -737,18 +966,20 @@ class _MapPageState extends ConsumerState<MapPage> {
       await controller
           .removeSymbols(_labelSymbols.keys.toList(growable: false));
     }
+    if (!mounted || !identical(controller, _mapController)) return;
     _markerSymbols.clear();
     _labelSymbols.clear();
     _markerSymbolsById.clear();
     _labelSymbolsById.clear();
     _labelVisibility.clear();
     _selectedSymbol = null;
-    final selected = ref.read(selectedMarkerProvider);
+    final selected = _selectedMarkerController.state;
     if (selected != null && !items.any((item) => item.id == selected.id)) {
-      ref.read(selectedMarkerProvider.notifier).state = null;
+      _selectedMarkerController.state = null;
     }
     if (items.isEmpty) return;
     await _ensureMarkerImages(controller, items);
+    if (!mounted || !identical(controller, _mapController)) return;
 
     final markerSymbols = await controller.addSymbols(
       items
@@ -764,6 +995,7 @@ class _MapPageState extends ConsumerState<MapPage> {
           .map((item) => <String, dynamic>{'markerId': item.id})
           .toList(growable: false),
     );
+    if (!mounted || !identical(controller, _mapController)) return;
     for (var index = 0; index < markerSymbols.length; index++) {
       final symbol = markerSymbols[index];
       final marker = items[index];
@@ -785,6 +1017,7 @@ class _MapPageState extends ConsumerState<MapPage> {
               })
           .toList(growable: false),
     );
+    if (!mounted || !identical(controller, _mapController)) return;
     for (var index = 0; index < labelSymbols.length; index++) {
       final symbol = labelSymbols[index];
       final marker = items[index];
@@ -796,6 +1029,7 @@ class _MapPageState extends ConsumerState<MapPage> {
   }
 
   Future<void> _onSymbolTapped(Symbol symbol) async {
+    if (!mounted) return;
     final marker = _markerSymbols[symbol] ?? _labelSymbols[symbol];
     if (marker == null) return;
     final controller = _mapController;
@@ -828,17 +1062,19 @@ class _MapPageState extends ConsumerState<MapPage> {
             visible: _showPlaceLabels, selected: _showPlaceLabels),
       );
     }
-    ref.read(selectedMarkerProvider.notifier).state = marker;
+    if (!mounted || !identical(controller, _mapController)) return;
+    _selectedMarkerController.state = marker;
     await controller.animateCamera(
       CameraUpdate.newLatLng(LatLng(marker.latitude, marker.longitude)),
     );
   }
 
   Future<void> _clearSelectedMarker() async {
+    if (!mounted) return;
     final controller = _mapController;
     final symbol = _selectedSymbol;
     _selectedSymbol = null;
-    ref.read(selectedMarkerProvider.notifier).state = null;
+    _selectedMarkerController.state = null;
     if (controller != null &&
         symbol != null &&
         _markerSymbols.containsKey(symbol)) {
@@ -898,9 +1134,9 @@ class _MapPageState extends ConsumerState<MapPage> {
 
   bool _labelShouldShow(MapMarker marker, double zoom) {
     if (!_showPlaceLabels) return false;
-    if (ref.read(selectedMarkerProvider)?.id == marker.id) return true;
+    if (_selectedMarkerController.state?.id == marker.id) return true;
 
-    final user = ref.read(userLocationProvider);
+    final user = _userLocationNotifier.current;
     if (user.hasLocation &&
         marker.distanceTo(user.latitude!, user.longitude!) < .08) {
       return false;
@@ -928,11 +1164,13 @@ class _MapPageState extends ConsumerState<MapPage> {
   }
 
   Future<void> _refreshLabelVisibility({bool force = false}) async {
+    if (!mounted) return;
     final controller = _mapController;
     if (controller == null || !_styleLoaded || _syncingMarkers) return;
     final zoom = controller.cameraPosition?.zoom ?? 14;
-    final selectedId = ref.read(selectedMarkerProvider)?.id;
+    final selectedId = _selectedMarkerController.state?.id;
     for (final entry in _labelSymbols.entries) {
+      if (!mounted || !identical(controller, _mapController)) return;
       final marker = entry.value;
       final visible = _labelShouldShow(marker, zoom);
       if (!force && _labelVisibility[marker.id] == visible) continue;
@@ -949,27 +1187,23 @@ class _MapPageState extends ConsumerState<MapPage> {
   }
 
   Future<void> _selectPendingMarker() async {
+    if (!mounted) return;
     final targetId = _pendingSelectionId;
     if (targetId == null) return;
     for (final entry in _markerSymbols.entries) {
-      if (entry.value.id != targetId &&
-          entry.value.sourceId != targetId &&
-          entry.value.name.toLowerCase() != targetId.toLowerCase()) {
+      if (!mapMarkerMatchesFocus(entry.value, targetId)) {
         continue;
       }
       _pendingSelectionId = null;
       final isInitialTarget = targetId == widget.initialMarkerId;
       await _onSymbolTapped(entry.key);
+      if (!mounted) return;
       if (isInitialTarget && widget.startNavigation) {
         await _getDirections(entry.value);
       }
       return;
     }
-    final filter = ref.read(mapFilterProvider);
-    if (!_initialMarkerUnavailableShown &&
-        targetId == widget.initialMarkerId &&
-        filter.searchQuery.isEmpty &&
-        filter.activeCategoryKeys.isEmpty) {
+    if (!_initialMarkerUnavailableShown && targetId == widget.initialMarkerId) {
       _initialMarkerUnavailableShown = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -980,6 +1214,7 @@ class _MapPageState extends ConsumerState<MapPage> {
   }
 
   Future<void> _syncUserLocation(UserLocationState location) async {
+    if (!mounted) return;
     final controller = _mapController;
     if (controller == null || !_styleLoaded || !location.hasLocation) return;
     final point = LatLng(location.latitude!, location.longitude!);
@@ -995,6 +1230,7 @@ class _MapPageState extends ConsumerState<MapPage> {
       await controller.updateCircle(
           _userLocationCircle!, CircleOptions(geometry: point));
     }
+    if (!mounted || !identical(controller, _mapController)) return;
     if (_userLocationLabel == null) {
       _userLocationLabel = await controller.addSymbol(SymbolOptions(
         geometry: point,
@@ -1011,10 +1247,12 @@ class _MapPageState extends ConsumerState<MapPage> {
       await controller.updateSymbol(
           _userLocationLabel!, SymbolOptions(geometry: point));
     }
+    if (!mounted || !identical(controller, _mapController)) return;
     await _refreshLabelVisibility();
   }
 
   Future<void> _syncRouteLine() async {
+    if (!mounted) return;
     final controller = _mapController;
     if (controller == null || !_styleLoaded) return;
     if (_routePoints.isEmpty) {
@@ -1036,6 +1274,7 @@ class _MapPageState extends ConsumerState<MapPage> {
   }
 
   Future<void> _retryMapStyle() async {
+    if (!mounted) return;
     final controller = _mapController;
     if (controller == null) return;
     _styleLoaded = false;
@@ -1075,13 +1314,51 @@ class _MapPageState extends ConsumerState<MapPage> {
   }
 
   Future<void> _toggleLocation() async {
-    final current = ref.read(userLocationProvider);
+    final current = _userLocationNotifier.current;
     if (current.isTracking) {
-      ref.read(userLocationProvider.notifier).stopTracking();
+      _userLocationNotifier.stopTracking();
       return;
     }
-    final found = await ref.read(userLocationProvider.notifier).locate();
-    if (found) await _centerOnUser(ref.read(userLocationProvider));
+    final found = await _userLocationNotifier.locate();
+    if (!mounted || !found) return;
+    await _centerOnUser(_userLocationNotifier.current);
+  }
+
+  Future<void> _focusNearMe() async {
+    var location = _userLocationNotifier.current;
+    if (!location.hasLocation) {
+      final found = await _userLocationNotifier.locate();
+      if (!mounted || !found) return;
+      location = _userLocationNotifier.current;
+    }
+    if (!location.hasLocation) return;
+    final visible =
+        ref.read(filteredMapMarkersProvider).valueOrNull ?? const <MapMarker>[];
+    if (visible.isEmpty) {
+      _showMessage('No visible places are available near your location.');
+      return;
+    }
+    final nearest = List<MapMarker>.of(visible)
+      ..sort((a, b) => a
+          .distanceTo(location.latitude!, location.longitude!)
+          .compareTo(b.distanceTo(location.latitude!, location.longitude!)));
+    final nearby = nearest.take(math.min(5, nearest.length)).toList();
+    final controller = _mapController;
+    if (controller != null && _styleLoaded) {
+      await _moveCameraToMarkers(
+        controller,
+        planMapCameraForFilterChange(nearby, navigationActive: false),
+      );
+      if (!mounted) return;
+    }
+    final distance = nearest.first.distanceTo(
+      location.latitude!,
+      location.longitude!,
+    );
+    _showMessage(
+      '${nearest.first.name} is the nearest visible place '
+      '(${distance < 1 ? '${(distance * 1000).round()} m' : '${distance.toStringAsFixed(1)} km'} straight-line).',
+    );
   }
 
   Future<void> _centerOnUser(UserLocationState location) async {
@@ -1099,26 +1376,27 @@ class _MapPageState extends ConsumerState<MapPage> {
   }
 
   Future<void> _getDirections(MapMarker destination) async {
-    if (!_canNavigate) return;
+    if (!mounted || !_canNavigate) return;
+    if (!destination.hasCoordinates) {
+      _showMessage('This destination does not have valid map coordinates yet.');
+      return;
+    }
+    final connectivity = ref.read(connectivityProvider).valueOrNull;
     final boundary = await TubigonBoundary.load();
-    if (!boundary.contains(
-      latitude: destination.latitude,
-      longitude: destination.longitude,
-    )) {
+    if (!mounted) return;
+    if (!destination.isWithinMapScope(boundary)) {
       _showMessage(
           'This destination is outside Tubigon and cannot be routed from the Smart Tourism Map.');
       return;
     }
-    var location = ref.read(userLocationProvider);
+    var location = _userLocationNotifier.current;
     if (!location.hasLocation) {
-      final found = await ref.read(userLocationProvider.notifier).locate();
-      if (!found) return;
-      location = ref.read(userLocationProvider);
+      final found = await _userLocationNotifier.locate();
+      if (!mounted || !found) return;
+      location = _userLocationNotifier.current;
     }
-    final connectivity = ref.read(connectivityProvider).valueOrNull;
     if (widget.offlineMode || connectivity == ConnectivityStatus.offline) {
-      final cached =
-          ref.read(routeCacheServiceProvider).latestFor(destination.id);
+      final cached = _routeCacheService.latestFor(destination.id);
       if (cached == null) {
         final straightLine = destination.distanceTo(
           location.latitude!,
@@ -1134,12 +1412,14 @@ class _MapPageState extends ConsumerState<MapPage> {
             .toList(growable: false);
       });
       await _syncRouteLine();
-      ref.read(navigationProvider.notifier).state = NavigationState(
+      if (!mounted) return;
+      _navigationController.state = NavigationState(
         destination: destination,
         distanceKm: cached.distanceKm,
         etaMinutes: cached.durationMinutes,
       );
       await _fitRoute(_routePoints);
+      if (!mounted) return;
       _showMessage(
           'Offline cached route • ${cached.distanceKm.toStringAsFixed(1)} km '
           '• ~${cached.durationMinutes} min. Last calculated online: '
@@ -1147,20 +1427,25 @@ class _MapPageState extends ConsumerState<MapPage> {
       return;
     }
     setState(() => _routeLoading = true);
+    _routeCancelToken?.cancel('Replaced by a newer route request.');
+    final cancelToken = CancelToken();
+    _routeCancelToken = cancelToken;
     try {
       final origin = MapCoordinate(location.latitude!, location.longitude!);
       final destinationCoordinate =
           MapCoordinate(destination.latitude, destination.longitude);
-      final result = await ref.read(directionsServiceProvider).route(
-            origin: origin,
-            destination: destinationCoordinate,
-          );
-      await ref.read(routeCacheServiceProvider).save(
-            destinationId: destination.id,
-            origin: origin,
-            destination: destinationCoordinate,
-            route: result,
-          );
+      final result = await _directionsService.route(
+        origin: origin,
+        destination: destinationCoordinate,
+        cancelToken: cancelToken,
+      );
+      if (!mounted) return;
+      await _routeCacheService.save(
+        destinationId: destination.id,
+        origin: origin,
+        destination: destinationCoordinate,
+        route: result,
+      );
       if (!mounted) return;
       setState(() {
         _routePoints = result.points
@@ -1168,7 +1453,8 @@ class _MapPageState extends ConsumerState<MapPage> {
             .toList(growable: false);
       });
       await _syncRouteLine();
-      ref.read(navigationProvider.notifier).state = NavigationState(
+      if (!mounted) return;
+      _navigationController.state = NavigationState(
         destination: destination,
         distanceKm: result.distanceKm,
         etaMinutes: result.durationMinutes,
@@ -1176,21 +1462,26 @@ class _MapPageState extends ConsumerState<MapPage> {
       await _fitRoute(_routePoints);
       if (mounted) _showRouteReady(destination);
     } catch (error) {
+      if (error is DioException && CancelToken.isCancel(error)) return;
       if (mounted) {
         _showMessage(
             'Could not calculate a road route. Check your connection and try again.');
       }
     } finally {
+      if (identical(_routeCancelToken, cancelToken)) {
+        _routeCancelToken = null;
+      }
       if (mounted) setState(() => _routeLoading = false);
     }
   }
 
   void _showRouteReady(MapMarker destination) {
+    if (!mounted) return;
+    final nav = _navigationController.state;
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        final nav = ref.read(navigationProvider);
         return Container(
           padding: const EdgeInsets.all(20),
           decoration: const BoxDecoration(
@@ -1243,33 +1534,37 @@ class _MapPageState extends ConsumerState<MapPage> {
   }
 
   Future<void> _startNavigation() async {
-    final nav = ref.read(navigationProvider);
+    if (!mounted) return;
+    final nav = _navigationController.state;
     if (nav.destination == null) return;
-    final started =
-        await ref.read(userLocationProvider.notifier).locate(track: true);
-    if (!started) return;
-    ref.read(navigationProvider.notifier).state =
-        nav.copyWith(isNavigating: true);
+    final started = await _userLocationNotifier.locate(track: true);
+    if (!mounted || !started) return;
+    _navigationController.state = nav.copyWith(isNavigating: true);
     unawaited(_clearSelectedMarker());
   }
 
   void _closeRoute() {
-    ref.read(navigationProvider.notifier).state = const NavigationState();
+    if (!mounted) return;
+    _routeCancelToken?.cancel('Route was closed.');
+    _routeCancelToken = null;
+    _navigationController.state = const NavigationState();
     setState(() => _routePoints = const []);
     unawaited(_syncRouteLine());
   }
 
   void _stopNavigation() {
-    ref.read(userLocationProvider.notifier).stopTracking();
-    ref.read(navigationProvider.notifier).state = const NavigationState();
+    if (!mounted) return;
+    _userLocationNotifier.stopTracking();
+    _navigationController.state = const NavigationState();
     setState(() => _routePoints = const []);
     unawaited(_syncRouteLine());
   }
 
   Future<void> _syncItineraryRoute(Itinerary itinerary) async {
+    if (!mounted) return;
     final items = itinerary
         .itemsForDay(widget.itineraryDay)
-        .where((item) => item.place != null)
+        .where((item) => item.place?.hasCoordinates ?? false)
         .toList(growable: false);
     final fingerprint = items
         .map((item) => '${item.id}:${item.sortOrder}:${item.place!.markerId}')
@@ -1281,7 +1576,7 @@ class _MapPageState extends ConsumerState<MapPage> {
         items[index].place!.markerId: index + 1,
     };
 
-    ref.read(mapFilterProvider.notifier).state = const MapFilterState();
+    _mapFilterController.state = const MapFilterState();
     _queueMarkerSync(ref.read(mapMarkersProvider).valueOrNull ?? const []);
     if (items.length < 2) {
       if (mounted) {
@@ -1290,14 +1585,19 @@ class _MapPageState extends ConsumerState<MapPage> {
           _itineraryEtaMinutes = null;
         });
       }
+      if (itinerary.itemsForDay(widget.itineraryDay).length > items.length &&
+          mounted) {
+        _showMessage(
+            'Stops without valid coordinates were omitted from this route.');
+      }
       return;
     }
 
     final points = items
         .map((item) =>
-            MapCoordinate(item.place!.latitude, item.place!.longitude))
+            MapCoordinate(item.place!.latitude!, item.place!.longitude!))
         .toList();
-    final location = ref.read(userLocationProvider);
+    final location = _userLocationNotifier.current;
     if (itinerary.startLocationType == 'current_location' &&
         location.hasLocation) {
       points.insert(0, MapCoordinate(location.latitude!, location.longitude!));
@@ -1308,9 +1608,14 @@ class _MapPageState extends ConsumerState<MapPage> {
           MapCoordinate(itinerary.startLatitude!, itinerary.startLongitude!));
     }
 
+    _routeCancelToken?.cancel('Replaced by an itinerary route request.');
+    final cancelToken = CancelToken();
+    _routeCancelToken = cancelToken;
     try {
-      final result =
-          await ref.read(directionsServiceProvider).routeThrough(points);
+      final result = await _directionsService.routeThrough(
+        points,
+        cancelToken: cancelToken,
+      );
       if (!mounted) return;
       setState(() {
         _routePoints = result.points
@@ -1320,16 +1625,28 @@ class _MapPageState extends ConsumerState<MapPage> {
         _itineraryEtaMinutes = result.durationMinutes;
       });
       await _syncRouteLine();
+      if (!mounted) return;
       await _fitRoute(_routePoints);
+    } on DioException catch (error) {
+      if (CancelToken.isCancel(error)) return;
+      if (mounted) {
+        _showMessage('Unable to calculate the itinerary route right now.');
+      }
     } catch (_) {
       if (mounted) {
         _showMessage('Unable to calculate the itinerary route right now.');
+      }
+    } finally {
+      if (identical(_routeCancelToken, cancelToken)) {
+        _routeCancelToken = null;
       }
     }
   }
 
   Future<void> _fitRoute(List<LatLng> points) async {
-    if (points.isEmpty) return;
+    if (!mounted || points.isEmpty) return;
+    final controller = _mapController;
+    if (controller == null) return;
     var minLat = points.first.latitude;
     var maxLat = points.first.latitude;
     var minLng = points.first.longitude;
@@ -1340,13 +1657,13 @@ class _MapPageState extends ConsumerState<MapPage> {
       minLng = math.min(minLng, point.longitude);
       maxLng = math.max(maxLng, point.longitude);
     }
-    await _mapController?.animateCamera(CameraUpdate.newLatLngBounds(
+    await controller.animateCamera(CameraUpdate.newLatLngBounds(
       LatLngBounds(
           southwest: LatLng(minLat, minLng), northeast: LatLng(maxLat, maxLng)),
-      left: 70,
-      top: 70,
-      right: 70,
-      bottom: 70,
+      left: 48,
+      top: widget.itineraryId == null ? 150 : 220,
+      right: 78,
+      bottom: _selectedMarkerController.state == null ? 130 : 330,
     ));
   }
 
@@ -1433,48 +1750,108 @@ class _MapSearchResults extends StatelessWidget {
         constraints: const BoxConstraints(maxHeight: 250),
         margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
         decoration: _glassDecoration(radius: 16),
-        child: results.isEmpty
-            ? const Padding(
-                padding: EdgeInsets.all(14),
-                child: Text(
-                  'No Tubigon place matches this search.',
-                  style: TextStyle(color: Color(0xFFCBD5E1)),
+        child: Material(
+          type: MaterialType.transparency,
+          child: results.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.all(14),
+                  child: Text(
+                    'No Tubigon place matches this search.',
+                    style: TextStyle(color: Color(0xFFCBD5E1)),
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  shrinkWrap: true,
+                  itemCount: results.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 1, color: Color(0xFF334155)),
+                  itemBuilder: (context, index) {
+                    final marker = results[index];
+                    return ListTile(
+                      dense: true,
+                      leading: Icon(
+                        placeCategoryIcon(marker.categoryIcon,
+                            fallback: _categoryIcon(marker.category)),
+                        color: placeCategoryColor(marker.markerColor),
+                      ),
+                      title: Text(
+                        marker.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.w700),
+                      ),
+                      subtitle: Text(
+                        marker.address ??
+                            marker.categoryName ??
+                            'Tubigon, Bohol',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Color(0xFF94A3B8)),
+                      ),
+                      trailing: const Icon(Icons.center_focus_strong_rounded,
+                          color: Color(0xFFF59E0B)),
+                      onTap: () => onSelected(marker),
+                    );
+                  },
                 ),
-              )
-            : ListView.separated(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                shrinkWrap: true,
-                itemCount: results.length,
-                separatorBuilder: (_, __) =>
-                    const Divider(height: 1, color: Color(0xFF334155)),
-                itemBuilder: (context, index) {
-                  final marker = results[index];
-                  return ListTile(
-                    dense: true,
-                    leading: Icon(
-                      placeCategoryIcon(marker.categoryIcon,
-                          fallback: _categoryIcon(marker.category)),
-                      color: placeCategoryColor(marker.markerColor),
-                    ),
-                    title: Text(
-                      marker.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: Text(
-                      marker.address ?? marker.categoryName ?? 'Tubigon, Bohol',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Color(0xFF94A3B8)),
-                    ),
-                    trailing: const Icon(Icons.center_focus_strong_rounded,
-                        color: Color(0xFFF59E0B)),
-                    onTap: () => onSelected(marker),
-                  );
-                },
-              ),
+        ),
+      );
+}
+
+class _MapResultCount extends StatelessWidget {
+  const _MapResultCount({
+    required this.count,
+    required this.onClear,
+    required this.clearLabel,
+  });
+
+  final int count;
+  final VoidCallback onClear;
+  final String clearLabel;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(14, 5, 14, 0),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Material(
+            color: const Color(0xFF0F172A).withValues(alpha: .90),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.only(left: 10),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(
+                  count == 0 ? Icons.location_off_rounded : Icons.place_rounded,
+                  size: 14,
+                  color: count == 0
+                      ? const Color(0xFFFB7185)
+                      : const Color(0xFF38BDF8),
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  count == 0
+                      ? 'No places found'
+                      : '$count ${count == 1 ? 'place' : 'places'} found',
+                  style: const TextStyle(
+                    color: Color(0xFFE2E8F0),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                TextButton(
+                  onPressed: onClear,
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  child: Text(clearLabel),
+                ),
+              ]),
+            ),
+          ),
+        ),
       );
 }
 
@@ -1490,7 +1867,8 @@ class _CategoryBar extends ConsumerWidget {
     final configured = ref.watch(mapPlaceCategoriesProvider).valueOrNull ??
         const <MapPlaceCategory>[];
     final bySlug = <String, MapPlaceCategory>{
-      for (final category in configured) category.slug: category,
+      for (final category in configured)
+        if (category.active) category.slug: category,
     };
     if (bySlug.isEmpty) {
       for (final marker
@@ -1540,7 +1918,13 @@ class _CategoryBar extends ConsumerWidget {
             showCheckmark: selected,
             avatar: category == null
                 ? null
-                : Icon(placeCategoryIcon(category.icon), size: 16),
+                : Icon(
+                    placeCategoryIcon(category.icon),
+                    size: 16,
+                    color: selected
+                        ? Colors.black
+                        : placeCategoryColor(category.markerColor),
+                  ),
             label: Text(category?.name ?? 'All'),
             onSelected: (_) => onSelected(category?.slug),
             backgroundColor: const Color(0xFF0F172A).withValues(alpha: .92),
@@ -2046,6 +2430,34 @@ class _ScopeNotice extends StatelessWidget {
             child: Text(message,
                 style: const TextStyle(color: Colors.white, fontSize: 11)),
           ),
+        ]),
+      );
+}
+
+class _EmptyFilterNotice extends StatelessWidget {
+  const _EmptyFilterNotice({
+    required this.onClear,
+    required this.actionLabel,
+  });
+
+  final VoidCallback onClear;
+  final String actionLabel;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.fromLTRB(12, 9, 6, 9),
+        decoration: _glassDecoration(radius: 14),
+        child: Row(children: [
+          const Icon(Icons.travel_explore_rounded,
+              color: Color(0xFFFBBF24), size: 18),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              'No places match this filter.',
+              style: TextStyle(color: Colors.white, fontSize: 11),
+            ),
+          ),
+          TextButton(onPressed: onClear, child: Text(actionLabel)),
         ]),
       );
 }

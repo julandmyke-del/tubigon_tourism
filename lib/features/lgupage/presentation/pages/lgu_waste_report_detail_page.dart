@@ -161,7 +161,26 @@ class _State extends ConsumerState<LguWasteReportDetailPage> {
                         child: const Text('Save'))
                   ],
                 )));
-    if (save != true) return;
+    if (!mounted || save != true) {
+      team.dispose();
+      notes.dispose();
+      return;
+    }
+    if (status == 'assigned' && team.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Choose a responsible team before assigning.')));
+      team.dispose();
+      notes.dispose();
+      return;
+    }
+    if (['resolved', 'rejected'].contains(status) &&
+        notes.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('A resolution or rejection note is required.')));
+      team.dispose();
+      notes.dispose();
+      return;
+    }
     setState(() => _saving = true);
     try {
       await ref.read(lguRepositoryProvider).updateWasteReportStatus(
@@ -169,9 +188,13 @@ class _State extends ConsumerState<LguWasteReportDetailPage> {
           remarks: notes.text.trim().isEmpty ? null : notes.text.trim(),
           assignedPersonnel: team.text.trim().isEmpty ? null : team.text.trim(),
           priority: priority);
+      if (!mounted) return;
       ref.invalidate(lguWasteReportProvider(widget.reportId));
       ref.invalidate(lguWasteReportsProvider);
       ref.invalidate(lguDashboardStatsProvider);
+      ref.invalidate(lguActivityProvider);
+      ref.invalidate(lguAnalyticsProvider);
+      ref.invalidate(lguReportsProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             backgroundColor: AppColors.success,
@@ -183,6 +206,8 @@ class _State extends ConsumerState<LguWasteReportDetailPage> {
             backgroundColor: AppColors.error, content: Text(error.toString())));
       }
     } finally {
+      team.dispose();
+      notes.dispose();
       if (mounted) setState(() => _saving = false);
     }
   }

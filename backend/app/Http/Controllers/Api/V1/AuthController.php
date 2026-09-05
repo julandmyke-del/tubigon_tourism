@@ -9,6 +9,7 @@ use App\Models\AdminNotification;
 use App\Models\Profile;
 use App\Models\Role;
 use App\Models\Setting;
+use App\Models\SystemSetting;
 use App\Models\User;
 use App\Services\GoogleIdTokenVerifier;
 use Illuminate\Http\JsonResponse;
@@ -17,8 +18,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rules\Password;
+use Illuminate\Validation\Rules\Password as PasswordRule;
 use Illuminate\Validation\ValidationException;
 use Throwable;
 
@@ -167,6 +169,9 @@ class AuthController extends Controller
             if (! $touristRole) {
                 return ['error' => 'The default tourist role is not configured.', 'code' => 503];
             }
+            if (! SystemSetting::enabled('tourist_registration_enabled')) {
+                return ['error' => 'Tourist registration is currently disabled.', 'code' => 403];
+            }
 
             $user = User::create([
                 'name' => $name !== '' ? $name : 'Google User',
@@ -202,10 +207,11 @@ class AuthController extends Controller
     /** POST /api/v1/auth/register */
     public function register(Request $request): JsonResponse
     {
+        abort_unless(SystemSetting::enabled('tourist_registration_enabled'), 403, 'Tourist registration is currently disabled.');
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:254', 'unique:users,email'],
-            'password' => ['required', 'confirmed', Password::min(8)],
+            'password' => ['required', 'confirmed', PasswordRule::min(8)],
         ]);
 
         $email = Str::lower(trim($validated['email']));
@@ -517,11 +523,51 @@ class AuthController extends Controller
 
     public function forgotPassword(Request $request): JsonResponse
     {
-        $request->validate(['email' => ['required', 'email']]);
+        $validated = $request->validate(['email' => ['required', 'email']]);
 
+        $status = Password::sendResetLink([
+            'email' => Str::lower(trim($validated['email'])),
+        ]);
+
+        if ($status === Password::RESET_THROTTLED) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Please wait before requesting another password reset link.',
+            ], 429);
+        }
+
+        // Keep the response deliberately identical for known and unknown emails.
         return response()->json([
             'status' => 'success',
             'message' => 'If an account exists with this email, a password reset link has been sent.',
+        ]);
+    }
+
+    public function resetPassword(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'token' => ['required', 'string'],
+            'email' => ['required', 'email'],
+            'password' => ['required', 'confirmed', PasswordRule::min(8)],
+        ]);
+
+        $status = Password::reset($validated, function (User $user, string $password): void {
+            $user->forceFill([
+                'password' => $password,
+                'remember_token' => Str::random(60),
+            ])->save();
+            $user->tokens()->delete();
+        });
+
+        if ($status !== Password::PASSWORD_RESET) {
+            throw ValidationException::withMessages([
+                'email' => [__($status)],
+            ]);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Password reset successfully. You can now sign in.',
         ]);
     }
 
@@ -529,7 +575,7 @@ class AuthController extends Controller
     {
         $validated = $request->validate([
             'current_password' => ['required', 'string'],
-            'password' => ['required', 'confirmed', Password::min(8)],
+            'password' => ['required', 'confirmed', PasswordRule::min(8)],
         ]);
 
         $user = $request->user();

@@ -7,9 +7,11 @@ use App\Models\Review;
 use App\Models\ActivityLog;
 use App\Models\Notification;
 use App\Models\PartnerNotification;
+use App\Models\SystemSetting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class ReviewController extends Controller
@@ -44,6 +46,7 @@ class ReviewController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        abort_unless(SystemSetting::enabled('reviews_enabled'), 403, 'Reviews are currently disabled.');
         $request->user()->loadMissing('role');
         abort_unless($request->user()->role?->name === 'tourist', 403, 'Only Tourist accounts may submit reviews.');
 
@@ -90,6 +93,23 @@ class ReviewController extends Controller
                     'body' => 'A tourist reviewed your listing.',
                     'data' => ['review_id' => $review->id, 'listing_id' => $target->id, 'route' => '/tourism-partner/reviews'],
                 ]);
+            } elseif ($validated['reviewable_type'] === 'spot'
+                && Schema::hasTable('tourist_spot_partner_assignments')) {
+                DB::table('tourist_spot_partner_assignments')
+                    ->where('tourist_spot_id', $validated['reviewable_id'])
+                    ->pluck('partner_profile_id')
+                    ->unique()
+                    ->each(fn (string $partnerId) => PartnerNotification::create([
+                        'user_id' => $partnerId,
+                        'type' => 'new_review',
+                        'title' => 'New Destination Review',
+                        'body' => 'A tourist reviewed your managed destination.',
+                        'data' => [
+                            'review_id' => $review->id,
+                            'tourist_spot_id' => $validated['reviewable_id'],
+                            'route' => '/tourism-partner/reviews',
+                        ],
+                    ]));
             }
             return $review;
         });
@@ -103,7 +123,12 @@ class ReviewController extends Controller
     private function publicReviewTargetExists(string $type, string $id): bool
     {
         $query = match ($type) {
-            'spot' => DB::table('tourist_spots')->where('is_active', true),
+            'spot' => DB::table('tourist_spots')
+                ->where('is_active', true)
+                ->when(
+                    Schema::hasColumn('tourist_spots', 'is_published'),
+                    fn ($query) => $query->where('is_published', true),
+                ),
             'msme' => DB::table('msmes')->where('is_verified', true)->where('verification_status', 'verified'),
             'tourism_listing' => DB::table('tourism_listings')
                 ->where('is_active', true)

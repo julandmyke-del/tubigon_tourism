@@ -105,6 +105,20 @@ class FavoriteFlowTest extends TestCase
             'favoritable_type' => 'msme',
             'favoritable_id' => $inconsistentMsme,
         ])->assertUnprocessable();
+
+        $unverifiedMap = Str::uuid()->toString();
+        Schema::getConnection()->table('map_locations')->insert([
+            'id' => $unverifiedMap,
+            'verified' => false,
+            'published' => true,
+            'active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $this->postJson('/api/v1/favorites/toggle', [
+            'favoritable_type' => 'map_location',
+            'favoritable_id' => $unverifiedMap,
+        ])->assertUnprocessable();
     }
 
     private function user(string $key): User
@@ -184,6 +198,7 @@ class FavoriteFlowTest extends TestCase
         }
         Schema::create('map_locations', function (Blueprint $table) {
             $table->uuid('id')->primary();
+            $table->boolean('verified')->default(false);
             $table->boolean('published')->default(false);
             $table->boolean('active')->default(true);
             $table->timestamps();

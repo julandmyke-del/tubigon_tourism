@@ -137,6 +137,9 @@ class MapLocationManagementRepository {
     final responses = await Future.wait([
       _client.get(ApiEndpoints.touristSpots),
       _client.get(ApiEndpoints.msmes),
+      _client.get(_scope == 'admin'
+          ? ApiEndpoints.adminEmergencyContacts
+          : ApiEndpoints.lguEmergencyContacts),
     ]);
     List<LinkedPlaceOption> parse(dynamic value) =>
         (value as List<dynamic>? ?? const [])
@@ -146,6 +149,7 @@ class MapLocationManagementRepository {
     return {
       'tourist_spot': parse(responses[0].data['data']),
       'msme': parse(responses[1].data['data']),
+      'emergency_contact': parse(responses[2].data['data']),
     };
   }
 

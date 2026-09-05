@@ -12,6 +12,7 @@ import '../../../tourist_spots/repositories/review_repository.dart';
 import '../../../favorites/repositories/favorites_repository.dart';
 import '../../../itinerary/presentation/itinerary_add_sheet.dart';
 import '../../../map/providers/map_provider.dart';
+import '../../../map/map_focus.dart';
 
 final spotFavoriteProvider =
     Provider.family<AsyncValue<bool>, String>((ref, spotUuid) {
@@ -44,6 +45,7 @@ class _TouristSpotDetailPageState extends ConsumerState<TouristSpotDetailPage> {
   void _showAddReviewDialog(TouristSpot spot) {
     _selectedRating = 5;
     _commentCtrl.clear();
+    var submitting = false;
 
     showDialog(
       context: context,
@@ -100,64 +102,76 @@ class _TouristSpotDetailPageState extends ConsumerState<TouristSpotDetailPage> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: submitting ? null : () => Navigator.pop(context),
                   child: const Text('Cancel',
                       style: TextStyle(color: Color(0xFF94A3B8))),
                 ),
                 ElevatedButton(
-                  onPressed: () async {
-                    final comment = _commentCtrl.text.trim();
-                    if (comment.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text('Please enter a comment.')),
-                      );
-                      return;
-                    }
-                    if (comment.length < 3 || comment.length > 1000) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                            content: Text(
-                                'Review must be between 3 and 1000 characters.')),
-                      );
-                      return;
-                    }
+                  onPressed: submitting
+                      ? null
+                      : () async {
+                          final comment = _commentCtrl.text.trim();
+                          if (comment.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text('Please enter a comment.')),
+                            );
+                            return;
+                          }
+                          if (comment.length < 3 || comment.length > 1000) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text(
+                                      'Review must be between 3 and 1000 characters.')),
+                            );
+                            return;
+                          }
 
-                    try {
-                      final synced =
-                          await ref.read(reviewRepositoryProvider).addReview(
-                                reviewableType: 'spot',
-                                reviewableId: spot.uuid,
-                                rating: _selectedRating.toDouble(),
-                                content: comment,
+                          setDialogState(() => submitting = true);
+                          try {
+                            final synced = await ref
+                                .read(reviewRepositoryProvider)
+                                .addReview(
+                                  reviewableType: 'spot',
+                                  reviewableId: spot.uuid,
+                                  rating: _selectedRating.toDouble(),
+                                  content: comment,
+                                );
+                            if (!mounted || !context.mounted) return;
+                            ref.invalidate(
+                                spotReviewsProvider(('spot', spot.uuid)));
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                backgroundColor: const Color(0xFF10B981),
+                                content: Text(synced
+                                    ? 'Review submitted successfully!'
+                                    : 'Review saved offline and pending synchronization.'),
+                              ),
+                            );
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                    content: Text('Submission failed: $e')),
                               );
-
-                      ref.invalidate(spotReviewsProvider(('spot', spot.uuid)));
-
-                      if (!context.mounted) return;
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          backgroundColor: const Color(0xFF10B981),
-                          content: Text(synced
-                              ? 'Review submitted successfully!'
-                              : 'Review saved offline and pending synchronization.'),
-                        ),
-                      );
-                    } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Submission failed: $e')),
-                      );
-                    }
-                  },
+                              setDialogState(() => submitting = false);
+                            }
+                          }
+                        },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFF59E0B),
                     foregroundColor: Colors.black,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                   ),
-                  child: const Text('Submit',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: submitting
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Submit',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ],
             );
@@ -429,6 +443,40 @@ class _TouristSpotDetailPageState extends ConsumerState<TouristSpotDetailPage> {
                         ],
                       ).animate().fadeIn(duration: 350.ms, delay: 200.ms),
 
+                      if (spot.hasCoordinates) ...[
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () => context.push(
+                                  mapFocusPathForEntity(
+                                    entityType: 'tourist_spot',
+                                    entityId: spot.uuid,
+                                  ),
+                                ),
+                                icon: const Icon(Icons.map_rounded),
+                                label: const Text('View on Map'),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () => context.push(
+                                  mapFocusPathForEntity(
+                                    entityType: 'tourist_spot',
+                                    entityId: spot.uuid,
+                                    directions: true,
+                                  ),
+                                ),
+                                icon: const Icon(Icons.directions_rounded),
+                                label: const Text('Get Directions'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+
                       const SizedBox(height: 24),
 
                       // Description
@@ -672,32 +720,35 @@ class _TouristSpotDetailPageState extends ConsumerState<TouristSpotDetailPage> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => showAddToItinerarySheet(
-                      context,
-                      ref,
-                      MapMarker(
-                        id: 'tourist-spot:${spot.uuid}',
-                        sourceId: spot.uuid,
-                        sourceIntegerId: spot.id,
-                        name: spot.name,
-                        description: spot.description,
-                        address: spot.address,
-                        latitude: spot.latitude,
-                        longitude: spot.longitude,
-                        category: MapMarkerCategory.touristSpot,
-                        categoryName: spot.categoryName,
-                        images: spot.images,
-                        rating: spot.averageRating,
-                        reviewCount: spot.reviewCount,
-                        operatingHours: spot.openingHours,
-                        isVerified: spot.isActive,
-                        isBookable: spot.isBookable,
-                        bookingEnabled: spot.bookingEnabled,
-                        bookingUnavailableReasonCode:
-                            spot.bookingUnavailableReasonCode,
-                        bookingUnavailableReason: spot.bookingUnavailableReason,
-                      ),
-                    ),
+                    onPressed: spot.hasCoordinates
+                        ? () => showAddToItinerarySheet(
+                              context,
+                              ref,
+                              MapMarker(
+                                id: 'tourist_spot:${spot.uuid}',
+                                sourceId: spot.uuid,
+                                sourceIntegerId: spot.id,
+                                name: spot.name,
+                                description: spot.description,
+                                address: spot.address,
+                                latitude: spot.latitude,
+                                longitude: spot.longitude,
+                                category: MapMarkerCategory.touristSpot,
+                                categoryName: spot.categoryName,
+                                images: spot.images,
+                                rating: spot.averageRating,
+                                reviewCount: spot.reviewCount,
+                                operatingHours: spot.openingHours,
+                                isVerified: spot.isActive,
+                                isBookable: spot.isBookable,
+                                bookingEnabled: spot.bookingEnabled,
+                                bookingUnavailableReasonCode:
+                                    spot.bookingUnavailableReasonCode,
+                                bookingUnavailableReason:
+                                    spot.bookingUnavailableReason,
+                              ),
+                            )
+                        : null,
                     icon: const Icon(Icons.luggage_rounded),
                     label: const Text('Add to Trip'),
                     style: OutlinedButton.styleFrom(

@@ -12,12 +12,16 @@ use App\Models\ReservationStatus;
 use App\Models\Review;
 use App\Models\TourismListing;
 use App\Models\TouristSpot;
+use App\Models\TouristSpotPartnerAssignment;
 use App\Models\User;
 use App\Models\ActivityLog;
 use App\Support\ReservationStatusTransitions;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Carbon;
+use Illuminate\Validation\Rule;
 
 class TourismListingController extends Controller
 {
@@ -51,10 +55,6 @@ class TourismListingController extends Controller
         $today = now()->toDateString();
         $monthStart = now()->startOfMonth()->toDateString();
 
-        $myListings = TourismListing::where('owner_id', $userId)
-            ->whereNull('deleted_at')
-            ->pluck('id');
-
         $managedDestinations = TouristSpot::with(['category', 'bookingAvailabilityUpdatedBy:id,name'])
             ->whereHas('partnerAssignments', fn ($query) => $query
                 ->where('partner_profile_id', $userId))
@@ -62,7 +62,7 @@ class TourismListingController extends Controller
             ->get();
         $managedSpotIds = $managedDestinations->pluck('id');
 
-        if ($myListings->isEmpty() && $managedSpotIds->isEmpty()) {
+        if ($managedSpotIds->isEmpty()) {
             return response()->json([
                 'status' => 'success',
                 'data' => [
@@ -72,26 +72,21 @@ class TourismListingController extends Controller
                     'rejectedReservations' => 0,
                     'completedReservations' => 0,
                     'monthlyReservations' => 0,
-                    'totalListings' => 0,
-                    'draftListings' => 0,
-                    'pendingListings' => 0,
-                    'publishedListings' => 0,
                     'totalManagedDestinations' => 0,
                     'managedDestinations' => [],
+                    'averageRating' => 0,
+                    'totalReviews' => 0,
+                    'unreadNotifications' => PartnerNotification::where('user_id', $userId)->where('is_read', false)->count(),
                     'recentNotifications' => [],
+                    'recentActivity' => [],
+                    'needsAttention' => [],
                 ],
             ]);
         }
 
         $allReservations = Reservation::with('status')
-            ->where(function ($query) use ($myListings, $managedSpotIds): void {
-                $query->where(fn ($spots) => $spots
-                    ->where('reservable_type', 'spot')
-                    ->whereIn('reservable_id', $managedSpotIds))
-                    ->orWhere(fn ($listings) => $listings
-                        ->where('reservable_type', 'tourism_listing')
-                        ->whereIn('reservable_id', $myListings));
-            })
+            ->where('reservable_type', 'spot')
+            ->whereIn('reservable_id', $managedSpotIds)
             ->get();
 
         $todayCount = $pendingCount = $approvedCount = $rejectedCount = $completedCount = $monthlyCount = 0;
@@ -120,6 +115,17 @@ class TourismListingController extends Controller
             ->orderBy('created_at', 'desc')
             ->limit(5)
             ->get();
+        $reviews = Review::where('reviewable_type', 'spot')
+            ->whereIn('reviewable_id', $managedSpotIds)->whereNull('deleted_at')->get();
+        $needsAttention = [];
+        if ($pendingCount > 0) $needsAttention[] = ['type' => 'reservation', 'message' => "{$pendingCount} reservation(s) await a decision.", 'route' => '/tourism-partner/reservations'];
+        foreach ($managedDestinations as $spot) {
+            if (! $spot->booking_enabled) $needsAttention[] = ['type' => 'availability', 'message' => "Booking is paused for {$spot->name}.", 'route' => '/tourism-partner/listings'];
+            if (! $spot->is_published || ! $spot->is_active) $needsAttention[] = ['type' => 'status', 'message' => "{$spot->name} is not currently public and active.", 'route' => '/tourism-partner/listings'];
+            if (blank($spot->description) || blank($spot->opening_hours) || blank($spot->contact_information)) $needsAttention[] = ['type' => 'content', 'message' => "{$spot->name} has missing visitor information.", 'route' => '/tourism-partner/listings'];
+        }
+        $lowRatings = $reviews->where('rating', '<=', 2)->count();
+        if ($lowRatings > 0) $needsAttention[] = ['type' => 'review', 'message' => "{$lowRatings} low-rated review(s) may need attention.", 'route' => '/tourism-partner/reviews'];
 
         return response()->json([
             'status' => 'success',
@@ -130,13 +136,14 @@ class TourismListingController extends Controller
                 'rejectedReservations' => $rejectedCount,
                 'completedReservations' => $completedCount,
                 'monthlyReservations' => $monthlyCount,
-                'totalListings' => $myListings->count(),
-                'draftListings' => TourismListing::where('owner_id', $userId)->where('approval_status', 'draft')->count(),
-                'pendingListings' => TourismListing::where('owner_id', $userId)->where('approval_status', 'submitted')->count(),
-                'publishedListings' => TourismListing::where('owner_id', $userId)->where('approval_status', 'approved')->where('is_active', true)->count(),
                 'totalManagedDestinations' => $managedDestinations->count(),
                 'managedDestinations' => $managedDestinations,
+                'averageRating' => $reviews->isEmpty() ? 0 : round((float) $reviews->avg('rating'), 2),
+                'totalReviews' => $reviews->count(),
+                'unreadNotifications' => PartnerNotification::where('user_id', $userId)->where('is_read', false)->count(),
                 'recentNotifications' => $notifications,
+                'recentActivity' => ActivityLog::where('user_id', $userId)->latest()->limit(8)->get(['id', 'action', 'details', 'created_at']),
+                'needsAttention' => array_slice($needsAttention, 0, 8),
             ],
         ]);
     }
@@ -163,6 +170,12 @@ class TourismListingController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        abort_if(
+            Schema::hasTable('tourist_spot_partner_assignments') &&
+                TouristSpotPartnerAssignment::where('partner_profile_id', $request->user()->id)->exists(),
+            409,
+            'This account already manages an authoritative Tourist Spot. Use My Destination instead of creating a duplicate listing.',
+        );
         $validated = $request->validate([
             'listing_name' => 'required|string|max:255',
             'listing_type' => 'nullable|string|max:255',
@@ -371,17 +384,21 @@ class TourismListingController extends Controller
     // ─── Partner Reviews ────────────────────────────────────────────────
     public function reviews(Request $request): JsonResponse
     {
-        $listingIds = TourismListing::where('owner_id', $request->user()->id)
-            ->whereNull('deleted_at')
-            ->pluck('id');
+        [$listingIds, $spotIds] = $this->ownedReviewTargetIds($request);
 
-        if ($listingIds->isEmpty()) {
+        if ($listingIds->isEmpty() && $spotIds->isEmpty()) {
             return response()->json(['status' => 'success', 'data' => []]);
         }
 
         $reviews = Review::with('user:id,name')
-            ->where('reviewable_type', 'tourism_listing')
-            ->whereIn('reviewable_id', $listingIds)
+            ->where(function ($query) use ($listingIds, $spotIds): void {
+                $query->where(fn ($listings) => $listings
+                    ->where('reviewable_type', 'tourism_listing')
+                    ->whereIn('reviewable_id', $listingIds))
+                    ->orWhere(fn ($spots) => $spots
+                        ->where('reviewable_type', 'spot')
+                        ->whereIn('reviewable_id', $spotIds));
+            })
             ->whereNull('deleted_at')
             ->orderBy('created_at', 'desc')
             ->get();
@@ -391,96 +408,106 @@ class TourismListingController extends Controller
 
     public function reviewStats(Request $request): JsonResponse
     {
-        $listingIds = TourismListing::where('owner_id', $request->user()->id)
-            ->whereNull('deleted_at')
-            ->pluck('id');
+        [$listingIds, $spotIds] = $this->ownedReviewTargetIds($request);
 
-        $reviews = Review::where('reviewable_type', 'tourism_listing')
-            ->whereIn('reviewable_id', $listingIds)
+        $reviews = Review::where(function ($query) use ($listingIds, $spotIds): void {
+            $query->where(fn ($listings) => $listings
+                ->where('reviewable_type', 'tourism_listing')
+                ->whereIn('reviewable_id', $listingIds))
+                ->orWhere(fn ($spots) => $spots
+                    ->where('reviewable_type', 'spot')
+                    ->whereIn('reviewable_id', $spotIds));
+        })
             ->whereNull('deleted_at')
             ->get();
 
-        if ($reviews->isEmpty()) {
-            return response()->json(['status' => 'success', 'data' => ['averageRating' => 0.0, 'totalReviews' => 0]]);
-        }
-
-        $avg = $reviews->avg('rating');
+        $distribution = collect(range(1, 5))->mapWithKeys(
+            fn (int $rating) => [(string) $rating => $reviews->where('rating', $rating)->count()],
+        );
+        $monthly = $reviews->groupBy(fn (Review $review) => $review->created_at?->format('Y-m'))
+            ->map(fn ($group, $month) => [
+                'month' => $month,
+                'average' => round((float) $group->avg('rating'), 2),
+                'total' => $group->count(),
+            ])->values();
 
         return response()->json([
             'status' => 'success',
-            'data' => ['averageRating' => round($avg, 2), 'totalReviews' => $reviews->count()],
+            'data' => [
+                'averageRating' => $reviews->isEmpty() ? 0.0 : round((float) $reviews->avg('rating'), 2),
+                'totalReviews' => $reviews->count(),
+                'lowRatedReviews' => $reviews->where('rating', '<=', 2)->count(),
+                'ratingDistribution' => $distribution,
+                'monthlyTrend' => $monthly,
+            ],
         ]);
     }
 
     // ─── Partner Analytics ──────────────────────────────────────────────
     public function analytics(Request $request): JsonResponse
     {
-        $userId = $request->user()->id;
-
-        $allReservations = Reservation::with(['status', 'listing'])
-            ->where('partner_id', $userId)
-            ->get();
-
-        // Monthly data (last 6 months)
-        $monthlyData = [];
-        for ($i = 5; $i >= 0; $i--) {
-            $month = now()->subMonths($i);
-            $key = $month->format('Y-m');
-            $monthlyData[$key] = 0;
-        }
-
-        $statusDistribution = ['pending' => 0, 'approved' => 0, 'confirmed' => 0, 'rejected' => 0, 'completed' => 0, 'cancelled' => 0];
-        $listingCounts = [];
-        $listingNames = [];
-        $totalVisitors = 0;
-
-        foreach ($allReservations as $r) {
-            $date = $r->reservation_date?->format('Y-m') ?? '';
-            if (isset($monthlyData[$date])) {
-                $monthlyData[$date]++;
-            }
-
-            $statusName = $r->status?->name ?? 'pending';
-            if (isset($statusDistribution[$statusName])) {
-                $statusDistribution[$statusName]++;
-            }
-
-            $listingId = $r->reservable_id ?? '';
-            $listingName = $r->listing?->listing_name ?? 'Unknown';
-            $listingCounts[$listingId] = ($listingCounts[$listingId] ?? 0) + 1;
-            $listingNames[$listingId] = $listingName;
-
-            $totalVisitors += $r->guests ?? 1;
-        }
-
-        // Most reserved
-        $mostReservedId = null;
-        $maxCount = 0;
-        foreach ($listingCounts as $id => $count) {
-            if ($count > $maxCount) {
-                $maxCount = $count;
-                $mostReservedId = $id;
-            }
-        }
-
-        // Review stats
-        $listingIds = TourismListing::where('owner_id', $userId)->whereNull('deleted_at')->pluck('id');
-        $reviews = Review::where('reviewable_type', 'tourism_listing')->whereIn('reviewable_id', $listingIds)->whereNull('deleted_at')->get();
-        $avgRating = $reviews->isEmpty() ? 0 : round($reviews->avg('rating'), 2);
+        $validated = $request->validate([
+            'period' => ['nullable', Rule::in(['7_days', '30_days', '3_months', 'this_year', 'custom'])],
+            'from' => 'nullable|required_if:period,custom|date',
+            'to' => 'nullable|required_if:period,custom|date|after_or_equal:from',
+        ]);
+        [$start, $end] = $this->partnerAnalyticsPeriod($validated);
+        $spotIds = TouristSpotPartnerAssignment::where('partner_profile_id', $request->user()->id)
+            ->pluck('tourist_spot_id');
+        $reservationQuery = Reservation::with('status')
+            ->where('reservable_type', 'spot')->whereIn('reservable_id', $spotIds)
+            ->whereBetween('reservation_date', [$start, $end]);
+        $allReservations = $reservationQuery->get();
+        $statusDistribution = collect(['pending', 'approved', 'confirmed', 'rejected', 'completed', 'cancelled'])
+            ->mapWithKeys(fn (string $status) => [$status => $allReservations->where('status.name', $status)->count()]);
+        $reservationTrend = $allReservations
+            ->groupBy(fn (Reservation $reservation) => $reservation->reservation_date?->format('Y-m-d'))
+            ->map(fn ($group, $date) => ['date' => $date, 'total' => $group->count()])
+            ->values();
+        $reviews = Review::where('reviewable_type', 'spot')->whereIn('reviewable_id', $spotIds)
+            ->whereBetween('created_at', [$start, $end])->whereNull('deleted_at')->get();
+        $ratingDistribution = collect(range(1, 5))->mapWithKeys(
+            fn (int $rating) => [(string) $rating => $reviews->where('rating', $rating)->count()],
+        );
+        $duration = max(1, $start->diffInSeconds($end));
+        $previousEnd = $start->copy()->subSecond();
+        $previousStart = $previousEnd->copy()->subSeconds($duration);
+        $previousTotal = Reservation::where('reservable_type', 'spot')->whereIn('reservable_id', $spotIds)
+            ->whereBetween('reservation_date', [$previousStart, $previousEnd])->count();
+        $comparison = $previousTotal === 0 ? null : round((($allReservations->count() - $previousTotal) / $previousTotal) * 100, 1);
 
         return response()->json([
             'status' => 'success',
             'data' => [
-                'monthlyData' => $monthlyData,
+                'period' => ['from' => $start->toDateString(), 'to' => $end->toDateString()],
+                'monthlyData' => $reservationTrend->pluck('total', 'date'),
+                'reservationTrend' => $reservationTrend,
                 'statusDistribution' => $statusDistribution,
-                'mostReservedListing' => $mostReservedId ? ($listingNames[$mostReservedId] ?? 'N/A') : 'N/A',
-                'mostReservedCount' => $maxCount,
-                'averageRating' => $avgRating,
+                'averageRating' => $reviews->isEmpty() ? 0 : round((float) $reviews->avg('rating'), 2),
                 'totalReviews' => $reviews->count(),
-                'totalVisitors' => $totalVisitors,
+                'ratingDistribution' => $ratingDistribution,
+                'totalVisitors' => $allReservations->sum('guests'),
                 'totalReservations' => $allReservations->count(),
+                'comparisonPercent' => $comparison,
             ],
         ]);
+    }
+
+    /** @param array<string, mixed> $validated
+     *  @return array{0: Carbon, 1: Carbon}
+     */
+    private function partnerAnalyticsPeriod(array $validated): array
+    {
+        $end = isset($validated['to']) ? Carbon::parse($validated['to'])->endOfDay() : now()->endOfDay();
+        $start = match ($validated['period'] ?? '30_days') {
+            '7_days' => $end->copy()->subDays(6)->startOfDay(),
+            '3_months' => $end->copy()->subMonths(3)->startOfDay(),
+            'this_year' => $end->copy()->startOfYear(),
+            'custom' => Carbon::parse($validated['from'])->startOfDay(),
+            default => $end->copy()->subDays(29)->startOfDay(),
+        };
+
+        return [$start, $end];
     }
 
     // ─── Profile ────────────────────────────────────────────────────────
@@ -491,10 +518,16 @@ class TourismListingController extends Controller
             ->firstOrFail();
 
         $payload = $profile->toArray();
-        $payload['managed_destinations'] = $profile->managedTouristSpots()
-            ->select('tourist_spots.id', 'tourist_spots.name', 'tourist_spots.slug')
-            ->orderBy('tourist_spots.name')
-            ->get();
+        $assignment = TouristSpotPartnerAssignment::with(['touristSpot:id,name,slug', 'assignedBy:id,name'])
+            ->where('partner_profile_id', $profile->id)->first();
+        $payload['assignment'] = $assignment ? [
+            'id' => $assignment->id,
+            'status' => 'active',
+            'assigned_at' => $assignment->assigned_at?->toIso8601String(),
+            'assigned_by' => $assignment->assignedBy?->only(['id', 'name']),
+            'destination' => $assignment->touristSpot,
+        ] : null;
+        $payload['managed_destinations'] = $assignment?->touristSpot ? [$assignment->touristSpot] : [];
 
         return response()->json(['status' => 'success', 'data' => $payload]);
     }
@@ -527,6 +560,17 @@ class TourismListingController extends Controller
         $request->user()->update(['password' => $request->password]);
 
         return response()->json(['status' => 'success', 'message' => 'Password updated']);
+    }
+
+    /** @return array{0: \Illuminate\Support\Collection, 1: \Illuminate\Support\Collection} */
+    private function ownedReviewTargetIds(Request $request): array
+    {
+        return [
+            TourismListing::where('owner_id', $request->user()->id)
+                ->whereNull('deleted_at')
+                ->pluck('id'),
+            $request->user()->managedTouristSpots()->pluck('tourist_spots.id'),
+        ];
     }
 
     // ─── Image Upload ───────────────────────────────────────────────────

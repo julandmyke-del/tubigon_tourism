@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/api_endpoints.dart';
 import '../../../../core/network/api_client.dart';
+import '../widgets/place_reviews_panel.dart';
 
 final publicTourismListingProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, listingId) async {
@@ -67,13 +68,13 @@ class TourismListingDetailPage extends ConsumerWidget {
   }
 }
 
-class _ListingBody extends StatelessWidget {
+class _ListingBody extends ConsumerWidget {
   const _ListingBody({required this.data});
 
   final Map<String, dynamic> data;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final name = data['listing_name']?.toString() ?? 'Tourism experience';
     final type = data['listing_type']?.toString() ?? 'Tourism service';
     final description = data['description']?.toString() ?? '';
@@ -182,6 +183,14 @@ class _ListingBody extends StatelessWidget {
                     ),
                   ],
                 ),
+              ),
+              const SizedBox(height: 24),
+              PlaceReviewsPanel(
+                reviewableType: 'tourism_listing',
+                reviewableId: data['id'].toString(),
+                targetName: name,
+                onReviewSaved: () => ref.invalidate(
+                    publicTourismListingProvider(data['id'].toString())),
               ),
             ],
           ),

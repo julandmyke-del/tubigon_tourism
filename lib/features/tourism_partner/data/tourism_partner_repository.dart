@@ -11,6 +11,12 @@ class TourismPartnerRepository {
   Future<Map<String, dynamic>> getDashboardStats() =>
       _map(ApiEndpoints.partnerDashboardStats);
 
+  Future<Map<String, dynamic>?> getCurrentAssignment() =>
+      _nullableMap(ApiEndpoints.partnerAssignment);
+
+  Future<List<Map<String, dynamic>>> getRecentActivity() =>
+      _list(ApiEndpoints.partnerActivity);
+
   Future<List<Map<String, dynamic>>> getMyListings() async =>
       (await _list(ApiEndpoints.partnerListings))
           .map(_listingDto)
@@ -68,17 +74,46 @@ class TourismPartnerRepository {
   Future<void> deleteListing(String listingId) =>
       _write(apiClient.delete(ApiEndpoints.partnerListing(listingId)));
 
-  Future<List<Map<String, dynamic>>> getReservations(
-      {String? statusFilter}) async {
-    final rows = await _list(
+  Future<Map<String, dynamic>> getReservationQueue({
+    String? statusFilter,
+    String? search,
+    String? scope,
+    String? from,
+    String? to,
+    String sort = 'visit_asc',
+  }) async {
+    final response = await apiClient.get(
       ApiEndpoints.partnerReservations,
       queryParameters: {
         if (statusFilter != null && statusFilter.toLowerCase() != 'all')
           'status_filter': statusFilter.toLowerCase(),
+        if (search?.trim().isNotEmpty == true) 'search': search!.trim(),
+        if (scope?.isNotEmpty == true) 'scope': scope,
+        if (from?.isNotEmpty == true) 'from': from,
+        if (to?.isNotEmpty == true) 'to': to,
+        'sort': sort,
       },
     );
-    return rows.map(_reservationDto).toList(growable: false);
+    _assertSuccess(response);
+    final rows = response.data['data'];
+    if (rows is! List) throw const FormatException('Invalid API response.');
+    final meta = response.data['meta'];
+    return {
+      'items': rows
+          .whereType<Map>()
+          .map((row) => _reservationDto(Map<String, dynamic>.from(row)))
+          .toList(growable: false),
+      'summary': meta is Map && meta['summary'] is Map
+          ? Map<String, dynamic>.from(meta['summary'] as Map)
+          : <String, dynamic>{},
+    };
   }
+
+  Future<List<Map<String, dynamic>>> getReservations(
+          {String? statusFilter}) async =>
+      ((await getReservationQueue(statusFilter: statusFilter))['items'] as List)
+          .whereType<Map<String, dynamic>>()
+          .toList(growable: false);
 
   Future<Map<String, dynamic>> getReservationById(String reservationId) async =>
       _reservationDto(
@@ -86,15 +121,21 @@ class TourismPartnerRepository {
 
   Future<void> updateReservationStatus(
     String reservationId,
-    String statusName,
-  ) =>
+    String statusName, {
+    String? reason,
+  }) =>
       _write(apiClient.put(
         ApiEndpoints.partnerReservationStatus(reservationId),
-        data: {'status_name': statusName.toLowerCase()},
+        data: {
+          'status_name': statusName.toLowerCase(),
+          if (reason?.trim().isNotEmpty == true) 'reason': reason!.trim(),
+        },
       ));
 
-  Future<List<Map<String, dynamic>>> getNotifications() =>
-      _list(ApiEndpoints.partnerNotifications);
+  Future<List<Map<String, dynamic>>> getNotifications(
+          {String filter = 'all'}) =>
+      _list(ApiEndpoints.partnerNotifications,
+          queryParameters: {'filter': filter});
 
   Future<void> markNotificationRead(String notificationId) => _write(
       apiClient.put(ApiEndpoints.partnerNotificationRead(notificationId)));
@@ -121,8 +162,16 @@ class TourismPartnerRepository {
   Future<Map<String, dynamic>> getReviewStats() =>
       _map(ApiEndpoints.partnerReviewStats);
 
-  Future<Map<String, dynamic>> getAnalytics() =>
-      _map(ApiEndpoints.partnerAnalytics);
+  Future<Map<String, dynamic>> getAnalytics({
+    String period = '30_days',
+    String? from,
+    String? to,
+  }) =>
+      _map(ApiEndpoints.partnerAnalytics, queryParameters: {
+        'period': period,
+        if (from != null) 'from': from,
+        if (to != null) 'to': to,
+      });
 
   Future<Map<String, dynamic>> getProfile() =>
       _map(ApiEndpoints.partnerProfile);
@@ -176,10 +225,21 @@ class TourismPartnerRepository {
     };
   }
 
-  Future<Map<String, dynamic>> _map(String endpoint) async {
+  Future<Map<String, dynamic>> _map(String endpoint,
+      {Map<String, dynamic>? queryParameters}) async {
+    final response =
+        await apiClient.get(endpoint, queryParameters: queryParameters);
+    _assertSuccess(response);
+    final data = response.data['data'];
+    if (data is! Map) throw const FormatException('Invalid API response.');
+    return Map<String, dynamic>.from(data);
+  }
+
+  Future<Map<String, dynamic>?> _nullableMap(String endpoint) async {
     final response = await apiClient.get(endpoint);
     _assertSuccess(response);
     final data = response.data['data'];
+    if (data == null) return null;
     if (data is! Map) throw const FormatException('Invalid API response.');
     return Map<String, dynamic>.from(data);
   }

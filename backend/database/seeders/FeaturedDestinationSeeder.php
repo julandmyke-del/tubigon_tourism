@@ -22,8 +22,9 @@ class FeaturedDestinationSeeder extends Seeder
     ];
 
     /**
-     * Project-owner-approved initial content. Coordinates are centers of the
-     * supplied public Plus Codes, except the two documented OSM place nodes.
+     * Project-owner-approved initial content. A null coordinate means that no
+     * verified destination coordinate has been supplied; those destinations
+     * remain public but are deliberately omitted from the Smart Map.
      */
     public const DESTINATIONS = [
         [
@@ -31,8 +32,8 @@ class FeaturedDestinationSeeder extends Seeder
             'name' => 'Mundong Sandbar',
             'slug' => 'mundong-sandbar',
             'category' => ['Island / Beach', 'island-beach'],
-            'latitude' => 9.9496625,
-            'longitude' => 123.8704844,
+            'latitude' => null,
+            'longitude' => null,
             'address' => 'WVXC+V59, Tubigon, Bohol',
             'short_description' => 'A scenic sandbar destination in Tubigon offering an island and coastal experience.',
             'description' => "Mundong Sandbar is a coastal attraction in Tubigon, Bohol known for its exposed sandbar setting and surrounding sea views. It can be featured as part of Tubigon's island and coastal tourism experiences.",
@@ -43,8 +44,9 @@ class FeaturedDestinationSeeder extends Seeder
             'name' => 'Dumog Sandbar',
             'slug' => 'dumog-sandbar',
             'category' => ['Island / Beach', 'island-beach'],
-            'latitude' => 9.9742875,
-            'longitude' => 123.8951406,
+            // Approximate destination-area coordinate supplied by the owner.
+            'latitude' => 9.98820,
+            'longitude' => 123.87830,
             'address' => 'XVFW+P36, Tubigon, Bohol',
             'short_description' => 'A Tubigon sandbar destination surrounded by the coastal waters of Bohol.',
             'description' => "Dumog Sandbar is one of Tubigon's mapped coastal attractions and can be explored as part of the municipality's island and marine tourism destinations.",
@@ -55,8 +57,9 @@ class FeaturedDestinationSeeder extends Seeder
             'name' => 'Mocaboc Sandbar',
             'slug' => 'mocaboc-sandbar',
             'category' => ['Island / Beach', 'island-beach'],
-            'latitude' => 10.0714875,
-            'longitude' => 123.9269219,
+            // Island/barangay fallback, not an asserted sandbar centroid.
+            'latitude' => 10.0713,
+            'longitude' => 123.9279,
             'address' => '3WCG+HQV, Tubigon, Bohol',
             'short_description' => 'A sandbar attraction associated with Mocaboc Island in Tubigon.',
             'description' => "Mocaboc Sandbar is a coastal attraction in Tubigon, Bohol that highlights the municipality's island landscape and marine surroundings.",
@@ -67,8 +70,9 @@ class FeaturedDestinationSeeder extends Seeder
             'name' => 'Mangrove Forest Batasan',
             'slug' => 'mangrove-forest-batasan',
             'category' => ['Eco Tourism / Mangrove', 'eco-tourism-mangrove'],
-            'latitude' => 10.0469330,
-            'longitude' => 123.9793320,
+            // Approximate Batasan marine/mangrove destination area.
+            'latitude' => 10.01410,
+            'longitude' => 123.97658,
             'address' => 'Cebu Strait, Batasan Island, Tubigon, Bohol',
             'short_description' => "A mangrove attraction in Batasan showcasing Tubigon's coastal ecosystem.",
             'description' => "Mangrove Forest Batasan is a nature-oriented destination in Tubigon that highlights the municipality's mangrove and coastal environment.",
@@ -79,8 +83,8 @@ class FeaturedDestinationSeeder extends Seeder
             'name' => "Nakin's Floating Cottage",
             'slug' => 'nakins-floating-cottage',
             'category' => ['Recreation / Community Tourism', 'recreation-community-tourism'],
-            'latitude' => 9.9329875,
-            'longitude' => 123.9223281,
+            'latitude' => null,
+            'longitude' => null,
             'address' => 'WWMC+5WW, Tubigon, Bohol',
             'short_description' => 'A floating cottage attraction offering a relaxed coastal recreation experience in Tubigon.',
             'description' => "Nakin's Floating Cottage is a mapped recreation attraction in Tubigon, providing visitors with a community-based coastal leisure destination.",
@@ -91,8 +95,8 @@ class FeaturedDestinationSeeder extends Seeder
             'name' => 'Delan Cliffside Open Cabana',
             'slug' => 'delan-cliffside-open-cabana',
             'category' => ['Nature / Recreation', 'nature-recreation'],
-            'latitude' => 9.9110875,
-            'longitude' => 123.9660469,
+            'latitude' => null,
+            'longitude' => null,
             'address' => 'WX68+CCM, Tan-awan, Tubigon, Bohol',
             'short_description' => 'A scenic open-cabana attraction in Tan-awan, Tubigon.',
             'description' => 'Delan Cliffside Open Cabana is a mapped attraction in Tan-awan, Tubigon offering a scenic recreation setting.',
@@ -103,8 +107,8 @@ class FeaturedDestinationSeeder extends Seeder
             'name' => 'Enchanted Ilijan Hill Volcanic Nature Park',
             'slug' => 'enchanted-ilijan-hill',
             'category' => ['Nature / Heritage', 'nature-heritage'],
-            'latitude' => 9.9209375,
-            'longitude' => 123.9477344,
+            'latitude' => 9.91339,
+            'longitude' => 123.94232,
             'address' => 'WWCX+93H, Tubigon, Bohol',
             'short_description' => "A nature and heritage destination centered on Tubigon's distinctive volcanic hill landscape.",
             'description' => 'Enchanted Ilijan Hill Volcanic Nature Park is a developing nature and heritage destination in Tubigon centered on the Ilijan volcanic plug and its surrounding landscape.',
@@ -115,8 +119,8 @@ class FeaturedDestinationSeeder extends Seeder
             'name' => 'Tubigon Loom Weaving Experience',
             'slug' => 'tubigon-loom-weaving',
             'category' => ['Culture / Community Tourism', 'culture-community-tourism'],
-            'latitude' => 9.9356220,
-            'longitude' => 123.9482880,
+            'latitude' => 9.93587,
+            'longitude' => 123.94875,
             'address' => 'P3, Pinayagan Norte, Tubigon, Bohol',
             'short_description' => "Experience Tubigon's raffia loom-weaving tradition and local craftsmanship.",
             'description' => "The Tubigon Loom Weaving Experience highlights the municipality's raffia weaving tradition and the craftsmanship of local loom weavers in Pinayagan Norte.",
@@ -149,15 +153,13 @@ class FeaturedDestinationSeeder extends Seeder
                 // Legacy rows created by the earlier partial seed have the
                 // default false marker and are upgraded exactly once here.
                 if (! $spot->is_preapproved) {
-                    $spot->forceFill([
+                    $initialContent = [
                         'name' => $destination['name'],
                         'slug' => $destination['slug'],
                         'short_description' => $destination['short_description'],
                         'description' => $destination['description'],
                         'aliases' => $destination['aliases'],
                         'category_id' => $category->id,
-                        'latitude' => $destination['latitude'],
-                        'longitude' => $destination['longitude'],
                         'address' => $destination['address'],
                         'is_featured' => true,
                         'is_active' => true,
@@ -166,6 +168,24 @@ class FeaturedDestinationSeeder extends Seeder
                         'booking_mode' => 'no_reservation',
                         'is_preapproved' => true,
                         'preapproved_at' => now(),
+                    ];
+                    if ($destination['latitude'] !== null && $destination['longitude'] !== null) {
+                        $initialContent['latitude'] = $destination['latitude'];
+                        $initialContent['longitude'] = $destination['longitude'];
+                    }
+                    $spot->forceFill($initialContent)->save();
+                }
+
+                // The five coordinates supplied in the current integration
+                // request are authoritative and idempotently update their
+                // canonical rows. Null entries never erase a valid coordinate
+                // that may already exist in the authoritative database.
+                if ($destination['latitude'] !== null && $destination['longitude'] !== null
+                    && ((float) $spot->latitude !== (float) $destination['latitude']
+                        || (float) $spot->longitude !== (float) $destination['longitude'])) {
+                    $spot->forceFill([
+                        'latitude' => $destination['latitude'],
+                        'longitude' => $destination['longitude'],
                     ])->save();
                 }
             }

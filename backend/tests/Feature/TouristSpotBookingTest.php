@@ -11,6 +11,7 @@ use Database\Seeders\DevelopmentFeaturedDestinationBookingSeeder;
 use Database\Seeders\FeaturedDestinationSeeder;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -107,6 +108,8 @@ class TouristSpotBookingTest extends TestCase
         $canonical->update([
             'short_description' => 'LGU-edited summary.',
             'description' => 'LGU-edited description.',
+            'latitude' => 9.90001,
+            'longitude' => 123.90001,
             'is_featured' => false,
             'is_active' => false,
             'is_published' => false,
@@ -119,9 +122,31 @@ class TouristSpotBookingTest extends TestCase
         $canonical->refresh();
         $this->assertSame('LGU-edited summary.', $canonical->short_description);
         $this->assertSame('LGU-edited description.', $canonical->description);
+        $this->assertSame(9.91339, $canonical->latitude);
+        $this->assertSame(123.94232, $canonical->longitude);
         $this->assertFalse($canonical->is_featured);
         $this->assertFalse($canonical->is_active);
         $this->assertFalse($canonical->is_published);
+    }
+
+    public function test_tourist_spot_management_rejects_malformed_coordinates_and_accepts_controlled_marine_coordinates(): void
+    {
+        $this->seed(FeaturedDestinationSeeder::class);
+        $spot = TouristSpot::where('slug', 'dumog-sandbar')->firstOrFail();
+        Sanctum::actingAs($this->user('coordinate-lgu', $this->lguRole));
+
+        $this->putJson("/api/v1/lgu/tourist-spots/{$spot->id}", [
+            'latitude' => 91,
+            'longitude' => 181,
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['latitude', 'longitude']);
+
+        $this->putJson("/api/v1/lgu/tourist-spots/{$spot->id}", [
+            'latitude' => 9.98820,
+            'longitude' => 123.87830,
+        ])->assertOk()
+            ->assertJsonPath('data.latitude', 9.9882)
+            ->assertJsonPath('data.longitude', 123.8783);
     }
 
     public function test_local_demo_booking_seed_is_opt_in_and_never_overwrites_later_staff_choice(): void
@@ -415,6 +440,7 @@ class TouristSpotBookingTest extends TestCase
 
     public function test_upcoming_reservation_reminder_is_real_and_idempotent(): void
     {
+        Mail::fake();
         $tourist = $this->user('reminder-tourist', $this->touristRole);
         $reservation = Reservation::create([
             'user_id' => $tourist->id,
@@ -433,6 +459,7 @@ class TouristSpotBookingTest extends TestCase
             'user_id' => $tourist->id,
             'type' => 'reservation_reminder',
         ]);
+        Mail::assertSent(\App\Mail\TourTubigonMessage::class, 1);
         $notification = Schema::getConnection()->table('notifications')->first();
         $this->assertStringContainsString($reservation->id, $notification->data);
     }

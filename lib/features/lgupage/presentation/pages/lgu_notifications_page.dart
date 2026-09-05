@@ -40,6 +40,7 @@ class LguNotificationsPage extends ConsumerWidget {
                           await ref
                               .read(notificationRepositoryProvider)
                               .markAllRead();
+                          if (!context.mounted) return;
                           ref.invalidate(touristNotificationsProvider);
                           ref.invalidate(touristUnreadCountProvider);
                         }
@@ -80,6 +81,7 @@ class LguNotificationsPage extends ConsumerWidget {
                             await ref
                                 .read(notificationRepositoryProvider)
                                 .markRead(item.id);
+                            if (!context.mounted) return;
                             ref.invalidate(touristNotificationsProvider);
                             ref.invalidate(touristUnreadCountProvider);
                           }

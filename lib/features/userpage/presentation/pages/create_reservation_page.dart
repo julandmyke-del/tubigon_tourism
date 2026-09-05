@@ -7,9 +7,13 @@ import '../../../authentication/auth_provider.dart';
 import '../../../itinerary/presentation/itinerary_add_sheet.dart';
 import '../../../itinerary/repositories/itinerary_repository.dart';
 import '../../../map/providers/map_provider.dart';
+import '../../../map/map_focus.dart';
+import '../../../msmepage/models/msme.dart';
+import '../../../msmepage/repositories/msme_repository.dart';
 import '../../../notifications/repositories/notification_repository.dart';
 import '../../../reservations/models/reservation.dart';
 import '../../../reservations/repositories/reservation_repository.dart';
+import '../../../settings/repositories/settings_repository.dart';
 import '../../../tourist_spots/models/tourist_spot.dart';
 import '../../../tourist_spots/repositories/tourist_spot_repository.dart';
 
@@ -58,15 +62,27 @@ class _CreateReservationPageState extends ConsumerState<CreateReservationPage> {
   String get _dateValue =>
       '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
 
-  Future<void> _pickDate(TouristSpot? spot) async {
-    final maximum = DateTime.now().add(
+  Future<void> _pickDate(TouristSpot? spot, Msme? msme) async {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final maximum = today.add(
       Duration(days: spot?.advanceBookingDays ?? 365),
     );
+    bool selectable(DateTime date) => msme?.isAvailableOn(date) ?? true;
+    var initial = _selectedDate.isAfter(maximum) ? maximum : _selectedDate;
+    initial = DateUtils.dateOnly(initial);
+    while (!initial.isAfter(maximum) && !selectable(initial)) {
+      initial = initial.add(const Duration(days: 1));
+    }
+    if (initial.isAfter(maximum)) {
+      _message('This business has no selectable dates in the booking window.');
+      return;
+    }
     final picked = await showDatePicker(
       context: context,
-      initialDate: _selectedDate.isAfter(maximum) ? maximum : _selectedDate,
-      firstDate: DateTime.now(),
+      initialDate: initial,
+      firstDate: today,
       lastDate: maximum,
+      selectableDayPredicate: selectable,
     );
     if (picked != null && mounted) {
       setState(() {
@@ -84,7 +100,7 @@ class _CreateReservationPageState extends ConsumerState<CreateReservationPage> {
     if (picked != null && mounted) setState(() => _selectedTime = picked);
   }
 
-  Future<void> _submit(TouristSpot? spot) async {
+  Future<void> _submit(TouristSpot? spot, Msme? msme) async {
     final targetId = _selectedSpotUuid;
     if (targetId == null || targetId.isEmpty) return;
     if (widget.initialReservableType == 'spot') {
@@ -103,6 +119,11 @@ class _CreateReservationPageState extends ConsumerState<CreateReservationPage> {
         _message('Select a configured time slot.');
         return;
       }
+    } else if (widget.initialReservableType == 'msme' &&
+        (msme == null || !msme.isAvailableOn(_selectedDate))) {
+      _message(
+          'This business is unavailable on the selected date. Choose an available date.');
+      return;
     }
 
     final confirmed = await showDialog<bool>(
@@ -197,8 +218,10 @@ class _CreateReservationPageState extends ConsumerState<CreateReservationPage> {
     );
     if (!mounted) return;
     if (action == 'map' && spot != null) {
-      context.go(
-          '/map?marker=${Uri.encodeQueryComponent('tourist_spot:${spot.uuid}')}');
+      context.go(mapFocusPathForEntity(
+        entityType: 'tourist_spot',
+        entityId: spot.uuid,
+      ));
     } else if (action == 'itinerary' && spot != null) {
       await showAddToItinerarySheet(
         context,
@@ -237,6 +260,10 @@ class _CreateReservationPageState extends ConsumerState<CreateReservationPage> {
 
   @override
   Widget build(BuildContext context) {
+    final globalBookingEnabled = ref
+            .watch(systemSettingsProvider)
+            .valueOrNull?['global_booking_enabled'] !=
+        false;
     final auth = ref.watch(authProvider);
     if (!auth.isLoggedIn || auth.userId == null) {
       return signedInRequiredPage(context, ref, title: 'New Booking');
@@ -245,6 +272,41 @@ class _CreateReservationPageState extends ConsumerState<CreateReservationPage> {
         widget.initialReservableType == 'spot'
             ? ref.watch(bookableTouristSpotsProvider)
             : const AsyncData([]);
+    final AsyncValue<List<Msme>> msmesAsync =
+        widget.initialReservableType == 'msme'
+            ? ref.watch(msmeListProvider)
+            : const AsyncData([]);
+    if (msmesAsync.isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (msmesAsync.hasError) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('New Booking')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Text(
+                'Business availability could not be loaded. Check your connection and try again.',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () => ref.invalidate(msmeListProvider),
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Retry'),
+              ),
+            ]),
+          ),
+        ),
+      );
+    }
+    Msme? selectedMsme;
+    if (widget.initialReservableType == 'msme' && _selectedSpotUuid != null) {
+      for (final msme in msmesAsync.valueOrNull ?? const <Msme>[]) {
+        if (msme.uuid == _selectedSpotUuid) selectedMsme = msme;
+      }
+    }
     return spotsAsync.when(
       loading: () => const Scaffold(
         body: Center(child: CircularProgressIndicator()),
@@ -281,12 +343,14 @@ class _CreateReservationPageState extends ConsumerState<CreateReservationPage> {
             if (spot.uuid == _selectedSpotUuid) selectedSpot = spot;
           }
         }
-        return _buildForm(bookable, selectedSpot);
+        return _buildForm(
+            bookable, selectedSpot, selectedMsme, globalBookingEnabled);
       },
     );
   }
 
-  Widget _buildForm(List<TouristSpot> bookable, TouristSpot? spot) {
+  Widget _buildForm(List<TouristSpot> bookable, TouristSpot? spot, Msme? msme,
+      bool globalBookingEnabled) {
     final isSpot = widget.initialReservableType == 'spot';
     final availability = isSpot && spot?.canAcceptBookings == true
         ? ref.watch(touristSpotAvailabilityProvider(
@@ -306,6 +370,8 @@ class _CreateReservationPageState extends ConsumerState<CreateReservationPage> {
     final unavailable = isSpot &&
         _selectedSpotUuid != null &&
         (spot == null || !spot.canAcceptBookings);
+    final msmeDateUnavailable = widget.initialReservableType == 'msme' &&
+        (msme == null || !msme.isAvailableOn(_selectedDate));
     final guestLimit = spot?.maxGuestsPerReservation ?? 100;
     return Scaffold(
       backgroundColor: const Color(0xFF080F1A),
@@ -348,6 +414,13 @@ class _CreateReservationPageState extends ConsumerState<CreateReservationPage> {
               style: const TextStyle(color: Color(0xFFFCA5A5)),
             ),
           ],
+          if (msmeDateUnavailable) ...[
+            const SizedBox(height: 12),
+            const Text(
+              'This business is closed or unavailable on the selected date.',
+              style: TextStyle(color: Color(0xFFFCA5A5)),
+            ),
+          ],
           if (spot?.bookingAvailableDays.isNotEmpty ?? false) ...[
             const SizedBox(height: 12),
             Text('Opening days: ${spot!.bookingAvailableDays.join(', ')}',
@@ -362,7 +435,7 @@ class _CreateReservationPageState extends ConsumerState<CreateReservationPage> {
                 color: Color(0xFFF59E0B)),
             title:
                 Text(_dateValue, style: const TextStyle(color: Colors.white)),
-            onTap: () => _pickDate(spot),
+            onTap: () => _pickDate(spot, msme),
           )),
           if (availability?.isLoading == true) ...[
             const SizedBox(height: 8),
@@ -474,13 +547,22 @@ class _CreateReservationPageState extends ConsumerState<CreateReservationPage> {
                 style: const TextStyle(color: Color(0xFFCBD5E1))),
           ],
           const SizedBox(height: 28),
+          if (!globalBookingEnabled)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: Text(
+                  'Booking is temporarily disabled by the Tourism Office.',
+                  style: TextStyle(color: Color(0xFFF59E0B))),
+            ),
           FilledButton.icon(
             onPressed: _isSubmitting ||
+                    !globalBookingEnabled ||
                     unavailable ||
+                    msmeDateUnavailable ||
                     !serverAvailable ||
                     (isSpot && _selectedSpotUuid == null)
                 ? null
-                : () => _submit(spot),
+                : () => _submit(spot, msme),
             icon: _isSubmitting
                 ? const SizedBox.square(
                     dimension: 18,

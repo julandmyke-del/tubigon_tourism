@@ -29,6 +29,7 @@ class DatabaseSeeder extends Seeder
         $this->call(DevelopmentFeaturedDestinationBookingSeeder::class);
         if (app()->environment(['local', 'testing'])) {
             $this->call(DevelopmentFeaturedDestinationPartnerSeeder::class);
+            $this->call(DevelopmentMsmeOwnerSeeder::class);
         }
     }
 }

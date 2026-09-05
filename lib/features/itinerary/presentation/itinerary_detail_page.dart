@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,7 +8,9 @@ import 'package:intl/intl.dart';
 
 import '../../../core/exceptions/app_exception.dart';
 import '../../map/providers/map_provider.dart';
+import '../../map/map_focus.dart';
 import '../../map/services/directions_service.dart';
+import '../../reservations/repositories/reservation_repository.dart';
 import '../models/itinerary.dart';
 import '../repositories/itinerary_repository.dart';
 
@@ -26,8 +29,17 @@ class _ItineraryDetailPageState extends ConsumerState<ItineraryDetailPage> {
   int _day = 1;
   bool _routeLoading = false;
   MapRouteResult? _route;
+  int? _routeDay;
   String? _routeFingerprint;
   String? _routeError;
+  CancelToken? _routeCancelToken;
+
+  @override
+  void dispose() {
+    _routeCancelToken?.cancel('Itinerary page was closed.');
+    _routeCancelToken = null;
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,14 +52,15 @@ class _ItineraryDetailPageState extends ConsumerState<ItineraryDetailPage> {
         actions: [
           IconButton(
               tooltip: 'Refresh',
-              onPressed: () =>
-                  ref.invalidate(itineraryDetailProvider(widget.itineraryId)),
+              onPressed: _refreshAll,
               icon: const Icon(Icons.refresh_rounded)),
           PopupMenuButton<String>(
             onSelected: (action) => value.valueOrNull == null
                 ? null
                 : _tripAction(value.valueOrNull!, action),
             itemBuilder: (context) => const [
+              PopupMenuItem(
+                  value: 'recalculate', child: Text('Recalculate route')),
               PopupMenuItem(value: 'complete', child: Text('Mark completed')),
               PopupMenuItem(value: 'archive', child: Text('Archive trip')),
             ],
@@ -55,7 +68,7 @@ class _ItineraryDetailPageState extends ConsumerState<ItineraryDetailPage> {
         ],
       ),
       body: value.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const _ItineraryLoadingState(),
         error: (_, __) => _Error(onRetry: () {
           ref.invalidate(itineraryDetailProvider(widget.itineraryId));
         }),
@@ -80,7 +93,7 @@ class _ItineraryDetailPageState extends ConsumerState<ItineraryDetailPage> {
         .firstOrNull;
 
     return Column(children: [
-      _TripHeader(trip: trip),
+      TripSummaryHeader(trip: trip, route: trip.dayCount == 1 ? _route : null),
       if (trip.status == ItineraryStatus.active && nextStop != null)
         _NextStop(
           item: nextStop,
@@ -89,116 +102,220 @@ class _ItineraryDetailPageState extends ConsumerState<ItineraryDetailPage> {
         ),
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-        child: Row(children: [
-          Expanded(
-            child: SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(
-                    value: false,
-                    icon: Icon(Icons.view_list_rounded),
-                    label: Text('LIST')),
-                ButtonSegment(
-                    value: true,
-                    icon: Icon(Icons.map_rounded),
-                    label: Text('MAP')),
-              ],
-              selected: {_mapView},
-              onSelectionChanged: (selection) =>
-                  setState(() => _mapView = selection.first),
-            ),
-          ),
-          const SizedBox(width: 10),
-          ElevatedButton.icon(
+        child: LayoutBuilder(builder: (context, constraints) {
+          final toggle = SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(
+                  value: false,
+                  icon: Icon(Icons.view_list_rounded),
+                  label: Text('LIST')),
+              ButtonSegment(
+                  value: true,
+                  icon: Icon(Icons.map_rounded),
+                  label: Text('MAP')),
+            ],
+            selected: {_mapView},
+            onSelectionChanged: (selection) =>
+                setState(() => _mapView = selection.first),
+          );
+          final start = ElevatedButton.icon(
             onPressed: trip.status == ItineraryStatus.active
                 ? null
                 : () => _startTrip(trip),
             icon: const Icon(Icons.play_arrow_rounded),
             label: const Text('Start Trip'),
-          ),
-        ]),
-      ),
-      _DayBar(
-        dayCount: trip.dayCount,
-        selected: _day,
-        onSelected: (day) => setState(() {
-          _day = day;
-          _route = null;
-          _routeFingerprint = null;
+          );
+          if (constraints.maxWidth < 480) {
+            return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  toggle,
+                  const SizedBox(height: 8),
+                  Align(alignment: Alignment.centerRight, child: start),
+                ]);
+          }
+          return Row(children: [
+            Expanded(child: toggle),
+            const SizedBox(width: 10),
+            start,
+          ]);
         }),
       ),
+      if (_mapView)
+        _DayBar(
+          dayCount: trip.dayCount,
+          selected: _day,
+          onSelected: (day) => setState(() {
+            _day = day;
+            _route = null;
+            _routeDay = null;
+            _routeFingerprint = null;
+          }),
+        ),
       Expanded(child: _mapView ? _map(trip) : _list(trip)),
     ]);
   }
 
   Widget _list(Itinerary trip) {
-    final items = trip.itemsForDay(_day);
-    final warnings = _scheduleWarnings(items, _route);
+    final populatedDays = List.generate(trip.dayCount, (index) => index + 1)
+        .where((day) => trip.itemsForDay(day).isNotEmpty)
+        .toList(growable: false);
+    final countMismatch = trip.placeCount > trip.items.length;
     return RefreshIndicator(
-      onRefresh: () async {
-        ref.invalidate(itineraryDetailProvider(widget.itineraryId));
-        await ref.read(itineraryDetailProvider(widget.itineraryId).future);
-      },
-      child: ListView(
+      onRefresh: _refreshAll,
+      child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-        children: [
-          if (warnings.isNotEmpty) _Warnings(warnings: warnings),
-          if (warnings.isNotEmpty) const SizedBox(height: 10),
-          if (items.isEmpty)
-            _EmptyDay(
-              day: _day,
-              onExplore: () => context.push('/explore'),
+        slivers: [
+          if (countMismatch)
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              sliver: SliverToBoxAdapter(
+                child: _IncompleteStopsNotice(onRetry: _refreshAll),
+              ),
+            ),
+          if (trip.items.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: ItineraryEmptyState(
+                onExplore: () => context.push('/explore'),
+              ),
             )
           else
-            ReorderableListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              buildDefaultDragHandles: false,
-              itemCount: items.length,
-              onReorderItem: (oldIndex, newIndex) =>
-                  _reorder(trip, items, oldIndex, newIndex),
-              itemBuilder: (context, index) {
-                final item = items[index];
-                return Padding(
-                  key: ValueKey(item.id),
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _StopCard(
-                    number: index + 1,
-                    item: item,
-                    dragHandle: ReorderableDragStartListener(
-                      index: index,
-                      child: const Icon(Icons.drag_handle_rounded,
-                          color: Color(0xFF64748B)),
+            for (final day in populatedDays) ...[
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                sliver: SliverToBoxAdapter(
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 920),
+                      child: ItineraryDaySectionHeader(
+                        day: day,
+                        date: trip.startDate.add(Duration(days: day - 1)),
+                        stopCount: trip.itemsForDay(day).length,
+                      ),
                     ),
-                    onMap: item.place == null ? null : () => _openMap(item),
-                    onDirections: item.place == null
-                        ? null
-                        : () => _openMap(item, directions: true),
-                    onEdit: () => _editItem(trip, item),
-                    onRemove: () => _removeItem(trip, item),
-                    onVisited: () => _setVisitStatus(trip, item, 'visited'),
-                    onSkipped: () => _setVisitStatus(trip, item, 'skipped'),
-                    onReservation: item.reservation == null
-                        ? null
-                        : () => context
-                            .push('/reservations/${item.reservation!.id}'),
                   ),
-                );
-              },
+                ),
+              ),
+              if (_scheduleWarnings(
+                      trip.itemsForDay(day), _routeDay == day ? _route : null)
+                  .isNotEmpty)
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                  sliver: SliverToBoxAdapter(
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 920),
+                        child: _Warnings(
+                          warnings: _scheduleWarnings(trip.itemsForDay(day),
+                              _routeDay == day ? _route : null),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                sliver: SliverReorderableList(
+                  itemCount: trip.itemsForDay(day).length,
+                  onReorderItem: (oldIndex, newIndex) => _reorder(
+                    trip,
+                    trip.itemsForDay(day),
+                    oldIndex,
+                    newIndex,
+                    day,
+                  ),
+                  itemBuilder: (context, index) {
+                    final items = trip.itemsForDay(day);
+                    final item = items[index];
+                    final legIndex = _connectorLegIndex(trip, index);
+                    final leg = _routeDay == day &&
+                            _route != null &&
+                            legIndex < _route!.legs.length
+                        ? _route!.legs[legIndex]
+                        : null;
+                    return Padding(
+                      key: ValueKey(item.id),
+                      padding: const EdgeInsets.only(bottom: 2),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 920),
+                          child: Column(children: [
+                            ItineraryPlaceCard(
+                              number: index + 1,
+                              item: item,
+                              dragHandle: ReorderableDragStartListener(
+                                index: index,
+                                child: const Icon(Icons.drag_handle_rounded,
+                                    color: Color(0xFF94A3B8)),
+                              ),
+                              onDetails: item.place?.detailPath == null
+                                  ? null
+                                  : () => context.push(item.place!.detailPath!),
+                              onMap: item.place?.hasCoordinates == true
+                                  ? () => _openMap(item)
+                                  : null,
+                              onDirections: item.place?.hasCoordinates == true
+                                  ? () => _openMap(item, directions: true)
+                                  : null,
+                              onBook: item.place?.bookingPath == null
+                                  ? null
+                                  : () =>
+                                      context.push(item.place!.bookingPath!),
+                              onEdit: () => _editItem(trip, item),
+                              onRemove: () => _removeItem(trip, item),
+                              onMoveUp: index == 0
+                                  ? null
+                                  : () => _moveItem(
+                                      trip, items, index, index - 1, day),
+                              onMoveDown: index == items.length - 1
+                                  ? null
+                                  : () => _moveItem(
+                                      trip, items, index, index + 1, day),
+                              onVisited: () =>
+                                  _setVisitStatus(trip, item, 'visited'),
+                              onSkipped: () =>
+                                  _setVisitStatus(trip, item, 'skipped'),
+                              onReservation: item.reservation == null
+                                  ? null
+                                  : () => context.push(
+                                      '/reservations/${item.reservation!.id}'),
+                            ),
+                            if (index < items.length - 1)
+                              ItineraryTravelConnector(leg: leg),
+                          ]),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 96),
+            sliver: SliverToBoxAdapter(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 920),
+                  child: OutlinedButton.icon(
+                    onPressed: () => context.push('/explore'),
+                    icon: const Icon(Icons.add_location_alt_rounded),
+                    label: const Text('Find places in Explore'),
+                  ),
+                ),
+              ),
             ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-              onPressed: () => context.push('/explore'),
-              icon: const Icon(Icons.add_location_alt_rounded),
-              label: const Text('Find places in Explore')),
+          ),
         ],
       ),
     );
   }
 
   Widget _map(Itinerary trip) {
-    final items =
-        trip.itemsForDay(_day).where((item) => item.place != null).toList();
+    final items = trip
+        .itemsForDay(_day)
+        .where((item) => item.place?.hasCoordinates == true)
+        .toList();
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
       children: [
@@ -236,9 +353,11 @@ class _ItineraryDetailPageState extends ConsumerState<ItineraryDetailPage> {
                         const VerticalDivider(
                             color: Color(0xFFF59E0B), thickness: 2),
                         const SizedBox(width: 8),
-                        if (_route != null && index < _route!.legs.length)
+                        if (_route != null &&
+                            _connectorLegIndex(trip, index) <
+                                _route!.legs.length)
                           Text(
-                              '${_route!.legs[index].distanceKm.toStringAsFixed(1)} km · ${_route!.legs[index].durationMinutes} min',
+                              '${_route!.legs[_connectorLegIndex(trip, index)].distanceKm.toStringAsFixed(1)} km · ${_route!.legs[_connectorLegIndex(trip, index)].durationMinutes} min',
                               style: const TextStyle(
                                   color: Color(0xFF94A3B8), fontSize: 11)),
                       ]),
@@ -279,10 +398,17 @@ class _ItineraryDetailPageState extends ConsumerState<ItineraryDetailPage> {
   }
 
   Future<void> _calculateRoute(Itinerary trip) async {
-    final items =
-        trip.itemsForDay(_day).where((item) => item.place != null).toList();
+    final items = trip
+        .itemsForDay(_day)
+        .where((item) => item.place?.hasCoordinates == true)
+        .toList();
     if (items.length < 2) {
-      if (_route != null) setState(() => _route = null);
+      if (_route != null) {
+        setState(() {
+          _route = null;
+          _routeDay = null;
+        });
+      }
       return;
     }
     final user = ref.read(userLocationProvider);
@@ -297,7 +423,7 @@ class _ItineraryDetailPageState extends ConsumerState<ItineraryDetailPage> {
 
     final points = items
         .map((item) =>
-            MapCoordinate(item.place!.latitude, item.place!.longitude))
+            MapCoordinate(item.place!.latitude!, item.place!.longitude!))
         .toList();
     if (trip.startLocationType == 'current_location') {
       if (!user.hasLocation) {
@@ -317,20 +443,35 @@ class _ItineraryDetailPageState extends ConsumerState<ItineraryDetailPage> {
       _routeLoading = true;
       _routeError = null;
     });
+    _routeCancelToken?.cancel('Replaced by a newer itinerary route request.');
+    final cancelToken = CancelToken();
+    _routeCancelToken = cancelToken;
     try {
-      final route =
-          await ref.read(directionsServiceProvider).routeThrough(points);
+      final route = await ref.read(directionsServiceProvider).routeThrough(
+            points,
+            cancelToken: cancelToken,
+          );
       if (!mounted) return;
       setState(() {
         _route = route;
+        _routeDay = _day;
         _routeFingerprint = fingerprint;
       });
+    } on DioException catch (error) {
+      if (CancelToken.isCancel(error)) return;
+      if (mounted) {
+        setState(() => _routeError =
+            'Unable to calculate this route right now. Check your connection and retry.');
+      }
     } catch (_) {
       if (mounted) {
         setState(() => _routeError =
             'Unable to calculate this route right now. Check your connection and retry.');
       }
     } finally {
+      if (identical(_routeCancelToken, cancelToken)) {
+        _routeCancelToken = null;
+      }
       if (mounted) setState(() => _routeLoading = false);
     }
   }
@@ -370,11 +511,11 @@ class _ItineraryDetailPageState extends ConsumerState<ItineraryDetailPage> {
     final data = <String, dynamic>{'start_location_type': choice};
     if (choice == 'current_location') {
       final found = await ref.read(userLocationProvider.notifier).locate();
-      if (!found) return;
+      if (!mounted || !found) return;
     } else if (choice == 'custom') {
       final result =
           await context.push<Map<String, dynamic>>('/map/pick?mode=itinerary');
-      if (result == null) return;
+      if (result == null || !mounted) return;
       data.addAll({
         'start_location_name': 'Custom map pin',
         'start_latitude': result['latitude'],
@@ -386,19 +527,34 @@ class _ItineraryDetailPageState extends ConsumerState<ItineraryDetailPage> {
   }
 
   Future<void> _reorder(Itinerary trip, List<ItineraryItem> items, int oldIndex,
-      int newIndex) async {
+      int newIndex, int day) async {
+    if (oldIndex == newIndex) return;
     final reordered = List<ItineraryItem>.of(items);
     final item = reordered.removeAt(oldIndex);
     reordered.insert(newIndex, item);
+    await _persistOrder(trip, reordered, day);
+  }
+
+  Future<void> _moveItem(Itinerary trip, List<ItineraryItem> items,
+      int oldIndex, int newIndex, int day) async {
+    final reordered = List<ItineraryItem>.of(items);
+    final item = reordered.removeAt(oldIndex);
+    reordered.insert(newIndex, item);
+    await _persistOrder(trip, reordered, day);
+  }
+
+  Future<void> _persistOrder(
+      Itinerary trip, List<ItineraryItem> reordered, int day) async {
     try {
       await ref.read(itineraryRepositoryProvider).reorderItems(trip.id, [
         for (var index = 0; index < reordered.length; index++)
           {
             'id': reordered[index].id,
-            'day_number': _day,
+            'day_number': day,
             'sort_order': index + 1,
           }
       ]);
+      if (!mounted) return;
       _refresh(trip.id);
       _routeFingerprint = null;
     } on AppException catch (error) {
@@ -484,11 +640,12 @@ class _ItineraryDetailPageState extends ConsumerState<ItineraryDetailPage> {
       ),
     );
     notes.dispose();
-    if (result == null) return;
+    if (result == null || !mounted) return;
     try {
       await ref
           .read(itineraryRepositoryProvider)
           .updateItem(trip.id, item.id, result);
+      if (!mounted) return;
       _refresh(trip.id);
       _routeFingerprint = null;
     } on AppException catch (error) {
@@ -513,9 +670,10 @@ class _ItineraryDetailPageState extends ConsumerState<ItineraryDetailPage> {
         ],
       ),
     );
-    if (remove != true) return;
+    if (remove != true || !mounted) return;
     try {
       await ref.read(itineraryRepositoryProvider).removeItem(trip.id, item.id);
+      if (!mounted) return;
       _refresh(trip.id);
       _routeFingerprint = null;
     } on AppException catch (error) {
@@ -529,6 +687,7 @@ class _ItineraryDetailPageState extends ConsumerState<ItineraryDetailPage> {
       await ref
           .read(itineraryRepositoryProvider)
           .updateItem(trip.id, item.id, {'visit_status': status});
+      if (!mounted) return;
       _refresh(trip.id);
     } on AppException catch (error) {
       _message(error.message);
@@ -540,7 +699,14 @@ class _ItineraryDetailPageState extends ConsumerState<ItineraryDetailPage> {
   }
 
   Future<void> _tripAction(Itinerary trip, String action) async {
-    if (action == 'complete') {
+    if (action == 'recalculate') {
+      setState(() {
+        _mapView = true;
+        _routeFingerprint = null;
+        _routeError = null;
+      });
+      await _calculateRoute(trip);
+    } else if (action == 'complete') {
       await _updateTrip(trip, {'status': 'completed'});
     } else if (action == 'archive') {
       final confirmed = await showDialog<bool>(
@@ -559,10 +725,11 @@ class _ItineraryDetailPageState extends ConsumerState<ItineraryDetailPage> {
           ],
         ),
       );
-      if (confirmed == true) {
+      if (confirmed == true && mounted) {
         await ref.read(itineraryRepositoryProvider).archiveItinerary(trip.id);
+        if (!mounted) return;
         refreshItineraries(ref);
-        if (mounted) context.pop();
+        context.pop();
       }
     }
   }
@@ -572,6 +739,7 @@ class _ItineraryDetailPageState extends ConsumerState<ItineraryDetailPage> {
       await ref
           .read(itineraryRepositoryProvider)
           .updateItinerary(trip.id, data);
+      if (!mounted) return;
       _refresh(trip.id);
     } on AppException catch (error) {
       _message(error.message);
@@ -580,15 +748,40 @@ class _ItineraryDetailPageState extends ConsumerState<ItineraryDetailPage> {
 
   void _openMap(ItineraryItem item, {bool directions = false}) {
     final marker = item.place?.markerId;
-    if (marker == null || marker.isEmpty) {
-      _message('This place is no longer available.');
+    if (marker == null ||
+        marker.isEmpty ||
+        item.place?.hasCoordinates != true) {
+      _message('Location unavailable for this itinerary stop.');
       return;
     }
     context.push(
-        '/map?marker=${Uri.encodeQueryComponent(marker)}${directions ? '&navigate=true' : ''}');
+      mapFocusPathForReference(marker, directions: directions),
+    );
   }
 
-  void _refresh(String id) => refreshItineraries(ref, id);
+  void _refresh(String id) {
+    if (!mounted) return;
+    refreshItineraries(ref, id);
+  }
+
+  Future<void> _refreshAll() async {
+    _routeFingerprint = null;
+    if (mounted) {
+      setState(() {
+        _route = null;
+        _routeDay = null;
+        _routeError = null;
+      });
+    }
+    ref.invalidate(mapMarkersProvider);
+    ref.invalidate(reservationsListProvider);
+    ref.invalidate(itineraryDetailProvider(widget.itineraryId));
+    try {
+      await ref.read(itineraryDetailProvider(widget.itineraryId).future);
+    } catch (_) {
+      // The provider's error state renders the retry UI.
+    }
+  }
 
   void _message(String message) {
     if (mounted) {
@@ -598,14 +791,15 @@ class _ItineraryDetailPageState extends ConsumerState<ItineraryDetailPage> {
   }
 }
 
-class _TripHeader extends StatelessWidget {
-  const _TripHeader({required this.trip});
+class TripSummaryHeader extends StatelessWidget {
+  const TripSummaryHeader({super.key, required this.trip, this.route});
   final Itinerary trip;
+  final MapRouteResult? route;
 
   @override
   Widget build(BuildContext context) => Container(
         width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
         decoration: const BoxDecoration(
           gradient: LinearGradient(colors: [
             Color(0xFF172554),
@@ -616,7 +810,7 @@ class _TripHeader extends StatelessWidget {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Expanded(
-              child: Text(trip.name.toUpperCase(),
+              child: Text(trip.name,
                   style: const TextStyle(
                       color: Colors.white,
                       fontSize: 21,
@@ -635,10 +829,17 @@ class _TripHeader extends StatelessWidget {
                 '${DateFormat('MMM d').format(trip.startDate)}–${DateFormat('MMM d, y').format(trip.endDate)}',
                 style: const TextStyle(
                     color: Color(0xFFFBBF24), fontWeight: FontWeight.w700)),
-            Text('${trip.placeCount} places',
+            Text(
+                '${trip.placeCount} ${trip.placeCount == 1 ? 'Place' : 'Places'}',
                 style: const TextStyle(color: Color(0xFF94A3B8))),
-            Text('${trip.dayCount} days',
+            Text('${trip.dayCount} ${trip.dayCount == 1 ? 'Day' : 'Days'}',
                 style: const TextStyle(color: Color(0xFF94A3B8))),
+            if (route != null)
+              Text('${route!.distanceKm.toStringAsFixed(1)} km',
+                  style: const TextStyle(color: Color(0xFF94A3B8))),
+            if (route != null)
+              Text('${route!.durationMinutes} min travel',
+                  style: const TextStyle(color: Color(0xFF94A3B8))),
           ]),
         ]),
       );
@@ -690,15 +891,20 @@ class _DayBar extends StatelessWidget {
       );
 }
 
-class _StopCard extends StatelessWidget {
-  const _StopCard({
+class ItineraryPlaceCard extends StatelessWidget {
+  const ItineraryPlaceCard({
+    super.key,
     required this.number,
     required this.item,
     required this.dragHandle,
+    required this.onDetails,
     required this.onMap,
     required this.onDirections,
+    required this.onBook,
     required this.onEdit,
     required this.onRemove,
+    required this.onMoveUp,
+    required this.onMoveDown,
     required this.onVisited,
     required this.onSkipped,
     required this.onReservation,
@@ -706,10 +912,14 @@ class _StopCard extends StatelessWidget {
   final int number;
   final ItineraryItem item;
   final Widget dragHandle;
+  final VoidCallback? onDetails;
   final VoidCallback? onMap;
   final VoidCallback? onDirections;
+  final VoidCallback? onBook;
   final VoidCallback onEdit;
   final VoidCallback onRemove;
+  final VoidCallback? onMoveUp;
+  final VoidCallback? onMoveDown;
   final VoidCallback onVisited;
   final VoidCallback onSkipped;
   final VoidCallback? onReservation;
@@ -718,25 +928,41 @@ class _StopCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final place = item.place;
     return Container(
-      padding: const EdgeInsets.all(13),
+      key: ValueKey('itinerary-place-card-${item.id}'),
+      padding: const EdgeInsets.all(15),
       decoration: _card(
           accent: item.visitStatus == ItineraryVisitStatus.visited
               ? const Color(0xFF22C55E)
               : const Color(0xFFF59E0B)),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         CircleAvatar(
+          key: ValueKey('itinerary-stop-number-${item.id}'),
+          radius: 19,
           backgroundColor: const Color(0xFFF59E0B),
           foregroundColor: Colors.black,
           child: Text('$number',
               style: const TextStyle(fontWeight: FontWeight.w900)),
         ),
         const SizedBox(width: 11),
+        if (place?.images.isNotEmpty == true) ...[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.network(
+              place!.images.first,
+              width: 72,
+              height: 72,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
+          ),
+          const SizedBox(width: 11),
+        ],
         Expanded(
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Expanded(
-                child: Text(place?.name ?? 'This place is no longer available',
+                child: Text(place?.name ?? 'Unavailable destination',
                     style: TextStyle(
                         color: place == null
                             ? const Color(0xFFFB7185)
@@ -746,37 +972,59 @@ class _StopCard extends StatelessWidget {
               ),
               dragHandle,
               PopupMenuButton<String>(
+                tooltip: 'Stop actions',
                 onSelected: (value) => switch (value) {
+                  'up' => onMoveUp?.call(),
+                  'down' => onMoveDown?.call(),
                   'edit' => onEdit(),
                   'visited' => onVisited(),
                   'skipped' => onSkipped(),
                   'remove' => onRemove(),
                   _ => null,
                 },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(
+                itemBuilder: (_) => [
+                  if (onMoveUp != null)
+                    const PopupMenuItem(
+                        value: 'up', child: Text('Move earlier')),
+                  if (onMoveDown != null)
+                    const PopupMenuItem(
+                        value: 'down', child: Text('Move later')),
+                  const PopupMenuItem(
                       value: 'edit', child: Text('Edit day/time/notes')),
-                  PopupMenuItem(value: 'visited', child: Text('Mark visited')),
-                  PopupMenuItem(value: 'skipped', child: Text('Mark skipped')),
-                  PopupMenuItem(value: 'remove', child: Text('Remove')),
+                  const PopupMenuItem(
+                      value: 'visited', child: Text('Mark visited')),
+                  const PopupMenuItem(
+                      value: 'skipped', child: Text('Mark skipped')),
+                  const PopupMenuItem(value: 'remove', child: Text('Remove')),
                 ],
               ),
             ]),
-            const SizedBox(height: 3),
-            Text(place?.category ?? item.entityType,
-                style: const TextStyle(color: Color(0xFFF59E0B), fontSize: 11)),
+            const SizedBox(height: 4),
+            Text(
+              place == null
+                  ? item.entityType
+                  : '${place.category} · ${place.entityTypeLabel}',
+              style: const TextStyle(
+                  color: Color(0xFFF59E0B),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700),
+            ),
+            if (place?.address?.trim().isNotEmpty ?? false) ...[
+              const SizedBox(height: 8),
+              _ItineraryMetaLine(
+                  icon: Icons.location_on_rounded, text: place!.address!),
+            ],
             if (item.plannedStartTime != null ||
                 item.plannedEndTime != null) ...[
               const SizedBox(height: 6),
-              Text(_timeRange(item),
-                  style: const TextStyle(
-                      color: Color(0xFF38BDF8), fontWeight: FontWeight.w700)),
+              _ItineraryMetaLine(
+                  icon: Icons.schedule_rounded,
+                  text: _timeRange(item),
+                  color: const Color(0xFF38BDF8)),
             ],
             if (item.notes?.trim().isNotEmpty ?? false) ...[
-              const SizedBox(height: 5),
-              Text(item.notes!,
-                  style:
-                      const TextStyle(color: Color(0xFFCBD5E1), fontSize: 11)),
+              const SizedBox(height: 6),
+              _ItineraryMetaLine(icon: Icons.notes_rounded, text: item.notes!),
             ],
             if (item.reservation != null) ...[
               const SizedBox(height: 7),
@@ -785,23 +1033,49 @@ class _StopCard extends StatelessWidget {
                 avatar: const Icon(Icons.event_available_rounded,
                     size: 16, color: Color(0xFF22C55E)),
                 label: Text(
-                    'Reservation · ${item.reservation!.status ?? 'linked'}'),
+                    'Reservation ${_statusLabel(item.reservation!.status ?? 'linked')}'),
               ),
             ],
-            const SizedBox(height: 8),
-            Row(children: [
-              _VisitBadge(status: item.visitStatus),
-              const Spacer(),
-              IconButton.filledTonal(
-                  tooltip: 'View on Map',
-                  onPressed: onMap,
-                  icon: const Icon(Icons.map_rounded, size: 18)),
-              const SizedBox(width: 5),
-              IconButton.filledTonal(
-                  tooltip: 'Directions',
-                  onPressed: onDirections,
-                  icon: const Icon(Icons.directions_rounded, size: 18)),
-            ]),
+            if (place != null && !place.hasCoordinates) ...[
+              const SizedBox(height: 8),
+              const _ItineraryMetaLine(
+                icon: Icons.location_off_rounded,
+                text: 'Location unavailable',
+                color: Color(0xFF94A3B8),
+              ),
+            ],
+            const SizedBox(height: 11),
+            Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _VisitBadge(status: item.visitStatus),
+                  if (onDetails != null)
+                    OutlinedButton.icon(
+                      onPressed: onDetails,
+                      icon: const Icon(Icons.open_in_new_rounded, size: 17),
+                      label: const Text('View Details'),
+                    ),
+                  if (onMap != null)
+                    OutlinedButton.icon(
+                      onPressed: onMap,
+                      icon: const Icon(Icons.map_rounded, size: 17),
+                      label: const Text('Map'),
+                    ),
+                  if (onDirections != null)
+                    OutlinedButton.icon(
+                      onPressed: onDirections,
+                      icon: const Icon(Icons.directions_rounded, size: 17),
+                      label: const Text('Directions'),
+                    ),
+                  if (onBook != null)
+                    FilledButton.icon(
+                      onPressed: onBook,
+                      icon: const Icon(Icons.event_available_rounded, size: 17),
+                      label: const Text('Book'),
+                    ),
+                ]),
           ]),
         ),
       ]),
@@ -809,20 +1083,142 @@ class _StopCard extends StatelessWidget {
   }
 }
 
+class ItineraryDaySectionHeader extends StatelessWidget {
+  const ItineraryDaySectionHeader({
+    super.key,
+    required this.day,
+    required this.date,
+    required this.stopCount,
+  });
+
+  final int day;
+  final DateTime date;
+  final int stopCount;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        header: true,
+        child: Row(children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF59E0B),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text('DAY $day',
+                style: const TextStyle(
+                    color: Colors.black, fontWeight: FontWeight.w900)),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(DateFormat('MMMM d, y').format(date),
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800)),
+                Text('$stopCount ${stopCount == 1 ? 'stop' : 'stops'}',
+                    style: const TextStyle(
+                        color: Color(0xFF94A3B8), fontSize: 11)),
+              ],
+            ),
+          ),
+        ]),
+      );
+}
+
+class ItineraryTravelConnector extends StatelessWidget {
+  const ItineraryTravelConnector({super.key, this.leg});
+
+  final MapRouteLeg? leg;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        key: const ValueKey('itinerary-travel-connector'),
+        height: 42,
+        child: Row(children: [
+          const SizedBox(width: 18),
+          const SizedBox(
+            height: 42,
+            child: VerticalDivider(
+                color: Color(0xFFF59E0B), thickness: 2, width: 2),
+          ),
+          const SizedBox(width: 16),
+          Icon(Icons.arrow_downward_rounded,
+              size: 15, color: Colors.white.withValues(alpha: .55)),
+          if (leg != null) ...[
+            const SizedBox(width: 7),
+            Text(
+              '${leg!.durationMinutes} min · ${leg!.distanceKm.toStringAsFixed(1)} km',
+              style: const TextStyle(
+                  color: Color(0xFF94A3B8),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700),
+            ),
+          ],
+        ]),
+      );
+}
+
+class _ItineraryMetaLine extends StatelessWidget {
+  const _ItineraryMetaLine({
+    required this.icon,
+    required this.text,
+    this.color = const Color(0xFFCBD5E1),
+  });
+
+  final IconData icon;
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(text,
+                style: TextStyle(color: color, fontSize: 12, height: 1.35)),
+          ),
+        ],
+      );
+}
+
 class _VisitBadge extends StatelessWidget {
   const _VisitBadge({required this.status});
   final ItineraryVisitStatus status;
 
   @override
-  Widget build(BuildContext context) => Text(status.name.toUpperCase(),
-      style: TextStyle(
-          color: switch (status) {
-            ItineraryVisitStatus.visited => const Color(0xFF22C55E),
-            ItineraryVisitStatus.skipped => const Color(0xFFFB7185),
-            ItineraryVisitStatus.planned => const Color(0xFF94A3B8),
-          },
-          fontSize: 9,
-          fontWeight: FontWeight.w900));
+  Widget build(BuildContext context) {
+    final color = switch (status) {
+      ItineraryVisitStatus.visited => const Color(0xFF22C55E),
+      ItineraryVisitStatus.skipped => const Color(0xFFFB7185),
+      ItineraryVisitStatus.planned => const Color(0xFF94A3B8),
+    };
+    final icon = switch (status) {
+      ItineraryVisitStatus.visited => Icons.check_circle_rounded,
+      ItineraryVisitStatus.skipped => Icons.skip_next_rounded,
+      ItineraryVisitStatus.planned => Icons.schedule_rounded,
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: .5)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, size: 15, color: color),
+        const SizedBox(width: 5),
+        Text(status.name.toUpperCase(),
+            style: TextStyle(
+                color: color, fontSize: 9, fontWeight: FontWeight.w900)),
+      ]),
+    );
+  }
 }
 
 class _NextStop extends StatelessWidget {
@@ -974,25 +1370,94 @@ class _Warnings extends StatelessWidget {
       );
 }
 
-class _EmptyDay extends StatelessWidget {
-  const _EmptyDay({required this.day, required this.onExplore});
-  final int day;
+class ItineraryEmptyState extends StatelessWidget {
+  const ItineraryEmptyState({super.key, required this.onExplore});
   final VoidCallback onExplore;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 24, 16, 96),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 620),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(28),
+              decoration: _card(accent: const Color(0xFFF59E0B)),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.route_rounded,
+                    size: 54, color: Color(0xFFF59E0B)),
+                const SizedBox(height: 12),
+                const Text('No places yet',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 19,
+                        fontWeight: FontWeight.w900)),
+                const SizedBox(height: 7),
+                const Text(
+                  'Start building your Tubigon trip by adding destinations from Explore or the MSME Directory.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Color(0xFF94A3B8), height: 1.4),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: onExplore,
+                  icon: const Icon(Icons.explore_rounded),
+                  label: const Text('Explore Places'),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      );
+}
+
+class _IncompleteStopsNotice extends StatelessWidget {
+  const _IncompleteStopsNotice({required this.onRetry});
+  final VoidCallback onRetry;
+
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.all(28),
-        decoration: _card(),
-        child: Column(children: [
-          const Icon(Icons.add_location_alt_rounded,
-              size: 54, color: Color(0xFF64748B)),
-          const SizedBox(height: 10),
-          Text('Day $day has no stops yet.',
-              style: const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 12),
-          ElevatedButton(
-              onPressed: onExplore, child: const Text('Explore places')),
+        padding: const EdgeInsets.all(12),
+        decoration: _card(accent: const Color(0xFFFBBF24)),
+        child: Row(children: [
+          const Icon(Icons.sync_problem_rounded, color: Color(0xFFFBBF24)),
+          const SizedBox(width: 9),
+          const Expanded(
+            child: Text(
+              'Some itinerary stop details are unavailable. Refresh to load the authoritative places.',
+              style: TextStyle(color: Color(0xFFFDE68A), fontSize: 12),
+            ),
+          ),
+          TextButton(onPressed: onRetry, child: const Text('Retry')),
         ]),
+      );
+}
+
+class _ItineraryLoadingState extends StatelessWidget {
+  const _ItineraryLoadingState();
+
+  @override
+  Widget build(BuildContext context) => ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        children: [
+          Container(height: 112, decoration: _loadingDecoration()),
+          const SizedBox(height: 18),
+          Container(height: 34, width: 220, decoration: _loadingDecoration()),
+          const SizedBox(height: 12),
+          for (var index = 0; index < 2; index++) ...[
+            Container(height: 178, decoration: _loadingDecoration()),
+            const SizedBox(height: 12),
+          ],
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(8),
+              child: Text('Loading itinerary places…',
+                  style: TextStyle(color: Color(0xFF94A3B8))),
+            ),
+          ),
+        ],
       );
 }
 
@@ -1110,6 +1575,20 @@ String _startLabel(Itinerary trip) => switch (trip.startLocationType) {
       _ => 'First stop',
     };
 
+int _connectorLegIndex(Itinerary trip, int stopIndex) =>
+    trip.startLocationType == 'current_location' ||
+            (trip.startLocationType == 'custom' &&
+                trip.startLatitude != null &&
+                trip.startLongitude != null)
+        ? stopIndex + 1
+        : stopIndex;
+
+String _statusLabel(String value) => value
+    .split('_')
+    .where((part) => part.isNotEmpty)
+    .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+    .join(' ');
+
 InputDecoration _input(String label, IconData icon) => InputDecoration(
       labelText: label,
       labelStyle: const TextStyle(color: Color(0xFF94A3B8)),
@@ -1129,4 +1608,10 @@ BoxDecoration _card({Color accent = const Color(0xFF334155)}) => BoxDecoration(
             blurRadius: 16,
             offset: const Offset(0, 7))
       ],
+    );
+
+BoxDecoration _loadingDecoration() => BoxDecoration(
+      color: const Color(0xFF0F172A),
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: const Color(0xFF334155)),
     );

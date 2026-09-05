@@ -6,6 +6,7 @@ import '../../../../core/routes/route_names.dart';
 import '../../../waste_reporting/repositories/waste_report_repository.dart';
 import '../../../map/providers/map_provider.dart';
 import '../../../../core/utils/auth_action_guard.dart';
+import '../../../settings/repositories/settings_repository.dart';
 
 const _categories = <String, String>{
   'garbage': 'Garbage',
@@ -95,6 +96,10 @@ class _WasteReportPageState extends ConsumerState<WasteReportPage> {
 
   @override
   Widget build(BuildContext context) {
+    final reportingEnabled = ref
+            .watch(systemSettingsProvider)
+            .valueOrNull?['waste_reporting_enabled'] !=
+        false;
     return Scaffold(
       backgroundColor: const Color(0xFF080F1A),
       appBar: AppBar(
@@ -285,8 +290,17 @@ class _WasteReportPageState extends ConsumerState<WasteReportPage> {
             const SizedBox(height: 32),
 
             // Submit Button
+            if (!reportingEnabled)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 12),
+                child: Text(
+                  'Waste reporting is temporarily disabled by the Tourism Office.',
+                  style: TextStyle(color: Color(0xFFF59E0B)),
+                ),
+              ),
             ElevatedButton(
-              onPressed: _isSubmitting ? null : _submitReport,
+              onPressed:
+                  _isSubmitting || !reportingEnabled ? null : _submitReport,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFF59E0B),
                 foregroundColor: Colors.black,

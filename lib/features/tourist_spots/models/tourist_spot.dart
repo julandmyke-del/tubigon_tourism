@@ -273,6 +273,15 @@ class TouristSpot {
   bool get canAcceptBookings =>
       isActive && isPublished && isBookable && bookingEnabled;
 
+  bool get hasCoordinates =>
+      latitude.isFinite &&
+      longitude.isFinite &&
+      latitude >= -90 &&
+      latitude <= 90 &&
+      longitude >= -180 &&
+      longitude <= 180 &&
+      !(latitude == 0 && longitude == 0);
+
   String get bookingUnavailableLabel {
     final code = bookingUnavailableReasonCode?.trim();
     if (code == null || code.isEmpty) return 'Temporarily unavailable';

@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/utils/auth_action_guard.dart';
 import '../../../authentication/auth_provider.dart';
@@ -10,6 +11,7 @@ import '../../../itinerary/presentation/itinerary_add_sheet.dart';
 import '../../../map/place_category_style.dart';
 import '../../../map/providers/map_provider.dart';
 import '../../../map/providers/place_detail_provider.dart';
+import '../../../map/map_focus.dart';
 
 class ExplorePlaceDetailPage extends ConsumerStatefulWidget {
   const ExplorePlaceDetailPage({super.key, required this.placeId});
@@ -169,6 +171,15 @@ class _ExplorePlaceDetailPageState
                                     text: distance < 1
                                         ? '${(distance * 1000).round()} m away'
                                         : '${distance.toStringAsFixed(1)} km away'),
+                              if (item.operatingHours?.trim().isNotEmpty ??
+                                  false)
+                                _InfoRow(
+                                    icon: Icons.schedule_rounded,
+                                    text: item.operatingHours!.trim()),
+                              if (item.contact?.trim().isNotEmpty ?? false)
+                                _InfoRow(
+                                    icon: Icons.call_rounded,
+                                    text: item.contact!.trim()),
                               const SizedBox(height: 20),
                               Wrap(spacing: 10, runSpacing: 10, children: [
                                 ElevatedButton.icon(
@@ -209,6 +220,19 @@ class _ExplorePlaceDetailPageState
                                       ? 'Remove Favorite'
                                       : 'Favorite'),
                                 ),
+                                if (item.hasCallableContact)
+                                  OutlinedButton.icon(
+                                    onPressed: () => _call(item.contact!),
+                                    icon: const Icon(Icons.call_rounded),
+                                    label: const Text('Call'),
+                                  ),
+                                if (item.hasFerrySchedules)
+                                  OutlinedButton.icon(
+                                    onPressed: () => context.push('/ferry'),
+                                    icon: const Icon(
+                                        Icons.directions_boat_rounded),
+                                    label: const Text('Ferry Schedules'),
+                                  ),
                               ]),
                             ],
                           ),
@@ -226,8 +250,7 @@ class _ExplorePlaceDetailPageState
   }
 
   void _openMap(MapMarker place, {bool directions = false}) {
-    final marker = Uri.encodeQueryComponent(place.id);
-    context.push('/map?marker=$marker${directions ? '&navigate=true' : ''}');
+    context.push(mapFocusPathForMarker(place, directions: directions));
   }
 
   Future<void> _toggleFavorite(MapMarker place) async {
@@ -254,6 +277,23 @@ class _ExplorePlaceDetailPageState
       if (mounted) _message('Unable to update favorites right now.');
     } finally {
       if (mounted) setState(() => _favoriteBusy = false);
+    }
+  }
+
+  Future<void> _call(String number) async {
+    final clean = number.replaceAll(RegExp(r'[^\d+]'), '');
+    if (clean.isEmpty) {
+      if (mounted) _message('Calling is not available on this device.');
+      return;
+    }
+    try {
+      final opened = await launchUrl(Uri(scheme: 'tel', path: clean),
+          mode: LaunchMode.externalApplication);
+      if (!opened && mounted) {
+        _message('Calling is not available on this device.');
+      }
+    } catch (_) {
+      if (mounted) _message('Calling is not available on this device.');
     }
   }
 

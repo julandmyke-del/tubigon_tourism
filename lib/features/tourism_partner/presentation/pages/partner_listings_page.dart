@@ -2,262 +2,176 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../providers/tourism_partner_providers.dart';
 import '../../../map/providers/map_provider.dart';
 import '../../../tourist_spots/repositories/tourist_spot_repository.dart';
+import '../../providers/tourism_partner_providers.dart';
 import '../partner_theme.dart';
 
 class PartnerListingsPage extends ConsumerStatefulWidget {
   const PartnerListingsPage({super.key});
+
   @override
-  ConsumerState<PartnerListingsPage> createState() => _State();
+  ConsumerState<PartnerListingsPage> createState() =>
+      _PartnerDestinationState();
 }
 
-class _State extends ConsumerState<PartnerListingsPage> {
-  String _filter = 'all';
-  String _query = '';
-  String? _busyId;
+class _PartnerDestinationState extends ConsumerState<PartnerListingsPage> {
+  bool _busy = false;
 
   @override
   Widget build(BuildContext context) {
-    final listings = ref.watch(partnerListingsProvider);
-    final managed = ref.watch(partnerManagedDestinationsProvider);
-    final managedItems = managed.valueOrNull ?? const <Map<String, dynamic>>[];
+    final assignment = ref.watch(currentPartnerAssignmentProvider);
     return Scaffold(
       backgroundColor: PartnerTheme.bgDark,
-      floatingActionButton: managedItems.isEmpty
-          ? FloatingActionButton.extended(
-              onPressed: () => context.push('/tourism-partner/listings/create'),
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Create listing'),
-            )
-          : null,
       body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: listings.when(
+        padding:
+            EdgeInsets.all(MediaQuery.sizeOf(context).width < 600 ? 16 : 24),
+        child: assignment.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => _Message(
-              error.toString(), () => ref.invalidate(partnerListingsProvider)),
-          data: (items) {
-            if (managed.isLoading) {
-              return const Center(child: CircularProgressIndicator());
+          error: (_, __) => _StateMessage(
+            icon: Icons.cloud_off_rounded,
+            title: "We couldn't load your destination.",
+            message: 'Check your connection and try again.',
+            action: () => ref.invalidate(currentPartnerAssignmentProvider),
+          ),
+          data: (assignment) {
+            if (assignment == null || assignment['destination'] is! Map) {
+              return const _StateMessage(
+                icon: Icons.assignment_late_outlined,
+                title: 'No destination assigned',
+                message:
+                    'Contact the Tourism Office or wait for an Admin assignment. Creating duplicate public destinations is not available here.',
+              );
             }
-            if (managed.hasError) {
-              return _Message(managed.error.toString(),
-                  () => ref.invalidate(partnerManagedDestinationsProvider));
-            }
-            if (managedItems.isNotEmpty) {
-              return _managedDestinations(managedItems);
-            }
-            final filtered = items.where((item) {
-              final status = item['status']?.toString() ?? 'draft';
-              final text = '${item['name'] ?? ''} ${item['category'] ?? ''}'
-                  .toLowerCase();
-              return (_filter == 'all' || status == _filter) &&
-                  text.contains(_query.toLowerCase());
-            }).toList();
-            return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            final spot = Map<String, dynamic>.from(
+              assignment['destination'] as Map,
+            );
+            return RefreshIndicator(
+              onRefresh: () async => ref.refresh(
+                currentPartnerAssignmentProvider.future,
+              ),
+              child: ListView(
                 children: [
-                  Text('Tourism Listings', style: PartnerTheme.headingLarge()),
+                  Text('Assigned Destination',
+                      style: PartnerTheme.headingLarge()),
                   Text(
-                      'Draft, submit, and track municipal review from one place.',
-                      style: PartnerTheme.label()),
-                  const SizedBox(height: 16),
-                  Wrap(spacing: 8, runSpacing: 8, children: [
-                    SizedBox(
-                      width: 280,
-                      child: TextField(
-                        onChanged: (value) => setState(() => _query = value),
-                        decoration: const InputDecoration(
-                            prefixIcon: Icon(Icons.search),
-                            hintText: 'Search listings'),
-                      ),
-                    ),
-                    for (final status in const [
-                      'all',
-                      'draft',
-                      'submitted',
-                      'approved',
-                      'needs_changes',
-                      'suspended',
-                      'archived'
-                    ])
-                      ChoiceChip(
-                        label: Text(status.replaceAll('_', ' ')),
-                        selected: _filter == status,
-                        onSelected: (_) => setState(() => _filter = status),
-                      ),
-                  ]),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: filtered.isEmpty
-                        ? const Center(
-                            child: Text('No listings match this view.',
-                                style:
-                                    TextStyle(color: PartnerTheme.textMuted)))
-                        : RefreshIndicator(
-                            onRefresh: () async =>
-                                ref.refresh(partnerListingsProvider.future),
-                            child: ListView.separated(
-                              itemCount: filtered.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: 10),
-                              itemBuilder: (context, index) =>
-                                  _listingCard(filtered[index]),
-                            ),
-                          ),
+                    'Manage the authoritative Tourist Spot assigned to this account.',
+                    style: PartnerTheme.label(),
                   ),
-                ]);
+                  const SizedBox(height: 18),
+                  _DestinationHeader(spot: spot, assignment: assignment),
+                  const SizedBox(height: 16),
+                  LayoutBuilder(builder: (context, constraints) {
+                    final wide = constraints.maxWidth >= 850;
+                    final cards = [
+                      _ContentCard(
+                        title: 'Partner editable',
+                        icon: Icons.edit_note_rounded,
+                        color: PartnerTheme.primaryOrange,
+                        body:
+                            'Description, visitor information, opening hours, contact information, amenities, and booking instructions.',
+                        action: FilledButton.icon(
+                          onPressed:
+                              _busy ? null : () => _editDestination(spot),
+                          icon: const Icon(Icons.edit_rounded),
+                          label: const Text('Manage Details'),
+                        ),
+                      ),
+                      _ContentCard(
+                        title: 'Municipal controls',
+                        icon: Icons.verified_user_outlined,
+                        color: PartnerTheme.textMuted,
+                        body:
+                            'Name, category, assignment, publication, operational status, and map coordinates are controlled by LGU/Admin.',
+                        action: OutlinedButton.icon(
+                          onPressed: () => context.push(
+                            '/tourism-partner/preview/${spot['integer_id'] ?? 0}',
+                          ),
+                          icon: const Icon(Icons.visibility_outlined),
+                          label: const Text('Preview as Tourist'),
+                        ),
+                      ),
+                    ];
+                    return wide
+                        ? Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(child: cards[0]),
+                              const SizedBox(width: 14),
+                              Expanded(child: cards[1]),
+                            ],
+                          )
+                        : Column(
+                            children: [
+                              cards[0],
+                              const SizedBox(height: 12),
+                              cards[1]
+                            ],
+                          );
+                  }),
+                  const SizedBox(height: 16),
+                  _AvailabilityCard(
+                    spot: spot,
+                    busy: _busy,
+                    onChange: () => _changeAvailability(spot),
+                  ),
+                  const SizedBox(height: 16),
+                  _QuickActions(
+                    onReservations: () =>
+                        context.go('/tourism-partner/reservations'),
+                    onMap: () => context.push(
+                      '/map?marker=tourist_spot:${spot['id']}',
+                    ),
+                    onActivity: _showActivity,
+                  ),
+                ],
+              ),
+            );
           },
         ),
       ),
     );
   }
 
-  Widget _managedDestinations(List<Map<String, dynamic>> items) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Managed Destinations', style: PartnerTheme.headingLarge()),
-          Text(
-            'Edit the authoritative Tourist Spot record assigned to this account.',
-            style: PartnerTheme.label(),
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: () async =>
-                  ref.refresh(partnerManagedDestinationsProvider.future),
-              child: ListView.separated(
-                itemCount: items.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 12),
-                itemBuilder: (context, index) =>
-                    _managedDestinationCard(items[index]),
-              ),
-            ),
-          ),
-        ],
-      );
-
-  Widget _managedDestinationCard(Map<String, dynamic> spot) {
-    final enabled =
-        spot['booking_enabled'] == true || spot['booking_enabled'] == 1;
-    final supported = spot['is_bookable'] == true || spot['is_bookable'] == 1;
-    final reason =
-        _reasonLabel(spot['booking_unavailable_reason_code']?.toString());
-    final detail = spot['booking_unavailable_reason']?.toString().trim() ?? '';
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: PartnerTheme.cardDecoration(),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Wrap(
-          alignment: WrapAlignment.spaceBetween,
-          runSpacing: 10,
-          children: [
-            SizedBox(
-              width: 520,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(spot['name']?.toString() ?? 'Managed destination',
-                      style: PartnerTheme.headingSmall()),
-                  Text(
-                    '${spot['is_published'] == true || spot['is_published'] == 1 ? 'Published' : 'Not published'} · ${spot['is_featured'] == true || spot['is_featured'] == 1 ? 'Featured' : 'Standard'}',
-                    style: PartnerTheme.label(),
-                  ),
-                ],
-              ),
-            ),
-            Chip(
-              avatar: Icon(
-                enabled ? Icons.event_available : Icons.event_busy,
-                size: 18,
-                color: enabled ? PartnerTheme.green : PartnerTheme.red,
-              ),
-              label: Text(enabled
-                  ? 'ACCEPTING RESERVATIONS'
-                  : 'TEMPORARILY UNAVAILABLE'),
-            ),
-          ],
-        ),
-        if (!enabled) ...[
-          const SizedBox(height: 10),
-          Text('Reason: $reason',
-              style: const TextStyle(
-                  color: PartnerTheme.orange, fontWeight: FontWeight.w700)),
-          if (detail.isNotEmpty)
-            Text(detail, style: const TextStyle(color: PartnerTheme.textMuted)),
-        ],
-        const SizedBox(height: 14),
-        Wrap(spacing: 8, runSpacing: 8, children: [
-          OutlinedButton.icon(
-            onPressed: () => _editDestination(spot),
-            icon: const Icon(Icons.edit_rounded),
-            label: const Text('Edit Destination'),
-          ),
-          ElevatedButton.icon(
-            onPressed:
-                supported ? () => _changeAvailability(spot, enabled) : null,
-            icon: Icon(enabled ? Icons.pause_circle : Icons.play_circle),
-            label: Text(enabled ? 'Disable Booking' : 'Enable Booking'),
-          ),
-        ]),
-      ]),
-    );
-  }
-
   Future<void> _editDestination(Map<String, dynamic> spot) async {
-    final shortDescription = TextEditingController(
-        text: spot['short_description']?.toString() ?? '');
-    final description =
-        TextEditingController(text: spot['description']?.toString() ?? '');
-    final contact = TextEditingController(
-        text: spot['contact_information']?.toString() ?? '');
-    final opening =
-        TextEditingController(text: spot['opening_hours']?.toString() ?? '');
-    final instructions = TextEditingController(
-        text: spot['visitor_instructions']?.toString() ?? '');
-    final booking = TextEditingController(
-        text: spot['booking_instructions']?.toString() ?? '');
+    final controllers = {
+      'short_description':
+          TextEditingController(text: '${spot['short_description'] ?? ''}'),
+      'description':
+          TextEditingController(text: '${spot['description'] ?? ''}'),
+      'contact_information':
+          TextEditingController(text: '${spot['contact_information'] ?? ''}'),
+      'opening_hours':
+          TextEditingController(text: '${spot['opening_hours'] ?? ''}'),
+      'visitor_instructions':
+          TextEditingController(text: '${spot['visitor_instructions'] ?? ''}'),
+      'booking_instructions':
+          TextEditingController(text: '${spot['booking_instructions'] ?? ''}'),
+    };
     final save = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text('Edit ${spot['name']}'),
+        title: Text('Manage ${spot['name']}'),
         content: SizedBox(
-          width: 560,
+          width: 620,
           child: SingleChildScrollView(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextField(
-                  controller: shortDescription,
-                  maxLength: 500,
-                  decoration:
-                      const InputDecoration(labelText: 'Short description')),
-              TextField(
-                  controller: description,
-                  maxLines: 5,
-                  decoration:
-                      const InputDecoration(labelText: 'Full description')),
-              TextField(
-                  controller: contact,
-                  maxLines: 2,
-                  decoration:
-                      const InputDecoration(labelText: 'Contact information')),
-              TextField(
-                  controller: opening,
-                  maxLines: 2,
-                  decoration:
-                      const InputDecoration(labelText: 'Opening information')),
-              TextField(
-                  controller: instructions,
-                  maxLines: 3,
-                  decoration:
-                      const InputDecoration(labelText: 'Visitor instructions')),
-              TextField(
-                  controller: booking,
-                  maxLines: 3,
-                  decoration:
-                      const InputDecoration(labelText: 'Booking instructions')),
-            ]),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _field(controllers['short_description']!, 'Short description',
+                    2, 500),
+                _field(
+                    controllers['description']!, 'Full description', 5, 10000),
+                _field(controllers['opening_hours']!,
+                    'Opening / visiting hours', 2, 2000),
+                _field(controllers['contact_information']!,
+                    'Contact information', 2, 2000),
+                _field(controllers['visitor_instructions']!,
+                    'Visitor and safety reminders', 4, 5000),
+                _field(controllers['booking_instructions']!,
+                    'Booking instructions', 3, 5000),
+              ],
+            ),
           ),
         ),
         actions: [
@@ -270,96 +184,150 @@ class _State extends ConsumerState<PartnerListingsPage> {
         ],
       ),
     );
+    final payload = {
+      for (final entry in controllers.entries)
+        entry.key: entry.value.text.trim()
+    };
+    for (final controller in controllers.values) {
+      controller.dispose();
+    }
     if (save != true || !mounted) return;
+    final repository = ref.read(tourismPartnerRepositoryProvider);
+    setState(() => _busy = true);
     try {
-      await ref.read(tourismPartnerRepositoryProvider).updateManagedDestination(
-        spot['id'].toString(),
-        {
-          'short_description': shortDescription.text.trim(),
-          'description': description.text.trim(),
-          'contact_information': contact.text.trim(),
-          'opening_hours': opening.text.trim(),
-          'visitor_instructions': instructions.text.trim(),
-          'booking_instructions': booking.text.trim(),
-        },
-      );
-      _invalidateDestinationData();
-      if (mounted) _snack('Destination information updated.');
-    } catch (error) {
-      if (mounted) _snack(error.toString(), error: true);
+      await repository.updateManagedDestination(spot['id'].toString(), payload);
+      if (!mounted) return;
+      _refreshDestination();
+      _snack('Destination information updated.');
+    } catch (_) {
+      if (mounted) {
+        _snack("We couldn't save the destination. Try again.", error: true);
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
-  Future<void> _changeAvailability(
-      Map<String, dynamic> spot, bool currentlyEnabled) async {
+  Widget _field(
+          TextEditingController controller, String label, int lines, int max) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: TextField(
+          controller: controller,
+          maxLines: lines,
+          maxLength: max,
+          decoration:
+              InputDecoration(labelText: label, alignLabelWithHint: true),
+        ),
+      );
+
+  Future<void> _changeAvailability(Map<String, dynamic> spot) async {
+    final enabled =
+        spot['booking_enabled'] == true || spot['booking_enabled'] == 1;
     String reasonCode = 'weather_conditions';
-    final detail = TextEditingController();
+    final note = TextEditingController();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Text(currentlyEnabled
-              ? 'Disable Booking?'
-              : 'Resume accepting reservations?'),
-          content: currentlyEnabled
+          title: Text(enabled ? 'Pause reservations?' : 'Resume reservations?'),
+          content: enabled
               ? Column(mainAxisSize: MainAxisSize.min, children: [
                   DropdownButtonFormField<String>(
                     initialValue: reasonCode,
                     decoration: const InputDecoration(labelText: 'Reason'),
                     items: _reasonCodes
                         .map((code) => DropdownMenuItem(
-                            value: code, child: Text(_reasonLabel(code))))
+                            value: code, child: Text(_label(code))))
                         .toList(),
                     onChanged: (value) =>
                         setDialogState(() => reasonCode = value!),
                   ),
+                  const SizedBox(height: 12),
                   TextField(
-                    controller: detail,
-                    maxLines: 3,
-                    decoration:
-                        const InputDecoration(labelText: 'Details (optional)'),
-                  ),
+                      controller: note,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                          labelText: 'Public note (optional)')),
                 ])
-              : const Text('This destination will accept new reservations.'),
+              : const Text(
+                  'New Tourist reservations will be accepted again. Existing reservations are unchanged.'),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(dialogContext, false),
                 child: const Text('Cancel')),
             FilledButton(
                 onPressed: () => Navigator.pop(dialogContext, true),
-                child: Text(currentlyEnabled ? 'Disable' : 'Enable')),
+                child: Text(enabled ? 'Pause' : 'Resume')),
           ],
         ),
       ),
     );
+    final detail = note.text.trim();
+    note.dispose();
     if (confirmed != true || !mounted) return;
+    final repository = ref.read(tourismPartnerRepositoryProvider);
+    setState(() => _busy = true);
     try {
-      await ref
-          .read(tourismPartnerRepositoryProvider)
-          .updateBookingAvailability(
-            spot['id'].toString(),
-            enabled: !currentlyEnabled,
-            reasonCode: currentlyEnabled ? reasonCode : null,
-            reason: currentlyEnabled ? detail.text : null,
-          );
-      _invalidateDestinationData();
+      await repository.updateBookingAvailability(
+        spot['id'].toString(),
+        enabled: !enabled,
+        reasonCode: enabled ? reasonCode : null,
+        reason: enabled ? detail : null,
+      );
+      if (!mounted) return;
+      _refreshDestination();
+      _snack(enabled ? 'Reservations paused.' : 'Reservations resumed.');
+    } catch (_) {
       if (mounted) {
-        _snack(currentlyEnabled
-            ? 'Booking disabled with a public reason.'
-            : 'Booking is accepting reservations again.');
+        _snack("We couldn't update booking availability.", error: true);
       }
-    } catch (error) {
-      if (mounted) _snack(error.toString(), error: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
-  void _invalidateDestinationData() {
+  void _refreshDestination() {
+    ref.invalidate(currentPartnerAssignmentProvider);
     ref.invalidate(partnerManagedDestinationsProvider);
     ref.invalidate(partnerDashboardStatsProvider);
+    ref.invalidate(partnerRecentActivityProvider);
     ref.invalidate(touristSpotsListProvider);
     ref.invalidate(bookableTouristSpotsProvider);
     ref.invalidate(mapMarkersProvider);
   }
+
+  Future<void> _showActivity() async {
+    final activity = await ref.read(partnerRecentActivityProvider.future);
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: activity.isEmpty
+            ? const Padding(
+                padding: EdgeInsets.all(32),
+                child: Text('No destination activity yet.'))
+            : ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: activity.length,
+                itemBuilder: (context, index) => ListTile(
+                  leading: const Icon(Icons.history_rounded),
+                  title: Text(
+                      '${activity[index]['action'] ?? 'Destination update'}'),
+                  subtitle: Text('${activity[index]['created_at'] ?? ''}'),
+                ),
+              ),
+      ),
+    );
+  }
+
+  void _snack(String message, {bool error = false}) =>
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            backgroundColor: error ? PartnerTheme.red : PartnerTheme.green,
+            content: Text(message)),
+      );
 
   static const _reasonCodes = [
     'weather_conditions',
@@ -373,99 +341,218 @@ class _State extends ConsumerState<PartnerListingsPage> {
     'site_rehabilitation',
     'other',
   ];
+  static String _label(String value) => value
+      .split('_')
+      .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+      .join(' ');
+}
 
-  static String _reasonLabel(String? code) =>
-      (code ?? 'temporarily_unavailable')
-          .split('_')
-          .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
-          .join(' ');
+class _DestinationHeader extends StatelessWidget {
+  const _DestinationHeader({required this.spot, required this.assignment});
+  final Map<String, dynamic> spot;
+  final Map<String, dynamic> assignment;
 
-  Widget _listingCard(Map<String, dynamic> item) {
-    final id = item['id']?.toString() ?? '';
-    final status = item['status']?.toString() ?? 'draft';
-    final canSubmit = ['draft', 'needs_changes', 'rejected'].contains(status);
+  @override
+  Widget build(BuildContext context) {
+    final category =
+        spot['category'] is Map ? (spot['category'] as Map)['name'] : null;
+    final image =
+        (spot['images'] is List && (spot['images'] as List).isNotEmpty)
+            ? (spot['images'] as List).first.toString()
+            : null;
     return Container(
-      padding: const EdgeInsets.all(16),
       decoration: PartnerTheme.cardDecoration(),
-      child: Wrap(
-        alignment: WrapAlignment.spaceBetween,
-        runSpacing: 10,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          SizedBox(
-            width: 430,
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(item['name']?.toString() ?? 'Untitled listing',
-                  style: PartnerTheme.headingSmall()),
-              Text(
-                  '${item['category'] ?? 'Tourism service'} • ${item['location'] ?? 'Location not set'}',
-                  style: PartnerTheme.label()),
-              const SizedBox(height: 6),
-              Chip(label: Text(status.replaceAll('_', ' ').toUpperCase())),
-              if ((item['review_notes']?.toString() ?? '').isNotEmpty)
-                Text(item['review_notes'].toString(),
-                    style: const TextStyle(color: PartnerTheme.orange)),
+      clipBehavior: Clip.antiAlias,
+      child: LayoutBuilder(builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 700;
+        final cover = Container(
+          width: wide ? 250 : double.infinity,
+          height: 190,
+          color: PartnerTheme.cardDark,
+          child: image == null
+              ? const Icon(Icons.landscape_rounded,
+                  size: 58, color: PartnerTheme.textMuted)
+              : Image.network(image,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) =>
+                      const Icon(Icons.broken_image_outlined)),
+        );
+        final details = Padding(
+          padding: const EdgeInsets.all(20),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('${spot['name'] ?? 'Assigned destination'}',
+                style: PartnerTheme.headingLarge()),
+            Text(
+                '${category ?? 'Tourist Spot'} • ${spot['address'] ?? 'Tubigon, Bohol'}',
+                style: PartnerTheme.label()),
+            const SizedBox(height: 14),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              _chip('ASSIGNED', PartnerTheme.green),
+              _chip(
+                  (spot['is_published'] == true || spot['is_published'] == 1)
+                      ? 'PUBLISHED'
+                      : 'NOT PUBLISHED',
+                  PartnerTheme.primaryOrange),
+              _chip('${spot['operational_status'] ?? 'active'}'.toUpperCase(),
+                  PartnerTheme.textMuted),
             ]),
-          ),
-          Wrap(spacing: 8, children: [
-            IconButton(
-              tooltip: 'Preview on Smart Map',
-              onPressed: () => context.push('/map?marker=tourism_listing:$id'),
-              icon: const Icon(Icons.visibility_rounded),
-            ),
-            IconButton(
-              tooltip: 'Edit',
-              onPressed: () =>
-                  context.push('/tourism-partner/listings/create?edit=$id'),
-              icon: const Icon(Icons.edit_rounded),
-            ),
-            if (canSubmit)
-              ElevatedButton.icon(
-                onPressed: _busyId == id ? null : () => _submit(id),
-                icon: _busyId == id
-                    ? const SizedBox.square(
-                        dimension: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.send_rounded),
-                label: const Text('Submit'),
-              ),
+            const SizedBox(height: 12),
+            Text(
+                'Assigned ${assignment['assigned_at'] ?? 'by the Tourism Office'}',
+                style: PartnerTheme.label()),
+            Text('Last updated ${spot['updated_at'] ?? '—'}',
+                style: PartnerTheme.label()),
           ]),
-        ],
-      ),
+        );
+        return wide
+            ? Row(children: [cover, Expanded(child: details)])
+            : Column(children: [cover, details]);
+      }),
     );
   }
 
-  Future<void> _submit(String id) async {
-    setState(() => _busyId = id);
-    try {
-      await ref.read(tourismPartnerRepositoryProvider).submitListing(id);
-      ref.invalidate(partnerListingsProvider);
-      ref.invalidate(partnerDashboardStatsProvider);
-      if (mounted) _snack('Listing submitted for review.');
-    } catch (error) {
-      if (mounted) _snack(error.toString(), error: true);
-    } finally {
-      if (mounted) setState(() => _busyId = null);
-    }
-  }
-
-  void _snack(String message, {bool error = false}) =>
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            backgroundColor: error ? Colors.red : Colors.green,
-            content: Text(message)),
+  static Widget _chip(String label, Color color) => Chip(
+        avatar: Icon(Icons.circle, size: 9, color: color),
+        label: Text(label),
       );
 }
 
-class _Message extends StatelessWidget {
-  const _Message(this.message, this.retry);
-  final String message;
-  final VoidCallback retry;
+class _AvailabilityCard extends StatelessWidget {
+  const _AvailabilityCard(
+      {required this.spot, required this.busy, required this.onChange});
+  final Map<String, dynamic> spot;
+  final bool busy;
+  final VoidCallback onChange;
   @override
-  Widget build(BuildContext context) => Center(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text(message, style: const TextStyle(color: Colors.red)),
-        OutlinedButton(onPressed: retry, child: const Text('Retry')),
-      ]));
+  Widget build(BuildContext context) {
+    final enabled =
+        spot['booking_enabled'] == true || spot['booking_enabled'] == 1;
+    final supported = spot['is_bookable'] == true || spot['is_bookable'] == 1;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: PartnerTheme.cardDecoration(),
+      child: Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          runSpacing: 12,
+          children: [
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Reservation Availability',
+                  style: PartnerTheme.headingSmall()),
+              Text(
+                  !supported
+                      ? 'Reservations are not configured by LGU'
+                      : enabled
+                          ? '● Accepting Reservations'
+                          : '● Reservations Paused',
+                  style: TextStyle(
+                      color: enabled ? PartnerTheme.green : PartnerTheme.orange,
+                      fontWeight: FontWeight.w800)),
+              if (!enabled && spot['booking_unavailable_reason_code'] != null)
+                Text(
+                    'Reason: ${_PartnerDestinationState._label(spot['booking_unavailable_reason_code'].toString())}',
+                    style: PartnerTheme.label()),
+              if (!enabled &&
+                  '${spot['booking_unavailable_reason'] ?? ''}'.isNotEmpty)
+                Text('${spot['booking_unavailable_reason']}',
+                    style: PartnerTheme.label()),
+            ]),
+            FilledButton.icon(
+              onPressed: supported && !busy ? onChange : null,
+              icon: Icon(enabled
+                  ? Icons.pause_circle_outline
+                  : Icons.play_circle_outline),
+              label:
+                  Text(enabled ? 'Pause Reservations' : 'Resume Reservations'),
+            ),
+          ]),
+    );
+  }
+}
+
+class _ContentCard extends StatelessWidget {
+  const _ContentCard(
+      {required this.title,
+      required this.icon,
+      required this.color,
+      required this.body,
+      required this.action});
+  final String title;
+  final IconData icon;
+  final Color color;
+  final String body;
+  final Widget action;
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(18),
+        decoration: PartnerTheme.cardDecoration(),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(icon, color: color),
+          const SizedBox(height: 10),
+          Text(title, style: PartnerTheme.headingSmall()),
+          const SizedBox(height: 6),
+          Text(body, style: PartnerTheme.label()),
+          const SizedBox(height: 14),
+          action,
+        ]),
+      );
+}
+
+class _QuickActions extends StatelessWidget {
+  const _QuickActions(
+      {required this.onReservations,
+      required this.onMap,
+      required this.onActivity});
+  final VoidCallback onReservations;
+  final VoidCallback onMap;
+  final VoidCallback onActivity;
+  @override
+  Widget build(BuildContext context) =>
+      Wrap(spacing: 10, runSpacing: 10, children: [
+        OutlinedButton.icon(
+            onPressed: onReservations,
+            icon: const Icon(Icons.calendar_month_outlined),
+            label: const Text('View Reservations')),
+        OutlinedButton.icon(
+            onPressed: onMap,
+            icon: const Icon(Icons.map_outlined),
+            label: const Text('View on Smart Map')),
+        OutlinedButton.icon(
+            onPressed: onActivity,
+            icon: const Icon(Icons.history_rounded),
+            label: const Text('Activity History')),
+      ]);
+}
+
+class _StateMessage extends StatelessWidget {
+  const _StateMessage(
+      {required this.icon,
+      required this.title,
+      required this.message,
+      this.action});
+  final IconData icon;
+  final String title;
+  final String message;
+  final VoidCallback? action;
+  @override
+  Widget build(BuildContext context) => ListView(children: [
+        const SizedBox(height: 80),
+        Icon(icon, size: 58, color: PartnerTheme.primaryOrange),
+        const SizedBox(height: 12),
+        Text(title,
+            textAlign: TextAlign.center, style: PartnerTheme.headingLarge()),
+        const SizedBox(height: 8),
+        Center(
+            child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: Text(message,
+                    textAlign: TextAlign.center, style: PartnerTheme.label()))),
+        if (action != null) ...[
+          const SizedBox(height: 16),
+          Center(
+              child:
+                  OutlinedButton(onPressed: action, child: const Text('Retry')))
+        ],
+      ]);
 }

@@ -12,6 +12,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 
 class SyncController extends Controller
@@ -39,7 +40,7 @@ class SyncController extends Controller
             'reviews', 'favorites', 'waste_reports',
         ];
 
-        if (!in_array($table, $allowedTables)) {
+        if (! in_array($table, $allowedTables)) {
             return response()->json([
                 'status' => 'error',
                 'message' => "Table '$table' is not syncable.",
@@ -61,6 +62,7 @@ class SyncController extends Controller
                 }
                 // Sync creates are immutable after acceptance; protected updates use feature APIs.
                 $syncedIds[] = $clean['id'];
+
                 continue;
             }
 
@@ -72,6 +74,7 @@ class SyncController extends Controller
                     ->exists();
                 if ($alreadyFavorite) {
                     $syncedIds[] = $clean['id'];
+
                     continue;
                 }
                 DB::table($table)->insert($clean);
@@ -111,7 +114,14 @@ class SyncController extends Controller
 
             $source = match ($data['reservable_type']) {
                 'spot' => DB::table('tourist_spots')->where('id', $data['reservable_id'])->where('is_active', true)->first(),
-                'msme' => DB::table('msmes')->where('id', $data['reservable_id'])->where('is_verified', true)->where('verification_status', 'verified')->where('operational_status', 'open')->first(),
+                'msme' => DB::table('msmes')->where('id', $data['reservable_id'])
+                    ->where('is_verified', true)
+                    ->where('verification_status', 'verified')
+                    ->where('operational_status', 'open')
+                    ->when(
+                        Schema::hasColumn('msmes', 'booking_enabled'),
+                        fn ($query) => $query->where('booking_enabled', true),
+                    )->first(),
                 'tourism_listing' => DB::table('tourism_listings')->where('id', $data['reservable_id'])->where('is_active', true)->where('approval_status', 'approved')->first(),
             };
             abort_if($source === null, 422, 'The selected destination is not available for reservations.');
@@ -178,7 +188,12 @@ class SyncController extends Controller
                 'content' => 'required|string|min:3|max:1000',
             ])->validate();
             $target = match ($data['reviewable_type']) {
-                'spot' => DB::table('tourist_spots')->where('is_active', true),
+                'spot' => DB::table('tourist_spots')
+                    ->where('is_active', true)
+                    ->when(
+                        Schema::hasColumn('tourist_spots', 'is_published'),
+                        fn ($query) => $query->where('is_published', true),
+                    ),
                 'msme' => DB::table('msmes')->where('is_verified', true)->where('verification_status', 'verified'),
                 'tourism_listing' => DB::table('tourism_listings')->where('is_active', true)->where('approval_status', 'approved'),
             };
@@ -190,6 +205,7 @@ class SyncController extends Controller
                 ->where('id', '<>', $data['id'])
                 ->whereNull('deleted_at')
                 ->exists(), 422, 'You have already reviewed this place.');
+
             return array_merge($data, [
                 'user_id' => $userId,
                 'images' => json_encode([]),
@@ -205,10 +221,16 @@ class SyncController extends Controller
                 'favoritable_id' => 'required|uuid',
             ])->validate();
             $available = match ($data['favoritable_type']) {
-                'spot' => DB::table('tourist_spots')->where('is_active', true),
+                'spot' => DB::table('tourist_spots')
+                    ->where('is_active', true)
+                    ->when(
+                        Schema::hasColumn('tourist_spots', 'is_published'),
+                        fn ($query) => $query->where('is_published', true),
+                    ),
                 'msme' => DB::table('msmes')->where('is_verified', true)->where('verification_status', 'verified'),
                 'tourism_listing' => DB::table('tourism_listings')->where('is_active', true)->where('approval_status', 'approved'),
                 'map_location' => DB::table('map_locations')
+                    ->where('verified', true)
                     ->where('published', true)
                     ->where('active', true),
             };
@@ -219,6 +241,7 @@ class SyncController extends Controller
                 422,
                 'The selected place is not publicly available.',
             );
+
             return array_merge($data, [
                 'user_id' => $userId,
                 'created_at' => now(),
@@ -271,7 +294,7 @@ class SyncController extends Controller
             'tourism_listings', 'partner_notifications',
         ];
 
-        if (!in_array($table, $allowedTables)) {
+        if (! in_array($table, $allowedTables)) {
             return response()->json([
                 'status' => 'error',
                 'message' => "Table '$table' is not syncable.",
@@ -355,6 +378,7 @@ class SyncController extends Controller
                     'data' => ['reservation_id' => $record['id'], 'route' => '/msme-portal/reservations'],
                 ]);
             }
+
             return;
         }
 
@@ -393,7 +417,24 @@ class SyncController extends Controller
                     'body' => 'A tourist reviewed your listing.',
                     'data' => ['review_id' => $record['id'], 'listing_id' => $targetId, 'route' => '/tourism-partner/reviews'],
                 ]);
+            } elseif ($type === 'spot' && Schema::hasTable('tourist_spot_partner_assignments')) {
+                DB::table('tourist_spot_partner_assignments')
+                    ->where('tourist_spot_id', $targetId)
+                    ->pluck('partner_profile_id')
+                    ->unique()
+                    ->each(fn (string $partnerId) => PartnerNotification::create([
+                        'user_id' => $partnerId,
+                        'type' => 'new_review',
+                        'title' => 'New Destination Review',
+                        'body' => 'A tourist reviewed your managed destination.',
+                        'data' => [
+                            'review_id' => $record['id'],
+                            'tourist_spot_id' => $targetId,
+                            'route' => '/tourism-partner/reviews',
+                        ],
+                    ]));
             }
+
             return;
         }
 

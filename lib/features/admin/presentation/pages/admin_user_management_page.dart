@@ -21,6 +21,7 @@ class _AdminUserManagementPageState
   String _searchQuery = '';
   String _roleFilter = 'All';
   String _verificationFilter = 'All';
+  String _statusFilter = 'All';
 
   String _formatCreatedAt(dynamic value) {
     final parsed = DateTime.tryParse(value?.toString() ?? '');
@@ -33,6 +34,7 @@ class _AdminUserManagementPageState
   Widget build(BuildContext context) {
     final usersAsync = ref.watch(adminUsersProvider);
     final rolesAsync = ref.watch(adminRolesProvider);
+    final users = usersAsync.valueOrNull ?? const <Map<String, dynamic>>[];
 
     return Scaffold(
       backgroundColor: AdminColors.navy950,
@@ -42,8 +44,11 @@ class _AdminUserManagementPageState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Page Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -73,6 +78,7 @@ class _AdminUserManagementPageState
                       ),
                       onPressed: () {
                         ref.invalidate(adminUsersProvider);
+                        ref.invalidate(adminDashboardStatsProvider);
                         ref.invalidate(adminRolesProvider);
                       },
                       icon: const Icon(Icons.refresh_rounded,
@@ -101,14 +107,47 @@ class _AdminUserManagementPageState
               ],
             ),
             const SizedBox(height: AppSpacing.lg),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _UserStat(label: 'Total Users', value: users.length),
+                  for (final role in const [
+                    'tourist',
+                    'msme_owner',
+                    'tourism_partner',
+                    'lgu_staff',
+                    'admin'
+                  ]) ...[
+                    const SizedBox(width: 10),
+                    _UserStat(
+                      label: role
+                          .split('_')
+                          .map((part) =>
+                              '${part[0].toUpperCase()}${part.substring(1)}')
+                          .join(' '),
+                      value: users
+                          .where((user) =>
+                              (user['role'] ?? user['role_name']) == role)
+                          .length,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.md),
 
             // Search & Filter Controls
             Container(
               decoration: AdminColors.glassDecoration(),
               padding: const EdgeInsets.all(AppSpacing.md),
-              child: Row(
+              child: Wrap(
+                spacing: AppSpacing.md,
+                runSpacing: AppSpacing.sm,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Expanded(
+                  SizedBox(
+                    width: 360,
                     child: TextField(
                       style: const TextStyle(
                           color: AdminColors.textPrimary, fontSize: 14),
@@ -141,7 +180,6 @@ class _AdminUserManagementPageState
                       onChanged: (val) => setState(() => _searchQuery = val),
                     ),
                   ),
-                  const SizedBox(width: AppSpacing.md),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     decoration: BoxDecoration(
@@ -175,7 +213,6 @@ class _AdminUserManagementPageState
                       ),
                     ),
                   ),
-                  const SizedBox(width: AppSpacing.md),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     decoration: BoxDecoration(
@@ -204,6 +241,32 @@ class _AdminUserManagementPageState
                       ),
                     ),
                   ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: AdminColors.navy900,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AdminColors.cardBorder),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        dropdownColor: AdminColors.navy900,
+                        value: _statusFilter,
+                        style: const TextStyle(
+                            color: AdminColors.textPrimary, fontSize: 14),
+                        items: const [
+                          DropdownMenuItem(
+                              value: 'All', child: Text('All Statuses')),
+                          DropdownMenuItem(
+                              value: 'Active', child: Text('Active')),
+                          DropdownMenuItem(
+                              value: 'Disabled', child: Text('Disabled')),
+                        ],
+                        onChanged: (val) =>
+                            setState(() => _statusFilter = val!),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -227,6 +290,7 @@ class _AdminUserManagementPageState
                       final isVerified = u['is_verified'] == true ||
                           u['is_verified'] == 1 ||
                           u['is_verified'] == '1';
+                      final status = (u['status'] ?? 'Active').toString();
 
                       final matchesQuery =
                           name.contains(_searchQuery.toLowerCase()) ||
@@ -237,8 +301,13 @@ class _AdminUserManagementPageState
                               'All' ||
                           (_verificationFilter == 'Verified' && isVerified) ||
                           (_verificationFilter == 'Pending' && !isVerified);
+                      final matchesStatus =
+                          _statusFilter == 'All' || status == _statusFilter;
 
-                      return matchesQuery && matchesRole && matchesVerification;
+                      return matchesQuery &&
+                          matchesRole &&
+                          matchesVerification &&
+                          matchesStatus;
                     }).toList();
 
                     if (filtered.isEmpty) {
@@ -249,185 +318,247 @@ class _AdminUserManagementPageState
                       );
                     }
 
-                    return SingleChildScrollView(
-                      scrollDirection: Axis.vertical,
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: DataTable(
-                          headingRowColor:
-                              WidgetStateProperty.all(AdminColors.navy900),
-                          dataRowColor:
-                              WidgetStateProperty.all(Colors.transparent),
-                          horizontalMargin: 20,
-                          columnSpacing: 24,
-                          columns: const [
-                            DataColumn(
-                                label: Text('USER',
-                                    style: TextStyle(
-                                        color: AdminColors.textSecondary,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 12))),
-                            DataColumn(
-                                label: Text('EMAIL',
-                                    style: TextStyle(
-                                        color: AdminColors.textSecondary,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 12))),
-                            DataColumn(
-                                label: Text('ROLE',
-                                    style: TextStyle(
-                                        color: AdminColors.textSecondary,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 12))),
-                            DataColumn(
-                                label: Text('VERIFICATION',
-                                    style: TextStyle(
-                                        color: AdminColors.textSecondary,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 12))),
-                            DataColumn(
-                                label: Text('METHOD',
-                                    style: TextStyle(
-                                        color: AdminColors.textSecondary,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 12))),
-                            DataColumn(
-                                label: Text('CREATED',
-                                    style: TextStyle(
-                                        color: AdminColors.textSecondary,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 12))),
-                            DataColumn(
-                                label: Text('STATUS',
-                                    style: TextStyle(
-                                        color: AdminColors.textSecondary,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 12))),
-                            DataColumn(
-                                label: Text('ACTIONS',
-                                    style: TextStyle(
-                                        color: AdminColors.textSecondary,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 12))),
-                          ],
-                          rows: filtered.map((u) {
-                            final name = (u['name'] ?? u['full_name'] ?? 'User')
-                                .toString();
-                            final email = (u['email'] ?? '').toString();
-                            final role =
-                                (u['role'] ?? u['role_name'] ?? 'tourist')
-                                    .toString();
-                            final isVerified = u['is_verified'] == true ||
-                                u['is_verified'] == 1 ||
-                                u['is_verified'] == '1';
-                            final registrationMethod =
-                                (u['registration_method'] ?? 'email')
-                                    .toString();
-                            final status = (u['status'] ?? 'Active').toString();
-                            final userId = u['id']?.toString() ??
-                                u['uuid']?.toString() ??
-                                '';
+                    return LayoutBuilder(
+                      builder: (context, constraints) {
+                        if (constraints.maxWidth < 820) {
+                          return ListView.separated(
+                            padding: const EdgeInsets.all(AppSpacing.md),
+                            itemCount: filtered.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: AppSpacing.sm),
+                            itemBuilder: (context, index) => _buildUserCard(
+                              filtered[index],
+                              rolesAsync.valueOrNull,
+                            ),
+                          );
+                        }
 
-                            return DataRow(
-                              cells: [
-                                DataCell(
-                                  Row(
-                                    children: [
-                                      CircleAvatar(
-                                        radius: 16,
-                                        backgroundColor: AdminColors.orangeDim,
-                                        child: Text(
-                                          name.isNotEmpty
-                                              ? name
-                                                  .substring(0, 1)
-                                                  .toUpperCase()
-                                              : 'U',
-                                          style: const TextStyle(
-                                              color: AdminColors.orange,
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 12),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Text(name,
-                                          style: const TextStyle(
-                                              color: AdminColors.textPrimary,
-                                              fontWeight: FontWeight.w600,
-                                              fontSize: 13)),
-                                    ],
-                                  ),
-                                  onTap: userId.isEmpty
-                                      ? null
-                                      : () =>
-                                          context.push('/admin/users/$userId'),
-                                ),
-                                DataCell(Text(email,
-                                    style: const TextStyle(
-                                        color: AdminColors.textSecondary,
-                                        fontSize: 13))),
-                                DataCell(_RoleBadge(role: role)),
-                                DataCell(
-                                  InkWell(
-                                    onTap: () async {
-                                      try {
-                                        await ref
-                                            .read(adminRepositoryProvider)
-                                            .updateUserActivation(
-                                                userId, !isVerified);
-                                        ref.invalidate(adminUsersProvider);
-                                        _showMessage(
-                                            'User verification updated.');
-                                      } catch (_) {
-                                        _showMessage(
-                                            'Unable to update user verification.',
-                                            error: true);
-                                      }
-                                    },
-                                    borderRadius: BorderRadius.circular(6),
-                                    child: _VerificationBadge(
-                                        isVerified: isVerified),
-                                  ),
-                                ),
-                                DataCell(_RegistrationMethodBadge(
-                                    method: registrationMethod)),
-                                DataCell(Text(
-                                  _formatCreatedAt(u['created_at']),
-                                  style: const TextStyle(
-                                      color: AdminColors.textSecondary,
-                                      fontSize: 12),
-                                )),
-                                DataCell(_StatusBadge(status: status)),
-                                DataCell(
-                                  Row(
-                                    children: [
-                                      IconButton(
-                                        icon: const Icon(Icons.edit_outlined,
-                                            color: AdminColors.info, size: 18),
-                                        tooltip: 'Edit User Role',
-                                        onPressed: () => _showEditRoleDialog(
-                                            context,
-                                            userId,
-                                            name,
-                                            role,
-                                            rolesAsync.value),
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(
-                                            Icons.delete_outline_rounded,
-                                            color: AdminColors.danger,
-                                            size: 18),
-                                        tooltip: 'Delete User',
-                                        onPressed: () => _confirmDeleteUser(
-                                            context, userId, name),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                        return SingleChildScrollView(
+                          scrollDirection: Axis.vertical,
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: DataTable(
+                              headingRowColor:
+                                  WidgetStateProperty.all(AdminColors.navy900),
+                              dataRowColor:
+                                  WidgetStateProperty.all(Colors.transparent),
+                              horizontalMargin: 20,
+                              columnSpacing: 24,
+                              columns: const [
+                                DataColumn(
+                                    label: Text('USER',
+                                        style: TextStyle(
+                                            color: AdminColors.textSecondary,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12))),
+                                DataColumn(
+                                    label: Text('EMAIL',
+                                        style: TextStyle(
+                                            color: AdminColors.textSecondary,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12))),
+                                DataColumn(
+                                    label: Text('ROLE',
+                                        style: TextStyle(
+                                            color: AdminColors.textSecondary,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12))),
+                                DataColumn(
+                                    label: Text('LINKED ACCOUNT',
+                                        style: TextStyle(
+                                            color: AdminColors.textSecondary,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12))),
+                                DataColumn(
+                                    label: Text('VERIFICATION',
+                                        style: TextStyle(
+                                            color: AdminColors.textSecondary,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12))),
+                                DataColumn(
+                                    label: Text('METHOD',
+                                        style: TextStyle(
+                                            color: AdminColors.textSecondary,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12))),
+                                DataColumn(
+                                    label: Text('CREATED',
+                                        style: TextStyle(
+                                            color: AdminColors.textSecondary,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12))),
+                                DataColumn(
+                                    label: Text('STATUS',
+                                        style: TextStyle(
+                                            color: AdminColors.textSecondary,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12))),
+                                DataColumn(
+                                    label: Text('ACTIONS',
+                                        style: TextStyle(
+                                            color: AdminColors.textSecondary,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12))),
                               ],
-                            );
-                          }).toList(),
-                        ),
-                      ),
+                              rows: filtered.map((u) {
+                                final name =
+                                    (u['name'] ?? u['full_name'] ?? 'User')
+                                        .toString();
+                                final email = (u['email'] ?? '').toString();
+                                final role =
+                                    (u['role'] ?? u['role_name'] ?? 'tourist')
+                                        .toString();
+                                final isVerified = u['is_verified'] == true ||
+                                    u['is_verified'] == 1 ||
+                                    u['is_verified'] == '1';
+                                final registrationMethod =
+                                    (u['registration_method'] ?? 'email')
+                                        .toString();
+                                final status =
+                                    (u['status'] ?? 'Active').toString();
+                                final userId = u['id']?.toString() ??
+                                    u['uuid']?.toString() ??
+                                    '';
+                                final linked = role == 'msme_owner'
+                                    ? (u['linked_msmes'] as List<dynamic>? ??
+                                        const [])
+                                    : (u['linked_tourist_spots']
+                                            as List<dynamic>? ??
+                                        const []);
+                                final linkedLabel = linked.isEmpty
+                                    ? '—'
+                                    : linked
+                                        .map((item) =>
+                                            item['name']?.toString() ?? '')
+                                        .where((name) => name.isNotEmpty)
+                                        .join(', ');
+
+                                return DataRow(
+                                  cells: [
+                                    DataCell(
+                                      Row(
+                                        children: [
+                                          CircleAvatar(
+                                            radius: 16,
+                                            backgroundColor:
+                                                AdminColors.orangeDim,
+                                            child: Text(
+                                              name.isNotEmpty
+                                                  ? name
+                                                      .substring(0, 1)
+                                                      .toUpperCase()
+                                                  : 'U',
+                                              style: const TextStyle(
+                                                  color: AdminColors.orange,
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 12),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Text(name,
+                                              style: const TextStyle(
+                                                  color:
+                                                      AdminColors.textPrimary,
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 13)),
+                                        ],
+                                      ),
+                                      onTap: userId.isEmpty
+                                          ? null
+                                          : () => context
+                                              .push('/admin/users/$userId'),
+                                    ),
+                                    DataCell(Text(email,
+                                        style: const TextStyle(
+                                            color: AdminColors.textSecondary,
+                                            fontSize: 13))),
+                                    DataCell(_RoleBadge(role: role)),
+                                    DataCell(SizedBox(
+                                      width: 160,
+                                      child: Text(linkedLabel,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                              color: AdminColors.textSecondary,
+                                              fontSize: 12)),
+                                    )),
+                                    DataCell(
+                                      InkWell(
+                                        onTap: () async {
+                                          try {
+                                            await ref
+                                                .read(adminRepositoryProvider)
+                                                .updateUserActivation(
+                                                    userId, !isVerified);
+                                            if (!mounted) return;
+                                            ref.invalidate(adminUsersProvider);
+                                            ref.invalidate(
+                                                adminDashboardStatsProvider);
+                                            _showMessage(
+                                                'User verification updated.');
+                                          } catch (_) {
+                                            _showMessage(
+                                                'Unable to update user verification.',
+                                                error: true);
+                                          }
+                                        },
+                                        borderRadius: BorderRadius.circular(6),
+                                        child: _VerificationBadge(
+                                            isVerified: isVerified),
+                                      ),
+                                    ),
+                                    DataCell(_RegistrationMethodBadge(
+                                        method: registrationMethod)),
+                                    DataCell(Text(
+                                      _formatCreatedAt(u['created_at']),
+                                      style: const TextStyle(
+                                          color: AdminColors.textSecondary,
+                                          fontSize: 12),
+                                    )),
+                                    DataCell(
+                                      InkWell(
+                                        borderRadius: BorderRadius.circular(6),
+                                        onTap: () => _setAccountStatus(
+                                            userId, name, status != 'Active'),
+                                        child: _StatusBadge(status: status),
+                                      ),
+                                    ),
+                                    DataCell(
+                                      Row(
+                                        children: [
+                                          IconButton(
+                                            icon: const Icon(
+                                                Icons.edit_outlined,
+                                                color: AdminColors.info,
+                                                size: 18),
+                                            tooltip: 'Edit User Role',
+                                            onPressed: () =>
+                                                _showEditRoleDialog(
+                                                    context,
+                                                    userId,
+                                                    name,
+                                                    role,
+                                                    rolesAsync.value),
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(
+                                                Icons.delete_outline_rounded,
+                                                color: AdminColors.danger,
+                                                size: 18),
+                                            tooltip: 'Delete User',
+                                            onPressed: () => _confirmDeleteUser(
+                                                context, userId, name),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                        );
+                      },
                     );
                   },
                   loading: () => const Center(
@@ -578,7 +709,9 @@ class _AdminUserManagementPageState
                                 'password': passCtrl.text,
                                 'role_id': selectedRoleId,
                               });
+                              if (!mounted) return;
                               ref.invalidate(adminUsersProvider);
+                              ref.invalidate(adminDashboardStatsProvider);
                               if (ctx.mounted) Navigator.pop(ctx);
                               _showMessage('User created.');
                             } catch (_) {
@@ -602,6 +735,170 @@ class _AdminUserManagementPageState
                 ],
               )),
     );
+  }
+
+  Widget _buildUserCard(
+    Map<String, dynamic> user,
+    List<Map<String, dynamic>>? roles,
+  ) {
+    final name = (user['name'] ?? user['full_name'] ?? 'User').toString();
+    final email = (user['email'] ?? '').toString();
+    final role = (user['role'] ?? user['role_name'] ?? 'tourist').toString();
+    final isVerified = user['is_verified'] == true ||
+        user['is_verified'] == 1 ||
+        user['is_verified'] == '1';
+    final status = (user['status'] ?? 'Active').toString();
+    final userId = user['id']?.toString() ?? user['uuid']?.toString() ?? '';
+    final linked = role == 'msme_owner'
+        ? (user['linked_msmes'] as List<dynamic>? ?? const [])
+        : (user['linked_tourist_spots'] as List<dynamic>? ?? const []);
+    final linkedLabel = linked
+        .map((item) => item['name']?.toString() ?? '')
+        .where((item) => item.isNotEmpty)
+        .join(', ');
+
+    return Material(
+      color: AdminColors.navy900,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap:
+            userId.isEmpty ? null : () => context.push('/admin/users/$userId'),
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 20,
+                    backgroundColor: AdminColors.orangeDim,
+                    child: Text(
+                      name.isEmpty ? 'U' : name.substring(0, 1).toUpperCase(),
+                      style: const TextStyle(
+                        color: AdminColors.orange,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: AdminColors.textPrimary,
+                                fontWeight: FontWeight.w700)),
+                        Text(email,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: AdminColors.textSecondary,
+                                fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right_rounded,
+                      color: AdminColors.textSecondary),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _RoleBadge(role: role),
+                  _VerificationBadge(isVerified: isVerified),
+                  _StatusBadge(status: status),
+                ],
+              ),
+              if (linkedLabel.isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.sm),
+                Text('Linked: $linkedLabel',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: AdminColors.textSecondary, fontSize: 12)),
+              ],
+              const SizedBox(height: AppSpacing.sm),
+              Row(
+                children: [
+                  Text(_formatCreatedAt(user['created_at']),
+                      style: const TextStyle(
+                          color: AdminColors.textSecondary, fontSize: 12)),
+                  const Spacer(),
+                  IconButton(
+                    tooltip: 'Edit user role',
+                    onPressed: userId.isEmpty
+                        ? null
+                        : () => _showEditRoleDialog(
+                            context, userId, name, role, roles),
+                    icon: const Icon(Icons.manage_accounts_outlined,
+                        color: AdminColors.info),
+                  ),
+                  IconButton(
+                    tooltip: status == 'Active'
+                        ? 'Deactivate account'
+                        : 'Activate account',
+                    onPressed: userId.isEmpty
+                        ? null
+                        : () =>
+                            _setAccountStatus(userId, name, status != 'Active'),
+                    icon: Icon(
+                      status == 'Active'
+                          ? Icons.person_off_outlined
+                          : Icons.person_add_alt_outlined,
+                      color: status == 'Active'
+                          ? AdminColors.danger
+                          : AdminColors.success,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _setAccountStatus(
+      String userId, String name, bool active) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AdminColors.navy900,
+        title: Text('${active ? 'Activate' : 'Deactivate'} account?',
+            style: const TextStyle(color: AdminColors.textPrimary)),
+        content: Text(name,
+            style: const TextStyle(color: AdminColors.textSecondary)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(active ? 'Activate' : 'Deactivate')),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+    try {
+      await ref.read(adminRepositoryProvider).updateUserStatus(userId, active);
+      if (!mounted) return;
+      ref.invalidate(adminUsersProvider);
+      ref.invalidate(adminDashboardStatsProvider);
+      ref.invalidate(adminUserProvider(userId));
+      _showMessage('Account ${active ? 'activated' : 'deactivated'}.');
+    } catch (_) {
+      if (mounted) {
+        _showMessage('Unable to change this account status.', error: true);
+      }
+    }
   }
 
   void _showEditRoleDialog(BuildContext context, String userId, String name,
@@ -649,7 +946,9 @@ class _AdminUserManagementPageState
                 await ref
                     .read(adminRepositoryProvider)
                     .updateUserRole(userId, selectedRoleId!);
+                if (!mounted) return;
                 ref.invalidate(adminUsersProvider);
+                ref.invalidate(adminDashboardStatsProvider);
                 if (ctx.mounted) Navigator.pop(ctx);
                 _showMessage('User role updated.');
               } catch (_) {
@@ -686,7 +985,9 @@ class _AdminUserManagementPageState
             onPressed: () async {
               try {
                 await ref.read(adminRepositoryProvider).deleteUser(userId);
+                if (!mounted) return;
                 ref.invalidate(adminUsersProvider);
+                ref.invalidate(adminDashboardStatsProvider);
                 if (ctx.mounted) Navigator.pop(ctx);
                 _showMessage('User archived.');
               } catch (_) {
@@ -710,6 +1011,34 @@ class _AdminUserManagementPageState
       backgroundColor: error ? AdminColors.danger : AdminColors.success,
     ));
   }
+}
+
+class _UserStat extends StatelessWidget {
+  const _UserStat({required this.label, required this.value});
+  final String label;
+  final int value;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 150,
+        padding: const EdgeInsets.all(12),
+        decoration: AdminColors.glassDecoration(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('$value',
+                style: const TextStyle(
+                    color: AdminColors.textPrimary,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold)),
+            Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    color: AdminColors.textSecondary, fontSize: 12)),
+          ],
+        ),
+      );
 }
 
 class _RoleBadge extends StatelessWidget {

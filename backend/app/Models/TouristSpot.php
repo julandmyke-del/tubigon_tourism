@@ -28,6 +28,7 @@ class TouristSpot extends Model
         'review_count',
         'is_featured',
         'is_active',
+        'operational_status',
         'is_published',
         'is_bookable',
         'booking_enabled',

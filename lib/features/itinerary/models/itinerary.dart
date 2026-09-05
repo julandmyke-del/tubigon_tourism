@@ -9,48 +9,95 @@ class ItineraryPlace {
     required this.markerId,
     required this.name,
     required this.category,
-    required this.latitude,
-    required this.longitude,
+    this.latitude,
+    this.longitude,
+    this.sourceIntegerId,
     this.description,
     this.address,
     this.operatingHours,
     this.images = const [],
     this.isVerified = false,
+    this.isBookable = false,
+    this.bookingEnabled = false,
+    this.bookingUnavailableReason,
   });
 
   final String entityType;
   final String entityId;
+  final int? sourceIntegerId;
   final String markerId;
   final String name;
   final String category;
   final String? description;
   final String? address;
-  final double latitude;
-  final double longitude;
+  final double? latitude;
+  final double? longitude;
   final String? operatingHours;
   final List<String> images;
   final bool isVerified;
+  final bool isBookable;
+  final bool bookingEnabled;
+  final String? bookingUnavailableReason;
+
+  bool get hasCoordinates =>
+      latitude?.isFinite == true &&
+      longitude?.isFinite == true &&
+      latitude! >= -90 &&
+      latitude! <= 90 &&
+      longitude! >= -180 &&
+      longitude! <= 180 &&
+      !(latitude == 0 && longitude == 0);
+
+  String get entityTypeLabel => switch (entityType) {
+        'tourist_spot' => 'Tourist Spot',
+        'msme' => 'MSME',
+        'tourism_listing' => 'Tourism Listing',
+        'map_location' => 'Managed Place',
+        _ => 'Place',
+      };
+
+  String? get detailPath => switch (entityType) {
+        'tourist_spot' when sourceIntegerId != null && sourceIntegerId! > 0 =>
+          '/explore/spot/$sourceIntegerId',
+        'msme' when sourceIntegerId != null && sourceIntegerId! > 0 =>
+          '/explore/msme/$sourceIntegerId',
+        'tourism_listing' => '/explore/listing/$entityId',
+        'map_location' => '/explore/place/$entityId',
+        _ => null,
+      };
+
+  String? get bookingPath =>
+      entityType == 'tourist_spot' && isBookable && bookingEnabled
+          ? '/reservations/create?spot=${Uri.encodeQueryComponent(entityId)}'
+          : null;
 
   factory ItineraryPlace.fromJson(Map<String, dynamic> json) => ItineraryPlace(
         entityType: json['entity_type']?.toString() ?? '',
         entityId: json['entity_id']?.toString() ?? '',
+        sourceIntegerId: _nullableInt(json['source_integer_id']),
         markerId: json['marker_id']?.toString() ?? '',
         name: json['name']?.toString() ?? 'Unavailable place',
         category: json['category']?.toString() ?? 'Place',
         description: json['description']?.toString(),
         address: json['address']?.toString(),
-        latitude: _double(json['latitude']),
-        longitude: _double(json['longitude']),
+        latitude: _nullableDouble(json['latitude']),
+        longitude: _nullableDouble(json['longitude']),
         operatingHours: json['operating_hours']?.toString(),
         images: (json['images'] as List<dynamic>? ?? const [])
             .map((item) => item.toString())
             .toList(growable: false),
         isVerified: json['is_verified'] == true || json['is_verified'] == 1,
+        isBookable: json['is_bookable'] == true || json['is_bookable'] == 1,
+        bookingEnabled:
+            json['booking_enabled'] == true || json['booking_enabled'] == 1,
+        bookingUnavailableReason:
+            json['booking_unavailable_reason']?.toString(),
       );
 
   Map<String, dynamic> toJson() => {
         'entity_type': entityType,
         'entity_id': entityId,
+        'source_integer_id': sourceIntegerId,
         'marker_id': markerId,
         'name': name,
         'category': category,
@@ -61,6 +108,9 @@ class ItineraryPlace {
         'operating_hours': operatingHours,
         'images': images,
         'is_verified': isVerified,
+        'is_bookable': isBookable,
+        'booking_enabled': bookingEnabled,
+        'booking_unavailable_reason': bookingUnavailableReason,
       };
 }
 
@@ -266,12 +316,13 @@ class Itinerary {
         ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
 }
 
-double _double(dynamic value) => _nullableDouble(value) ?? 0;
 double? _nullableDouble(dynamic value) =>
     value is num ? value.toDouble() : double.tryParse(value?.toString() ?? '');
 int _int(dynamic value, int fallback) => value is num
     ? value.toInt()
     : int.tryParse(value?.toString() ?? '') ?? fallback;
+int? _nullableInt(dynamic value) =>
+    value is num ? value.toInt() : int.tryParse(value?.toString() ?? '');
 String? _time(dynamic value) {
   final raw = value?.toString();
   if (raw == null || raw.isEmpty) return null;

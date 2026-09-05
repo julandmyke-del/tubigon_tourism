@@ -2,12 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Models\Msme;
 use App\Models\PartnerNotification;
 use App\Models\Reservation;
 use App\Models\ReservationStatus;
 use App\Models\Role;
 use App\Models\TourismListing;
 use App\Models\User;
+use Database\Seeders\DevelopmentMsmeOwnerSeeder;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
@@ -18,8 +20,11 @@ use Tests\TestCase;
 class PortalSecurityTest extends TestCase
 {
     private Role $partnerRole;
+
     private Role $touristRole;
+
     private Role $msmeRole;
+
     private Role $lguRole;
 
     protected function setUp(): void
@@ -131,6 +136,78 @@ class PortalSecurityTest extends TestCase
         ])->assertCreated();
     }
 
+    public function test_development_msme_seeder_is_idempotent_authentic_and_owner_scoped(): void
+    {
+        config()->set('msme_owners.development_password', 'msme123!');
+
+        $this->seed(DevelopmentMsmeOwnerSeeder::class);
+        $firstBusinessIds = Msme::whereIn('name', ['BAZAK Food Park', 'Purple Yam - Tubigon'])
+            ->orderBy('name')->pluck('id')->all();
+        $firstUserIds = User::whereIn('email', ['bazak@gmail.com', 'purpleyam@gmail.com'])
+            ->orderBy('email')->pluck('id')->all();
+        $this->seed(DevelopmentMsmeOwnerSeeder::class);
+
+        $this->assertCount(2, $firstBusinessIds);
+        $this->assertCount(2, $firstUserIds);
+        $this->assertSame($firstBusinessIds, Msme::whereIn('name', ['BAZAK Food Park', 'Purple Yam - Tubigon'])
+            ->orderBy('name')->pluck('id')->all());
+        $this->assertSame($firstUserIds, User::whereIn('email', ['bazak@gmail.com', 'purpleyam@gmail.com'])
+            ->orderBy('email')->pluck('id')->all());
+
+        $bazak = Msme::where('name', 'BAZAK Food Park')->firstOrFail();
+        $purpleYam = Msme::where('name', 'Purple Yam - Tubigon')->firstOrFail();
+        $this->assertEqualsWithDelta(9.9499662, $bazak->latitude, 0.0000001);
+        $this->assertEqualsWithDelta(123.9664321, $bazak->longitude, 0.0000001);
+        $this->assertNull($purpleYam->latitude);
+        $this->assertNull($purpleYam->longitude);
+
+        foreach ([
+            'bazak@gmail.com' => $bazak,
+            'purpleyam@gmail.com' => $purpleYam,
+        ] as $email => $business) {
+            $user = User::with('role')->where('email', $email)->firstOrFail();
+            $this->assertSame('msme_owner', $user->role->name);
+            $this->assertTrue(Hash::check('msme123!', $user->password));
+            $this->assertNotSame('msme123!', $user->password);
+            $this->assertSame($user->id, $business->profile_id);
+            $this->assertDatabaseHas('profiles', [
+                'id' => $user->id,
+                'email' => $email,
+                'role_id' => $this->msmeRole->id,
+            ]);
+
+            $this->postJson('/api/v1/auth/login', [
+                'email' => $email,
+                'password' => 'msme123!',
+            ])->assertOk()
+                ->assertJsonPath('data.role', 'msme_owner')
+                ->assertJsonPath('data.user.email', $email);
+
+            Sanctum::actingAs($user);
+            $this->getJson('/api/v1/msme/profile')
+                ->assertOk()
+                ->assertJsonPath('data.id', $business->id)
+                ->assertJsonPath('data.profile_id', $user->id);
+        }
+
+        $this->getJson('/api/v1/msmes')
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonFragment(['id' => $bazak->id, 'name' => 'BAZAK Food Park'])
+            ->assertJsonFragment(['id' => $purpleYam->id, 'name' => 'Purple Yam - Tubigon']);
+        foreach (['BAZAK', 'Food Park', 'Food & Dining', 'Purple Yam', 'Cake Shop', 'Bakery'] as $term) {
+            $this->getJson('/api/v1/msmes?search='.urlencode($term))
+                ->assertOk()
+                ->assertJsonCount($term === 'Food & Dining' ? 2 : 1, 'data');
+        }
+
+        $purpleYam->update(['latitude' => 9.9512345, 'longitude' => 123.9612345]);
+        $this->seed(DevelopmentMsmeOwnerSeeder::class);
+        $purpleYam->refresh();
+        $this->assertEqualsWithDelta(9.9512345, $purpleYam->latitude, 0.0000001);
+        $this->assertEqualsWithDelta(123.9612345, $purpleYam->longitude, 0.0000001);
+    }
+
     public function test_non_tourist_roles_cannot_use_tourist_mutation_endpoints(): void
     {
         $partner = $this->user('partner-boundary', $this->partnerRole);
@@ -218,6 +295,7 @@ class PortalSecurityTest extends TestCase
             'category' => 'Food & Dining',
             'description' => 'Local dining by reservation.',
             'operational_status' => 'open',
+            'booking_enabled' => false,
         ])->assertCreated()->assertJsonPath('data.verification_status', 'pending');
         $msmeId = $created->json('data.id');
         $this->getJson('/api/v1/msmes')->assertOk()->assertJsonMissing(['id' => $msmeId]);
@@ -230,12 +308,36 @@ class PortalSecurityTest extends TestCase
 
         Sanctum::actingAs($tourist);
         $this->getJson('/api/v1/msmes')->assertOk()->assertJsonFragment(['id' => $msmeId]);
-        $reservation = $this->postJson('/api/v1/reservations', [
+        $bookingDate = now()->addDays(2)->toDateString();
+        $bookingPayload = [
             'reservable_type' => 'msme',
             'reservable_id' => $msmeId,
-            'reservation_date' => now()->addDays(2)->toDateString(),
+            'reservation_date' => $bookingDate,
             'start_time' => '09:00',
             'guests' => 2,
+        ];
+        $this->postJson('/api/v1/reservations', $bookingPayload)->assertNotFound();
+
+        Sanctum::actingAs($owner);
+        $this->putJson('/api/v1/msme/profile', [
+            'booking_enabled' => true,
+            'unavailable_dates' => [$bookingDate],
+        ])->assertOk();
+
+        Sanctum::actingAs($tourist);
+        $this->postJson('/api/v1/reservations', $bookingPayload)
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'The business is unavailable on the selected date.');
+
+        Sanctum::actingAs($owner);
+        $this->putJson('/api/v1/msme/profile', [
+            'booking_enabled' => true,
+            'unavailable_dates' => [],
+        ])->assertOk();
+
+        Sanctum::actingAs($tourist);
+        $reservation = $this->postJson('/api/v1/reservations', [
+            ...$bookingPayload,
         ])->assertCreated();
         $reservationId = $reservation->json('data.id');
 
@@ -245,6 +347,159 @@ class PortalSecurityTest extends TestCase
         $this->putJson("/api/v1/msme/reservations/{$reservationId}/status", [
             'status_name' => 'confirmed',
         ])->assertOk();
+        $this->assertDatabaseHas('reservation_status_history', [
+            'reservation_id' => $reservationId,
+            'changed_by' => $owner->id,
+        ]);
+
+        Sanctum::actingAs($tourist);
+        $this->getJson("/api/v1/reservations/{$reservationId}")
+            ->assertOk()
+            ->assertJsonPath('data.status.name', 'confirmed')
+            ->assertJsonCount(2, 'data.status_history');
+        $this->postJson('/api/v1/reviews', [
+            'reviewable_type' => 'msme',
+            'reviewable_id' => $msmeId,
+            'rating' => 5,
+            'content' => 'Excellent local service.',
+        ])->assertCreated();
+
+        Sanctum::actingAs($owner);
+        $this->getJson('/api/v1/msme/reviews')
+            ->assertOk()
+            ->assertJsonPath('data.reviewCount', 1)
+            ->assertJsonPath('data.ratingDistribution.5', 1)
+            ->assertJsonMissingPath('data.reviews.0.user.email');
+        $this->getJson('/api/v1/msme/analytics?period=30_days')
+            ->assertOk()
+            ->assertJsonPath('data.totalReservations', 1)
+            ->assertJsonPath('data.reviewCount', 1);
+        $this->assertDatabaseHas('notifications', [
+            'user_id' => $owner->id,
+            'type' => 'new_review',
+        ]);
+    }
+
+    public function test_msme_owner_without_business_gets_a_controlled_setup_state(): void
+    {
+        $owner = $this->user('setup-required-owner', $this->msmeRole);
+        Sanctum::actingAs($owner);
+
+        $this->getJson('/api/v1/msme/profile')
+            ->assertOk()
+            ->assertJsonPath('data', null)
+            ->assertJsonPath('profile_required', true)
+            ->assertJsonPath('relationship', 'zero_or_one_business_per_owner');
+        $this->getJson('/api/v1/msme/dashboard-stats')
+            ->assertOk()
+            ->assertJsonPath('profile_required', true)
+            ->assertJsonPath('data.totalReservations', 0);
+        $this->getJson('/api/v1/msme/reservations')
+            ->assertOk()
+            ->assertJsonPath('profile_required', true)
+            ->assertJsonCount(0, 'data');
+        $this->getJson('/api/v1/msme/reviews')
+            ->assertOk()
+            ->assertJsonPath('profile_required', true)
+            ->assertJsonPath('data.reviewCount', 0);
+        $this->getJson('/api/v1/msme/analytics')
+            ->assertOk()
+            ->assertJsonPath('profile_required', true);
+        $this->putJson('/api/v1/msme/profile', ['description' => 'No business yet'])
+            ->assertStatus(409)
+            ->assertJsonPath('code', 'profile_required')
+            ->assertJsonMissing(['exception' => 'Illuminate\\Database\\Eloquent\\ModelNotFoundException']);
+    }
+
+    public function test_msme_draft_is_single_owner_scoped_and_can_be_submitted(): void
+    {
+        $owner = $this->user('draft-owner', $this->msmeRole);
+        Sanctum::actingAs($owner);
+
+        $draft = $this->postJson('/api/v1/msmes', [
+            'name' => 'Tubigon Craft Studio',
+            'category' => 'Shopping',
+            'save_as_draft' => true,
+        ])->assertCreated()
+            ->assertJsonPath('data.verification_status', 'draft')
+            ->assertJsonPath('data.submitted_at', null);
+        $msmeId = $draft->json('data.id');
+
+        $this->postJson('/api/v1/msmes', [
+            'name' => 'Duplicate Business',
+            'category' => 'Shopping',
+            'save_as_draft' => true,
+        ])->assertUnprocessable();
+        $this->putJson('/api/v1/msme/profile', [
+            'phone' => '+63 917 000 0000',
+            'address' => 'Tubigon, Bohol',
+            'latitude' => 9.9515,
+            'longitude' => 123.9618,
+            'opening_hours' => [
+                'monday' => ['closed' => false, 'open' => '08:00', 'close' => '17:00'],
+            ],
+        ])->assertOk();
+        $this->putJson('/api/v1/msme/profile', [
+            'opening_hours' => [
+                'monday' => ['closed' => false, 'open' => '17:00', 'close' => '08:00'],
+            ],
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('opening_hours.monday');
+        $this->postJson('/api/v1/msme/profile/submit')
+            ->assertOk()
+            ->assertJsonPath('data.verification_status', 'pending');
+
+        $this->assertSame(1, Msme::where('profile_id', $owner->id)->count());
+        $this->assertDatabaseHas('activity_logs', [
+            'user_id' => $owner->id,
+            'action' => 'MSME business submitted',
+        ]);
+        $this->assertDatabaseHas('msmes', [
+            'id' => $msmeId,
+            'profile_id' => $owner->id,
+            'verification_status' => 'pending',
+        ]);
+
+        Msme::findOrFail($msmeId)->delete();
+        $this->postJson('/api/v1/msmes', [
+            'name' => 'Replacement for archived business',
+            'category' => 'Shopping',
+            'save_as_draft' => true,
+        ])->assertUnprocessable()
+            ->assertJsonPath(
+                'message',
+                'This account already has a business profile, including an archived record. Contact LGU staff if it needs to be restored.',
+            );
+    }
+
+    public function test_msme_reservation_detail_and_status_are_owner_scoped(): void
+    {
+        $ownerA = $this->user('msme-owner-a', $this->msmeRole);
+        $ownerB = $this->user('msme-owner-b', $this->msmeRole);
+        $tourist = $this->user('msme-idor-tourist', $this->touristRole);
+        $businessA = $this->msme(true, $ownerA->id);
+        $businessB = $this->msme(true, $ownerB->id);
+        $reservation = Reservation::create([
+            'user_id' => $tourist->id,
+            'partner_id' => $ownerB->id,
+            'reservable_type' => 'msme',
+            'reservable_id' => $businessB,
+            'reservation_date' => now()->addDay(),
+            'guests' => 2,
+            'status_id' => $this->reservationStatus('pending')->id,
+        ]);
+        $this->assertNotSame($businessA, $businessB);
+
+        Sanctum::actingAs($ownerA);
+        $this->getJson("/api/v1/msme/reservations/{$reservation->id}")
+            ->assertForbidden();
+        $this->putJson("/api/v1/msme/reservations/{$reservation->id}/status", [
+            'status_name' => 'confirmed',
+        ])->assertForbidden();
+        $this->assertDatabaseHas('reservations', [
+            'id' => $reservation->id,
+            'status_id' => $this->reservationStatus('pending')->id,
+        ]);
     }
 
     public function test_partner_draft_review_public_booking_and_secure_management_flow(): void
@@ -315,6 +570,7 @@ class PortalSecurityTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+
         return $user;
     }
 
@@ -360,45 +616,179 @@ class PortalSecurityTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+
         return $id;
     }
 
     private function createSchema(): void
     {
-        foreach (['notifications', 'partner_notifications', 'reviews', 'reservations', 'reservation_status', 'tourism_listings', 'msmes', 'profiles', 'activity_logs', 'users', 'roles'] as $table) {
+        foreach (['personal_access_tokens', 'notifications', 'partner_notifications', 'reviews', 'reservation_status_history', 'reservations', 'reservation_status', 'tourism_listings', 'msmes', 'profiles', 'activity_logs', 'users', 'roles'] as $table) {
             Schema::dropIfExists($table);
         }
         Schema::create('roles', function (Blueprint $table) {
-            $table->uuid('id')->primary(); $table->string('name')->unique(); $table->timestamps(); $table->softDeletes();
+            $table->uuid('id')->primary();
+            $table->string('name')->unique();
+            $table->timestamps();
+            $table->softDeletes();
         });
         Schema::create('users', function (Blueprint $table) {
-            $table->uuid('id')->primary(); $table->string('name'); $table->string('email')->unique(); $table->string('password'); $table->uuid('role_id')->nullable(); $table->boolean('is_verified')->default(false); $table->rememberToken(); $table->timestamps(); $table->softDeletes();
+            $table->uuid('id')->primary();
+            $table->string('name');
+            $table->string('email')->unique();
+            $table->string('password');
+            $table->uuid('role_id')->nullable();
+            $table->string('phone')->nullable();
+            $table->boolean('is_verified')->default(false);
+            $table->timestamp('email_verified_at')->nullable();
+            $table->string('auth_provider')->nullable();
+            $table->rememberToken();
+            $table->timestamps();
+            $table->softDeletes();
         });
         Schema::create('profiles', function (Blueprint $table) {
-            $table->uuid('id')->primary(); $table->string('name'); $table->string('email')->unique(); $table->uuid('role_id')->nullable(); $table->boolean('is_verified')->default(false); $table->timestamps(); $table->softDeletes();
+            $table->uuid('id')->primary();
+            $table->string('name');
+            $table->string('email')->unique();
+            $table->uuid('role_id')->nullable();
+            $table->string('phone')->nullable();
+            $table->boolean('is_verified')->default(false);
+            $table->timestamps();
+            $table->softDeletes();
         });
         Schema::create('msmes', function (Blueprint $table) {
-            $table->uuid('id')->primary(); $table->uuid('profile_id')->nullable(); $table->string('name'); $table->string('category'); $table->string('tagline')->nullable(); $table->text('description')->nullable(); $table->string('phone')->nullable(); $table->text('address')->nullable(); $table->decimal('latitude', 10, 7)->nullable(); $table->decimal('longitude', 10, 7)->nullable(); $table->string('business_hours')->nullable(); $table->string('color')->nullable(); $table->string('icon')->nullable(); $table->json('products')->nullable(); $table->boolean('is_verified')->default(false); $table->string('verification_status')->default('pending'); $table->text('verification_notes')->nullable(); $table->string('operational_status')->default('open'); $table->timestamp('submitted_at')->nullable(); $table->timestamp('reviewed_at')->nullable(); $table->uuid('reviewed_by')->nullable(); $table->json('opening_hours')->nullable(); $table->json('unavailable_dates')->nullable(); $table->json('images')->nullable(); $table->decimal('rating', 3, 2)->default(0); $table->unsignedInteger('review_count')->default(0); $table->timestamps(); $table->softDeletes();
+            $table->uuid('id')->primary();
+            $table->uuid('profile_id')->nullable();
+            $table->string('name');
+            $table->string('category');
+            $table->string('tagline')->nullable();
+            $table->text('description')->nullable();
+            $table->string('phone')->nullable();
+            $table->text('address')->nullable();
+            $table->decimal('latitude', 10, 7)->nullable();
+            $table->decimal('longitude', 10, 7)->nullable();
+            $table->string('business_hours')->nullable();
+            $table->string('color')->nullable();
+            $table->string('icon')->nullable();
+            $table->json('products')->nullable();
+            $table->boolean('is_verified')->default(false);
+            $table->boolean('booking_enabled')->default(false);
+            $table->string('verification_status')->default('pending');
+            $table->text('verification_notes')->nullable();
+            $table->string('operational_status')->default('open');
+            $table->timestamp('submitted_at')->nullable();
+            $table->timestamp('reviewed_at')->nullable();
+            $table->uuid('reviewed_by')->nullable();
+            $table->json('opening_hours')->nullable();
+            $table->json('unavailable_dates')->nullable();
+            $table->json('images')->nullable();
+            $table->decimal('rating', 3, 2)->default(0);
+            $table->unsignedInteger('review_count')->default(0);
+            $table->timestamps();
+            $table->softDeletes();
         });
         Schema::create('tourism_listings', function (Blueprint $table) {
-            $table->uuid('id')->primary(); $table->uuid('owner_id'); $table->string('listing_name'); $table->string('listing_type')->nullable(); $table->text('description')->nullable(); $table->text('address')->nullable(); $table->decimal('latitude', 10, 7)->nullable(); $table->decimal('longitude', 10, 7)->nullable(); $table->string('contact_number')->nullable(); $table->string('email')->nullable(); $table->string('operating_hours')->nullable(); $table->json('images')->nullable(); $table->string('status')->default('approved'); $table->boolean('is_active')->default(true); $table->string('approval_status')->default('draft'); $table->timestamp('submitted_at')->nullable(); $table->timestamp('reviewed_at')->nullable(); $table->uuid('reviewed_by')->nullable(); $table->text('review_notes')->nullable(); $table->timestamp('published_at')->nullable(); $table->decimal('price', 10, 2)->nullable(); $table->unsignedInteger('capacity')->nullable(); $table->unsignedInteger('duration_minutes')->nullable(); $table->json('available_days')->nullable(); $table->unsignedInteger('booking_cutoff_hours')->nullable(); $table->decimal('average_rating', 3, 2)->default(0); $table->unsignedInteger('review_count')->default(0); $table->timestamps(); $table->softDeletes();
+            $table->uuid('id')->primary();
+            $table->uuid('owner_id');
+            $table->string('listing_name');
+            $table->string('listing_type')->nullable();
+            $table->text('description')->nullable();
+            $table->text('address')->nullable();
+            $table->decimal('latitude', 10, 7)->nullable();
+            $table->decimal('longitude', 10, 7)->nullable();
+            $table->string('contact_number')->nullable();
+            $table->string('email')->nullable();
+            $table->string('operating_hours')->nullable();
+            $table->json('images')->nullable();
+            $table->string('status')->default('approved');
+            $table->boolean('is_active')->default(true);
+            $table->string('approval_status')->default('draft');
+            $table->timestamp('submitted_at')->nullable();
+            $table->timestamp('reviewed_at')->nullable();
+            $table->uuid('reviewed_by')->nullable();
+            $table->text('review_notes')->nullable();
+            $table->timestamp('published_at')->nullable();
+            $table->decimal('price', 10, 2)->nullable();
+            $table->unsignedInteger('capacity')->nullable();
+            $table->unsignedInteger('duration_minutes')->nullable();
+            $table->json('available_days')->nullable();
+            $table->unsignedInteger('booking_cutoff_hours')->nullable();
+            $table->decimal('average_rating', 3, 2)->default(0);
+            $table->unsignedInteger('review_count')->default(0);
+            $table->timestamps();
+            $table->softDeletes();
         });
         Schema::create('reservation_status', function (Blueprint $table) {
-            $table->uuid('id')->primary(); $table->string('name')->unique(); $table->timestamps(); $table->softDeletes();
+            $table->uuid('id')->primary();
+            $table->string('name')->unique();
+            $table->timestamps();
+            $table->softDeletes();
         });
         Schema::create('reservations', function (Blueprint $table) {
-            $table->uuid('id')->primary(); $table->uuid('user_id'); $table->uuid('partner_id')->nullable(); $table->string('reservable_type'); $table->uuid('reservable_id'); $table->date('reservation_date'); $table->time('start_time')->nullable(); $table->time('end_time')->nullable(); $table->integer('guests')->default(1); $table->uuid('status_id')->nullable(); $table->text('notes')->nullable(); $table->decimal('total_amount', 10, 2)->default(0); $table->timestamps(); $table->softDeletes();
+            $table->uuid('id')->primary();
+            $table->uuid('user_id');
+            $table->uuid('partner_id')->nullable();
+            $table->string('reservable_type');
+            $table->uuid('reservable_id');
+            $table->date('reservation_date');
+            $table->time('start_time')->nullable();
+            $table->time('end_time')->nullable();
+            $table->integer('guests')->default(1);
+            $table->uuid('status_id')->nullable();
+            $table->text('notes')->nullable();
+            $table->decimal('total_amount', 10, 2)->default(0);
+            $table->timestamps();
+            $table->softDeletes();
+        });
+        Schema::create('reservation_status_history', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->uuid('reservation_id');
+            $table->uuid('status_id');
+            $table->uuid('changed_by')->nullable();
+            $table->text('notes')->nullable();
+            $table->timestamps();
         });
         foreach (['notifications', 'partner_notifications'] as $tableName) {
             Schema::create($tableName, function (Blueprint $table) {
-                $table->uuid('id')->primary(); $table->uuid('user_id'); $table->string('type'); $table->string('title'); $table->text('body'); $table->json('data')->nullable(); $table->boolean('is_read')->default(false); $table->timestamps(); $table->softDeletes();
+                $table->uuid('id')->primary();
+                $table->uuid('user_id');
+                $table->string('type');
+                $table->string('title');
+                $table->text('body');
+                $table->json('data')->nullable();
+                $table->boolean('is_read')->default(false);
+                $table->timestamps();
+                $table->softDeletes();
             });
         }
         Schema::create('reviews', function (Blueprint $table) {
-            $table->uuid('id')->primary(); $table->uuid('user_id'); $table->string('reviewable_type'); $table->uuid('reviewable_id'); $table->unsignedTinyInteger('rating'); $table->text('content'); $table->json('images')->nullable(); $table->timestamps(); $table->softDeletes();
+            $table->uuid('id')->primary();
+            $table->uuid('user_id');
+            $table->string('reviewable_type');
+            $table->uuid('reviewable_id');
+            $table->unsignedTinyInteger('rating');
+            $table->text('content');
+            $table->json('images')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
         });
         Schema::create('activity_logs', function (Blueprint $table) {
-            $table->uuid('id')->primary(); $table->uuid('user_id')->nullable(); $table->string('action'); $table->text('details')->nullable(); $table->timestamps(); $table->softDeletes();
+            $table->uuid('id')->primary();
+            $table->uuid('user_id')->nullable();
+            $table->string('action');
+            $table->text('details')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
+        });
+        Schema::create('personal_access_tokens', function (Blueprint $table) {
+            $table->id();
+            $table->string('tokenable_type');
+            $table->uuid('tokenable_id');
+            $table->string('name');
+            $table->string('token', 64)->unique();
+            $table->text('abilities')->nullable();
+            $table->timestamp('last_used_at')->nullable();
+            $table->timestamp('expires_at')->nullable();
+            $table->timestamps();
         });
     }
 }

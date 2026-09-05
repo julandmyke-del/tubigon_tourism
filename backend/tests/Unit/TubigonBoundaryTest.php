@@ -27,4 +27,14 @@ class TubigonBoundaryTest extends TestCase
 
         $this->assertFalse($boundary->contains(9.6500, 123.8500));
     }
+
+    public function test_it_narrowly_recognizes_the_passenger_port_service_area(): void
+    {
+        $boundary = app(TubigonBoundary::class);
+
+        $this->assertFalse($boundary->contains(9.95636, 123.95778));
+        $this->assertTrue($boundary->containsPortServiceArea(9.95636, 123.95778));
+        $this->assertTrue($boundary->containsPortServiceArea(9.95596, 123.95814));
+        $this->assertFalse($boundary->containsPortServiceArea(9.9500, 123.95778));
+    }
 }

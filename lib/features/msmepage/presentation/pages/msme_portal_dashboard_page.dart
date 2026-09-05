@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../providers/msme_portal_providers.dart';
 import '../msme_theme.dart';
+import '../widgets/msme_portal_states.dart';
 
 class MsmePortalDashboardPage extends ConsumerWidget {
   const MsmePortalDashboardPage({super.key});
@@ -21,7 +22,8 @@ class MsmePortalDashboardPage extends ConsumerWidget {
           error: (error, _) => _StateMessage(
             icon: Icons.cloud_off_rounded,
             title: 'Dashboard unavailable',
-            message: error.toString(),
+            message: friendlyMsmeError(
+                error, 'We couldn’t load your business dashboard.'),
             action: () => ref.invalidate(msmePortalDashboardStatsProvider),
           ),
           data: (data) {
@@ -38,17 +40,15 @@ class MsmePortalDashboardPage extends ConsumerWidget {
             }
             final status =
                 business['verification_status']?.toString() ?? 'pending';
-            final complete = <String, bool>{
-              'Business profile':
-                  (business['name']?.toString().isNotEmpty ?? false) &&
-                      (business['category']?.toString().isNotEmpty ?? false),
-              'Location':
-                  business['latitude'] != null && business['longitude'] != null,
-              'Contact information':
-                  business['phone']?.toString().isNotEmpty ?? false,
-              'Opening hours': business['opening_hours'] is Map &&
-                  (business['opening_hours'] as Map).isNotEmpty,
-            };
+            final completion = data['profileCompletion'] is Map
+                ? Map<String, dynamic>.from(data['profileCompletion'] as Map)
+                : const <String, dynamic>{};
+            final complete = completion['items'] is Map
+                ? Map<String, bool>.from((completion['items'] as Map).map(
+                    (key, value) => MapEntry(key.toString(), value == true)))
+                : const <String, bool>{};
+            final hasLocation =
+                business['latitude'] != null && business['longitude'] != null;
             return RefreshIndicator(
               onRefresh: () async =>
                   ref.refresh(msmePortalDashboardStatsProvider.future),
@@ -62,18 +62,41 @@ class MsmePortalDashboardPage extends ConsumerWidget {
                         children: [
                           Text('MSME Owner Dashboard',
                               style: MsmeTheme.headingLarge()),
-                          Text(business['name']?.toString() ?? 'Business',
+                          Text(
+                              '${business['name'] ?? 'Business'} · ${business['category'] ?? 'Uncategorized'}',
                               style:
                                   const TextStyle(color: MsmeTheme.textMuted)),
+                          const SizedBox(height: 6),
+                          Wrap(spacing: 8, runSpacing: 6, children: [
+                            MsmeBadge(label: status.replaceAll('_', ' ')),
+                            MsmeBadge(
+                              label: status == 'verified'
+                                  ? 'Public listing active'
+                                  : 'Private listing',
+                              type: status == 'verified'
+                                  ? MsmeBadgeType.green
+                                  : MsmeBadgeType.gray,
+                            ),
+                            MsmeBadge(
+                              label: (business['operational_status'] ?? 'open')
+                                  .toString()
+                                  .replaceAll('_', ' '),
+                              type: business['operational_status'] == 'open'
+                                  ? MsmeBadgeType.green
+                                  : MsmeBadgeType.amber,
+                            ),
+                          ]),
                         ]),
                     Wrap(spacing: 8, children: [
                       OutlinedButton.icon(
-                        onPressed: () =>
-                            context.push('/map?marker=msme:${business['id']}'),
+                        onPressed: hasLocation
+                            ? () => context
+                                .push('/map?marker=msme:${business['id']}')
+                            : null,
                         icon: const Icon(Icons.visibility_rounded),
                         label: Text(status == 'verified'
                             ? 'View on Smart Map'
-                            : 'Private preview'),
+                            : 'Preview Private Marker'),
                       ),
                       ElevatedButton.icon(
                         onPressed: () => context.push('/msme-portal/profile'),
@@ -87,6 +110,7 @@ class MsmePortalDashboardPage extends ConsumerWidget {
                 _VerificationCard(
                     status: status,
                     items: complete,
+                    percent: (completion['percent'] as num?)?.toInt() ?? 0,
                     notes: business['verification_notes']?.toString()),
                 const SizedBox(height: 18),
                 LayoutBuilder(builder: (context, constraints) {
@@ -109,8 +133,12 @@ class MsmePortalDashboardPage extends ConsumerWidget {
                           Icons.calendar_month_rounded),
                       _Metric('Pending', data['pendingReservations'] ?? 0,
                           Icons.pending_actions_rounded),
+                      _Metric('Confirmed', data['confirmedReservations'] ?? 0,
+                          Icons.event_available_rounded),
                       _Metric('Completed', data['completedReservations'] ?? 0,
                           Icons.task_alt_rounded),
+                      _Metric('Cancelled', data['cancelledReservations'] ?? 0,
+                          Icons.event_busy_rounded),
                       _Metric('Average rating', data['averageRating'] ?? 0,
                           Icons.star_rounded),
                       _Metric('Reviews', data['reviewCount'] ?? 0,
@@ -119,6 +147,23 @@ class MsmePortalDashboardPage extends ConsumerWidget {
                   );
                 }),
                 const SizedBox(height: 18),
+                Text('Quick actions', style: MsmeTheme.headingSmall()),
+                const SizedBox(height: 8),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  _QuickAction('Business Profile', Icons.store_rounded,
+                      () => context.go('/msme-portal/profile')),
+                  _QuickAction('My Listing', Icons.preview_rounded,
+                      () => context.go('/msme-portal/listings')),
+                  _QuickAction('Availability', Icons.event_busy_rounded,
+                      () => context.go('/msme-portal/availability')),
+                  _QuickAction('Reservations', Icons.calendar_month_rounded,
+                      () => context.go('/msme-portal/reservations')),
+                  _QuickAction('Reviews', Icons.reviews_rounded,
+                      () => context.go('/msme-portal/reviews')),
+                  _QuickAction('Analytics', Icons.insights_rounded,
+                      () => context.go('/msme-portal/analytics')),
+                ]),
+                const SizedBox(height: 18),
                 Text('Recent activity', style: MsmeTheme.headingSmall()),
                 const SizedBox(height: 8),
                 if ((data['recentActivity'] as List? ?? const []).isEmpty)
@@ -126,15 +171,19 @@ class MsmePortalDashboardPage extends ConsumerWidget {
                 else
                   ...(data['recentActivity'] as List)
                       .whereType<Map>()
-                      .map((item) => ListTile(
-                            leading: const Icon(Icons.history_rounded,
-                                color: MsmeTheme.primaryOrange),
-                            title: Text(
-                                item['action']?.toString() ?? 'Activity',
-                                style: const TextStyle(color: Colors.white)),
-                            subtitle: Text(item['created_at']?.toString() ?? '',
-                                style: const TextStyle(
-                                    color: MsmeTheme.textMuted)),
+                      .map((item) => Material(
+                            color: Colors.transparent,
+                            child: ListTile(
+                              leading: const Icon(Icons.history_rounded,
+                                  color: MsmeTheme.primaryOrange),
+                              title: Text(
+                                  item['action']?.toString() ?? 'Activity',
+                                  style: const TextStyle(color: Colors.white)),
+                              subtitle: Text(
+                                  item['created_at']?.toString() ?? '',
+                                  style: const TextStyle(
+                                      color: MsmeTheme.textMuted)),
+                            ),
                           )),
               ]),
             );
@@ -175,9 +224,13 @@ class _Metric extends StatelessWidget {
 
 class _VerificationCard extends StatelessWidget {
   const _VerificationCard(
-      {required this.status, required this.items, this.notes});
+      {required this.status,
+      required this.items,
+      required this.percent,
+      this.notes});
   final String status;
   final Map<String, bool> items;
+  final int percent;
   final String? notes;
   @override
   Widget build(BuildContext context) => Container(
@@ -185,6 +238,18 @@ class _VerificationCard extends StatelessWidget {
         decoration: MsmeTheme.cardDecoration(),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Business verification', style: MsmeTheme.headingSmall()),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(
+                child: LinearProgressIndicator(
+              value: percent / 100,
+              minHeight: 8,
+              borderRadius: BorderRadius.circular(8),
+            )),
+            const SizedBox(width: 10),
+            Text('$percent% complete',
+                style: const TextStyle(color: MsmeTheme.primaryOrange)),
+          ]),
           const SizedBox(height: 10),
           ...items.entries.map((entry) => Row(children: [
                 Icon(
@@ -194,7 +259,8 @@ class _VerificationCard extends StatelessWidget {
                     color: entry.value ? MsmeTheme.green : MsmeTheme.textMuted,
                     size: 18),
                 const SizedBox(width: 8),
-                Text(entry.key, style: const TextStyle(color: Colors.white)),
+                Text(entry.key.replaceAll('_', ' '),
+                    style: const TextStyle(color: Colors.white)),
               ])),
           const Divider(),
           Text('Verification: ${status.replaceAll('_', ' ')}',
@@ -203,6 +269,19 @@ class _VerificationCard extends StatelessWidget {
           if (notes != null && notes!.isNotEmpty)
             Text(notes!, style: const TextStyle(color: MsmeTheme.amber)),
         ]),
+      );
+}
+
+class _QuickAction extends StatelessWidget {
+  const _QuickAction(this.label, this.icon, this.onTap);
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => OutlinedButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon, size: 18),
+        label: Text(label),
       );
 }
 

@@ -38,7 +38,7 @@ class MapLocationManagementTest extends TestCase
     {
         (new MapLocationSeeder)->run();
 
-        $this->assertDatabaseCount('map_locations', 12);
+        $this->assertDatabaseCount('map_locations', 18);
         $this->assertSame(0, MapLocation::where('verified', true)->count());
         $this->assertSame(0, MapLocation::where('published', true)->count());
         $this->assertDatabaseHas('map_locations', [
@@ -53,26 +53,44 @@ class MapLocationManagementTest extends TestCase
         ]);
         $this->assertDatabaseHas('map_locations', [
             'name' => 'Tubigon Port',
-            'latitude' => null,
-            'longitude' => null,
+            'latitude' => 9.95636,
+            'longitude' => 123.95778,
             'verified' => false,
             'published' => false,
+        ]);
+        $this->assertDatabaseHas('map_locations', [
+            'name' => 'Tubigon Municipal Hall',
+            'latitude' => 9.94303,
+            'longitude' => 123.96065,
+            'marker_icon' => 'account_balance',
+        ]);
+        $this->assertDatabaseHas('map_locations', [
+            'name' => 'BFP Tubigon Fire Station',
+            'latitude' => 9.94434,
+            'longitude' => 123.96064,
+            'marker_icon' => 'local_fire_department',
         ]);
         $this->getJson('/api/v1/map/locations')
             ->assertOk()
             ->assertJsonCount(0, 'data');
     }
 
-    public function test_preapproved_featured_destinations_share_the_public_smart_map_feed(): void
+    public function test_only_coordinate_complete_featured_destinations_share_the_public_smart_map_feed(): void
     {
         (new FeaturedDestinationSeeder)->run();
 
         $response = $this->getJson('/api/v1/map/locations')
             ->assertOk()
-            ->assertJsonCount(8, 'data');
+            ->assertJsonCount(5, 'data');
 
         $this->assertEqualsCanonicalizing(
-            FeaturedDestinationSeeder::NAMES,
+            [
+                'Dumog Sandbar',
+                'Mocaboc Sandbar',
+                'Mangrove Forest Batasan',
+                'Enchanted Ilijan Hill Volcanic Nature Park',
+                'Tubigon Loom Weaving Experience',
+            ],
             collect($response->json('data'))->pluck('name')->all(),
         );
         $this->assertTrue(collect($response->json('data'))->every(
@@ -80,40 +98,74 @@ class MapLocationManagementTest extends TestCase
                 && $place['is_verified'] === true
                 && $place['is_preapproved'] === true,
         ));
-        $this->assertTrue(collect($response->json('data'))->contains(
-            fn (array $place) => $place['name'] === 'Mundong Sandbar'
-                && $place['longitude'] === 123.8704844,
-        ));
+        $expected = [
+            'dumog-sandbar' => [9.98820, 123.87830],
+            'mocaboc-sandbar' => [10.0713, 123.9279],
+            'mangrove-forest-batasan' => [10.01410, 123.97658],
+            'enchanted-ilijan-hill' => [9.91339, 123.94232],
+            'tubigon-loom-weaving' => [9.93587, 123.94875],
+        ];
+        foreach ($expected as $slug => [$latitude, $longitude]) {
+            $spot = \App\Models\TouristSpot::where('slug', $slug)->firstOrFail();
+            $marker = collect($response->json('data'))->firstWhere('source_id', $spot->id);
+            $this->assertSame("tourist_spot:{$spot->id}", $marker['id']);
+            $this->assertEquals($latitude, $marker['latitude']);
+            $this->assertEquals($longitude, $marker['longitude']);
+            $this->assertTrue($marker['is_active']);
+            $this->assertTrue($marker['is_published']);
+        }
+
+        foreach (['mundong-sandbar', 'nakins-floating-cottage', 'delan-cliffside-open-cabana'] as $slug) {
+            $spot = \App\Models\TouristSpot::where('slug', $slug)->firstOrFail();
+            $this->assertNull($spot->latitude);
+            $this->assertNull($spot->longitude);
+            $this->assertFalse(collect($response->json('data'))->contains('source_id', $spot->id));
+        }
+
+        $this->getJson('/api/v1/tourist-spots?featured_only=1')
+            ->assertOk()
+            ->assertJsonCount(8, 'data');
     }
 
-    public function test_guarded_development_seed_publishes_only_the_six_supplied_locations(): void
+    public function test_guarded_development_seed_publishes_only_the_thirteen_coordinate_complete_locations(): void
     {
         config(['map.dev_seed_public_tubigon_places' => true]);
 
         (new MapLocationSeeder)->run();
         (new MapLocationSeeder)->run();
 
-        $this->assertDatabaseCount('map_locations', 12);
-        $this->assertSame(12, MapLocation::whereNotNull('seed_key')->distinct()->count('seed_key'));
-        $this->assertSame(6, MapLocation::where('active', true)->where('verified', true)->where('published', true)->count());
+        $this->assertDatabaseCount('map_locations', 18);
+        $this->assertSame(18, MapLocation::whereNotNull('seed_key')->distinct()->count('seed_key'));
+        $this->assertSame(13, MapLocation::where('active', true)->where('verified', true)->where('published', true)->count());
         $this->assertSame(4, MapLocation::where('is_featured', true)->where('published', true)->count());
 
         $expectedNames = [
+            'BFP Tubigon Fire Station',
             "7'S Shopping Center",
             'Alturas Mall Tubigon',
             'BQ Superstore - Tubigon',
             'Jollibee Tubigon',
             'Mang Inasal Tubigon',
             "Paeng's Lechon Manok & Fried Chicken Tubigon",
+            'Southern Bus Terminal',
+            'Tubigon Community Hospital',
+            'Tubigon Municipal Hall',
+            'Tubigon Port',
+            'Tubigon Port Management Office',
+            'Tubigon Transport Terminal',
         ];
-        $this->assertSame($expectedNames, MapLocation::where('published', true)->orderBy('name')->pluck('name')->all());
+        $this->assertEqualsCanonicalizing($expectedNames, MapLocation::where('published', true)->pluck('name')->all());
 
         $boundary = app(TubigonBoundary::class);
         foreach (MapLocation::where('published', true)->get() as $location) {
-            $this->assertTrue($boundary->contains($location->latitude, $location->longitude));
+            $this->assertTrue(
+                $boundary->contains($location->latitude, $location->longitude)
+                || ($location->category?->slug === 'port-transport'
+                    && $boundary->containsPortServiceArea($location->latitude, $location->longitude)),
+            );
         }
 
-        foreach (["McDonald's Tubigon", 'Bazak Foodpark', "MJ's Kitchen", 'Metrobank Tubigon', 'Guanzon Tubigon', 'Tubigon Port'] as $draftName) {
+        foreach (["McDonald's Tubigon", 'Bazak Foodpark', "MJ's Kitchen", 'Metrobank Tubigon', 'Guanzon Tubigon'] as $draftName) {
             $this->assertDatabaseHas('map_locations', [
                 'name' => $draftName,
                 'verified' => false,
@@ -123,9 +175,41 @@ class MapLocationManagementTest extends TestCase
 
         $response = $this->getJson('/api/v1/map/locations')
             ->assertOk()
-            ->assertJsonCount(6, 'data')
+            ->assertJsonCount(13, 'data')
             ->assertJsonPath('status', 'success');
         $this->assertEqualsCanonicalizing($expectedNames, collect($response->json('data'))->pluck('name')->all());
+    }
+
+    public function test_seed_links_emergency_facilities_without_exposing_an_unverified_phone(): void
+    {
+        $contact = EmergencyContact::create([
+            'name' => 'Tubigon Fire Station',
+            'category' => 'Fire',
+            'phone' => '(038) 508-8111',
+            'latitude' => 9.94434,
+            'longitude' => 123.96064,
+            'operating_hours' => '24/7',
+            'is_active' => true,
+            'is_verified' => false,
+        ]);
+        config(['map.dev_seed_public_tubigon_places' => true]);
+        (new MapLocationSeeder)->run();
+
+        $location = MapLocation::where('name', 'BFP Tubigon Fire Station')->firstOrFail();
+        $this->assertSame('emergency_contact', $location->entity_type);
+        $this->assertSame($contact->id, $location->entity_id);
+        $marker = collect($this->getJson('/api/v1/map/locations')->assertOk()->json('data'))
+            ->firstWhere('map_location_id', $location->id);
+        $this->assertNull($marker['contact']);
+        $this->assertSame($contact->id, $marker['emergency_contact_id']);
+
+        $contact->update(['is_verified' => true]);
+        $markers = collect($this->getJson('/api/v1/map/locations')->assertOk()->json('data'));
+        $marker = $markers->firstWhere('map_location_id', $location->id);
+        $this->assertSame('(038) 508-8111', $marker['contact']);
+        $this->assertSame('24/7', $marker['operating_hours']);
+        $this->assertSame(1, $markers->where('emergency_contact_id', $contact->id)->count());
+        $this->assertFalse($markers->contains('id', "emergency:{$contact->id}"));
     }
 
     public function test_development_seed_does_not_undo_a_staff_verification_change(): void
@@ -222,6 +306,54 @@ class MapLocationManagementTest extends TestCase
             'updated_at' => now(),
         ]);
         $this->getJson("/api/v1/tourist-spots/$spotId")->assertNotFound();
+    }
+
+    public function test_public_msme_directory_keeps_null_coordinates_but_map_requires_verified_complete_pair(): void
+    {
+        $bazakId = '35555555-5555-4555-8555-555555555555';
+        $purpleYamId = '36666666-6666-4666-8666-666666666666';
+        Schema::getConnection()->table('msmes')->insert([
+            [
+                'id' => $bazakId,
+                'integer_id' => 41,
+                'name' => 'BAZAK Food Park',
+                'category' => 'Food & Dining',
+                'address' => 'Paseo Anacleta Building, Tinangnan, Tubigon, Bohol',
+                'latitude' => 9.9499662,
+                'longitude' => 123.9664321,
+                'is_verified' => true,
+                'verification_status' => 'verified',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => $purpleYamId,
+                'integer_id' => 42,
+                'name' => 'Purple Yam - Tubigon',
+                'category' => 'Food & Dining',
+                'address' => 'Putohan/Potohan, Tubigon, Bohol',
+                'latitude' => null,
+                'longitude' => null,
+                'is_verified' => true,
+                'verification_status' => 'verified',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->getJson('/api/v1/msmes')
+            ->assertOk()
+            ->assertJsonCount(2, 'data')
+            ->assertJsonFragment(['id' => $purpleYamId, 'latitude' => null, 'longitude' => null]);
+        $this->getJson('/api/v1/map/locations')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', "msme:{$bazakId}")
+            ->assertJsonPath('data.0.source_id', $bazakId)
+            ->assertJsonPath('data.0.source_integer_id', 41)
+            ->assertJsonPath('data.0.latitude', 9.9499662)
+            ->assertJsonPath('data.0.longitude', 123.9664321)
+            ->assertJsonMissing(['id' => "msme:{$purpleYamId}"]);
     }
 
     public function test_unverified_linked_msme_cannot_be_published(): void
@@ -368,6 +500,7 @@ class MapLocationManagementTest extends TestCase
             'latitude' => 9.9515,
             'longitude' => 123.9618,
             'is_verified' => true,
+            'verification_status' => 'verified',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -390,6 +523,8 @@ class MapLocationManagementTest extends TestCase
             'name' => 'Updated MSME Name',
             'description' => 'Updated description',
             'address' => 'Updated address',
+            'latitude' => 9.9517,
+            'longitude' => 123.9620,
         ]);
 
         $this->getJson('/api/v1/map/locations')
@@ -398,6 +533,8 @@ class MapLocationManagementTest extends TestCase
             ->assertJsonPath('data.0.name', 'Updated MSME Name')
             ->assertJsonPath('data.0.description', 'Updated description')
             ->assertJsonPath('data.0.address', 'Updated address')
+            ->assertJsonPath('data.0.latitude', 9.9517)
+            ->assertJsonPath('data.0.longitude', 123.962)
             ->assertJsonPath('data.0.category_slug', 'fast-food')
             ->assertJsonPath('data.0.category_keys.1', 'msmes');
         $this->getJson('/api/v1/place-categories')

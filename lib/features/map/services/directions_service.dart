@@ -5,6 +5,15 @@ class MapCoordinate {
   const MapCoordinate(this.latitude, this.longitude);
   final double latitude;
   final double longitude;
+
+  bool get isValid =>
+      latitude.isFinite &&
+      longitude.isFinite &&
+      latitude >= -90 &&
+      latitude <= 90 &&
+      longitude >= -180 &&
+      longitude <= 180 &&
+      !(latitude == 0 && longitude == 0);
 }
 
 class MapRouteResult {
@@ -37,19 +46,30 @@ class DirectionsService {
   Future<MapRouteResult> route({
     required MapCoordinate origin,
     required MapCoordinate destination,
+    CancelToken? cancelToken,
   }) async {
-    return routeThrough([origin, destination]);
+    return routeThrough(
+      [origin, destination],
+      cancelToken: cancelToken,
+    );
   }
 
-  Future<MapRouteResult> routeThrough(List<MapCoordinate> waypoints) async {
+  Future<MapRouteResult> routeThrough(
+    List<MapCoordinate> waypoints, {
+    CancelToken? cancelToken,
+  }) async {
     if (waypoints.length < 2) {
       throw ArgumentError('At least two route points are required.');
+    }
+    if (waypoints.any((point) => !point.isValid)) {
+      throw ArgumentError('Every route point must contain valid coordinates.');
     }
     final coordinates = waypoints
         .map((point) => '${point.longitude},${point.latitude}')
         .join(';');
     final response = await _dio.get<Map<String, dynamic>>(
       'https://router.project-osrm.org/route/v1/driving/$coordinates',
+      cancelToken: cancelToken,
       queryParameters: const {
         'overview': 'full',
         'geometries': 'geojson',

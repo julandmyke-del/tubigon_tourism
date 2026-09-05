@@ -294,14 +294,19 @@ class FavoritesNotifier extends StateNotifier<AsyncValue<Set<FavoriteKey>>> {
       false;
 
   Future<void> reload() async {
+    if (!mounted) return;
     try {
-      state = AsyncValue.data(await _repository.getFavoriteKeys());
+      final keys = await _repository.getFavoriteKeys();
+      if (!mounted) return;
+      state = AsyncValue.data(keys);
     } catch (error, stack) {
+      if (!mounted) return;
       if (state.valueOrNull == null) state = AsyncValue.error(error, stack);
     }
   }
 
   Future<bool> toggle(String type, String id) async {
+    if (!mounted) return false;
     if (_busy) return contains(type, id);
     _busy = true;
     final key = FavoriteKey(FavoritesRepository.normalizeType(type), id);
@@ -312,6 +317,7 @@ class FavoritesNotifier extends StateNotifier<AsyncValue<Set<FavoriteKey>>> {
     state = AsyncValue.data(next);
     try {
       final remoteState = await _repository.toggleFavorite(key.type, key.id);
+      if (!mounted) return remoteState;
       final confirmed = Set<FavoriteKey>.of(next);
       if (remoteState) {
         confirmed.add(key);
@@ -321,7 +327,7 @@ class FavoritesNotifier extends StateNotifier<AsyncValue<Set<FavoriteKey>>> {
       state = AsyncValue.data(confirmed);
       return remoteState;
     } catch (error) {
-      state = AsyncValue.data(previous);
+      if (mounted) state = AsyncValue.data(previous);
       rethrow;
     } finally {
       _busy = false;

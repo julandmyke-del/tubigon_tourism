@@ -17,4 +17,9 @@ class ReservationStatusHistory extends Model
     {
         return $this->belongsTo(ReservationStatus::class, 'status_id');
     }
+
+    public function changedBy()
+    {
+        return $this->belongsTo(User::class, 'changed_by');
+    }
 }

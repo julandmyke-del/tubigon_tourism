@@ -19,6 +19,21 @@ class LguRepository {
     return _map(response);
   }
 
+  Future<Map<String, dynamic>> getActivity({
+    String period = 'monthly',
+    String? type,
+    String? search,
+  }) async {
+    return _map(await _apiClient.get(
+      ApiEndpoints.lguActivity,
+      queryParameters: {
+        'period': period,
+        if (type != null && type != 'all') 'type': type,
+        if (search?.trim().isNotEmpty == true) 'search': search!.trim(),
+      },
+    ));
+  }
+
   /// Update tourist spot status (Active, Maintenance, Inactive)
   Future<bool> updateSpotStatus(String spotId, String status) async {
     final response = await _apiClient.put(
@@ -81,15 +96,36 @@ class LguRepository {
   }
 
   /// Fetch municipal tourism analytics & performance metrics
-  Future<Map<String, dynamic>> getAnalytics() async {
-    return _map(await _apiClient.get(ApiEndpoints.lguAnalytics));
+  Future<Map<String, dynamic>> getAnalytics(
+    String period, {
+    String? from,
+    String? to,
+  }) async {
+    return _map(await _apiClient.get(
+      ApiEndpoints.lguAnalytics,
+      queryParameters: {
+        'period': period,
+        if (from != null) 'from': from,
+        if (to != null) 'to': to,
+      },
+    ));
   }
 
   /// Fetch generated municipal report data (daily, weekly, monthly, yearly)
-  Future<Map<String, dynamic>> getReports(String period) async {
+  Future<Map<String, dynamic>> getReports(
+    String period, {
+    String category = 'tourism_operations',
+    String? from,
+    String? to,
+  }) async {
     return _map(await _apiClient.get(
       ApiEndpoints.lguReports,
-      queryParameters: {'period': period},
+      queryParameters: {
+        'period': period,
+        'category': category,
+        if (from != null) 'from': from,
+        if (to != null) 'to': to,
+      },
     ));
   }
 
@@ -105,6 +141,9 @@ class LguRepository {
         await _apiClient.get(ApiEndpoints.lguMsmes,
             queryParameters: {if (status != null) 'status': status}),
       );
+
+  Future<Map<String, dynamic>> getMsme(String id) async =>
+      _map(await _apiClient.get(ApiEndpoints.lguMsme(id)));
 
   Future<List<Map<String, dynamic>>> getTouristSpots() async =>
       _list(await _apiClient.get(ApiEndpoints.lguTouristSpots));
@@ -151,7 +190,7 @@ class LguRepository {
   }
 
   Future<List<Map<String, dynamic>>> getAnnouncements() async =>
-      _list(await _apiClient.get(ApiEndpoints.announcements));
+      _list(await _apiClient.get(ApiEndpoints.lguAnnouncements));
 
   Future<List<Map<String, dynamic>>> getEcoTips() async =>
       _list(await _apiClient.get(ApiEndpoints.ecoTips));

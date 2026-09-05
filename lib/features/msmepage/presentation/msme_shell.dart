@@ -5,6 +5,8 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/responsive/responsive_layout.dart';
 import '../../authentication/auth_provider.dart';
+import '../../notifications/presentation/notification_bell_button.dart';
+import '../providers/msme_portal_providers.dart';
 import 'msme_theme.dart';
 
 class MsmeShell extends ConsumerStatefulWidget {
@@ -32,7 +34,7 @@ class _MsmeShellState extends ConsumerState<MsmeShell> {
         route: '/msme-portal/profile'),
     const _MsmeNavItem(
         id: 'listings',
-        label: 'My Listings',
+        label: 'My Business Listing',
         icon: Icons.inventory_2_rounded,
         route: '/msme-portal/listings'),
     const _MsmeNavItem(
@@ -82,17 +84,27 @@ class _MsmeShellState extends ConsumerState<MsmeShell> {
     final activeIndex = _getSelectedIndex(location);
     final activeItem = _navItems[activeIndex];
     final auth = ref.watch(authProvider);
+    final current = ref.watch(currentMsmeProvider).valueOrNull;
+    final business = current?.business;
+    final businessName = business?['name']?.toString();
+    final verification = business?['verification_status']?.toString();
 
     return Scaffold(
       backgroundColor: MsmeTheme.bgDark,
-      drawer: isDesktop ? null : _buildDrawer(context, activeIndex, auth),
+      drawer: isDesktop
+          ? null
+          : _buildDrawer(
+              context, activeIndex, auth, businessName, verification),
       body: Row(
         children: [
-          if (isDesktop) _buildSidebar(context, activeIndex, auth),
+          if (isDesktop)
+            _buildSidebar(
+                context, activeIndex, auth, businessName, verification),
           Expanded(
             child: Column(
               children: [
                 _buildTopAppBar(context, activeItem, isDesktop),
+                if (location == '/msme-portal') const AnnouncementHighlights(),
                 Expanded(
                     child: Container(
                         color: MsmeTheme.bgDark, child: widget.child)),
@@ -171,23 +183,23 @@ class _MsmeShellState extends ConsumerState<MsmeShell> {
                                 fontSize: 13, color: MsmeTheme.textDisabled),
                             border: InputBorder.none,
                             isDense: true,
-                            contentPadding: EdgeInsets.zero)))
+                            contentPadding: EdgeInsets.zero),
+                        onSubmitted: (value) => _searchPortal(context, value)))
               ]),
             ),
           const SizedBox(width: 16),
-          IconButton(
-              onPressed: () => context.go('/msme-portal/notifications'),
-              icon: const Badge(
-                  label: Text('3'),
-                  backgroundColor: MsmeTheme.primaryOrange,
-                  child: Icon(Icons.notifications_outlined,
-                      color: MsmeTheme.textMuted))),
+          NotificationBellButton(
+            onViewAll: () => context.go('/msme-portal/notifications'),
+            iconColor: MsmeTheme.textMuted,
+            badgeColor: MsmeTheme.primaryOrange,
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildSidebar(BuildContext context, int activeIndex, AuthState auth) {
+  Widget _buildSidebar(BuildContext context, int activeIndex, AuthState auth,
+      String? businessName, String? verification) {
     return Container(
       width: _sidebarWidth,
       decoration: const BoxDecoration(
@@ -253,14 +265,17 @@ class _MsmeShellState extends ConsumerState<MsmeShell> {
                           child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                            Text(auth.name ?? 'Business Owner',
+                            Text(businessName ?? auth.name ?? 'MSME Owner',
                                 style: GoogleFonts.inter(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,
                                     color: MsmeTheme.textWhite),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis),
-                            Text('Business account',
+                            Text(
+                                businessName == null
+                                    ? 'Business setup required'
+                                    : 'MSME Owner · ${verification?.replaceAll('_', ' ') ?? 'draft'}',
                                 style: GoogleFonts.inter(
                                     fontSize: 11, color: MsmeTheme.textMuted))
                           ]))
@@ -321,7 +336,8 @@ class _MsmeShellState extends ConsumerState<MsmeShell> {
     );
   }
 
-  Widget _buildDrawer(BuildContext context, int activeIndex, AuthState auth) {
+  Widget _buildDrawer(BuildContext context, int activeIndex, AuthState auth,
+      String? businessName, String? verification) {
     return Drawer(
       backgroundColor: MsmeTheme.surfaceDark,
       child: Column(
@@ -336,10 +352,13 @@ class _MsmeShellState extends ConsumerState<MsmeShell> {
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
                           color: Colors.white))),
-              accountName: Text(auth.name ?? 'Business Owner',
+              accountName: Text(businessName ?? auth.name ?? 'MSME Owner',
                   style: GoogleFonts.plusJakartaSans(
                       fontWeight: FontWeight.bold, color: Colors.white)),
-              accountEmail: Text(auth.email ?? 'msme@tubigontourism.gov.ph',
+              accountEmail: Text(
+                  businessName == null
+                      ? 'Business setup required'
+                      : 'MSME Owner · ${verification?.replaceAll('_', ' ') ?? 'draft'}',
                   style: GoogleFonts.inter(color: MsmeTheme.textMuted))),
           Expanded(
               child: ListView.builder(
@@ -348,28 +367,31 @@ class _MsmeShellState extends ConsumerState<MsmeShell> {
                   itemBuilder: (context, idx) {
                     final item = _navItems[idx];
                     final isSelected = idx == activeIndex;
-                    return ListTile(
-                      leading: Icon(item.icon,
-                          color: isSelected
-                              ? MsmeTheme.primaryOrange
-                              : MsmeTheme.textMuted),
-                      title: Text(item.label,
-                          style: GoogleFonts.inter(
-                              color: isSelected
-                                  ? MsmeTheme.primaryOrange
-                                  : MsmeTheme.textWhite,
-                              fontWeight: isSelected
-                                  ? FontWeight.bold
-                                  : FontWeight.normal)),
-                      selected: isSelected,
-                      selectedTileColor:
-                          MsmeTheme.primaryOrange.withValues(alpha: 0.1),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
-                      onTap: () {
-                        context.pop();
-                        context.go(item.route);
-                      },
+                    return Material(
+                      color: Colors.transparent,
+                      child: ListTile(
+                        leading: Icon(item.icon,
+                            color: isSelected
+                                ? MsmeTheme.primaryOrange
+                                : MsmeTheme.textMuted),
+                        title: Text(item.label,
+                            style: GoogleFonts.inter(
+                                color: isSelected
+                                    ? MsmeTheme.primaryOrange
+                                    : MsmeTheme.textWhite,
+                                fontWeight: isSelected
+                                    ? FontWeight.bold
+                                    : FontWeight.normal)),
+                        selected: isSelected,
+                        selectedTileColor:
+                            MsmeTheme.primaryOrange.withValues(alpha: 0.1),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                        onTap: () {
+                          context.pop();
+                          context.go(item.route);
+                        },
+                      ),
                     );
                   })),
           const Divider(color: Color(0x1AFFFFFF)),
@@ -386,6 +408,45 @@ class _MsmeShellState extends ConsumerState<MsmeShell> {
         ],
       ),
     );
+  }
+
+  void _searchPortal(BuildContext context, String rawQuery) {
+    final query = rawQuery.trim().toLowerCase();
+    if (query.isEmpty) return;
+    final destination = switch (query) {
+      final value
+          when value.contains('profile') || value.contains('business') =>
+        '/msme-portal/profile',
+      final value when value.contains('listing') || value.contains('public') =>
+        '/msme-portal/listings',
+      final value
+          when value.contains('reservation') || value.contains('booking') =>
+        '/msme-portal/reservations',
+      final value when value.contains('review') || value.contains('rating') =>
+        '/msme-portal/reviews',
+      final value
+          when value.contains('analytic') || value.contains('performance') =>
+        '/msme-portal/analytics',
+      final value
+          when value.contains('notification') ||
+              value.contains('announcement') =>
+        '/msme-portal/notifications',
+      final value
+          when value.contains('availability') ||
+              value.contains('calendar') ||
+              value.contains('hours') =>
+        '/msme-portal/availability',
+      final value when value.contains('map') || value.contains('location') =>
+        '/map',
+      _ => null,
+    };
+    if (destination != null) {
+      context.go(destination);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'No portal section matched. Try profile, reservations, reviews, analytics, availability, or map.')));
+    }
   }
 
   void _showLogoutDialog(BuildContext context) {

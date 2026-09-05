@@ -4,13 +4,15 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Notification;
+use App\Services\AnnouncementDeliveryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class NotificationController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    public function index(Request $request, AnnouncementDeliveryService $delivery): JsonResponse
     {
+        $delivery->syncFor($request->user());
         $notifications = Notification::where('user_id', $request->user()->id)
             ->orderBy('created_at', 'desc')
             ->get();
@@ -36,8 +38,9 @@ class NotificationController extends Controller
         return response()->json(['status' => 'success', 'message' => 'All notifications marked as read']);
     }
 
-    public function unreadCount(Request $request): JsonResponse
+    public function unreadCount(Request $request, AnnouncementDeliveryService $delivery): JsonResponse
     {
+        $delivery->syncFor($request->user());
         $count = Notification::where('user_id', $request->user()->id)
             ->where('is_read', false)
             ->count();

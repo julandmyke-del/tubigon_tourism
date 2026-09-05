@@ -6,9 +6,10 @@ import 'map_provider.dart';
 
 final placeDetailProvider =
     FutureProvider.autoDispose.family<MapMarker, String>((ref, id) async {
+  final client = ref.watch(apiClientProvider);
+  final cachedMarkers = ref.watch(mapMarkersProvider.future);
   try {
-    final response =
-        await ref.watch(apiClientProvider).get(ApiEndpoints.placeById(id));
+    final response = await client.get(ApiEndpoints.placeById(id));
     if (response.statusCode != 200 || response.data['status'] != 'success') {
       throw const FormatException('Invalid place response.');
     }
@@ -18,7 +19,7 @@ final placeDetailProvider =
     }
     return MapMarker.fromJson(data);
   } catch (_) {
-    final cached = await ref.watch(mapMarkersProvider.future);
+    final cached = await cachedMarkers;
     return cached.firstWhere(
       (marker) =>
           marker.mapLocationId == id ||

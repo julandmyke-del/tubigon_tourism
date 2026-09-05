@@ -35,8 +35,9 @@ class _LguReservationMonitoringPageState
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(children: [
-          Row(children: [
-            Expanded(
+          Wrap(spacing: 12, runSpacing: 12, children: [
+            SizedBox(
+              width: 420,
               child: TextField(
                 decoration: const InputDecoration(
                     labelText: 'Search reference, tourist, or destination'),
@@ -44,18 +45,21 @@ class _LguReservationMonitoringPageState
                     setState(() => _query = value.toLowerCase()),
               ),
             ),
-            const SizedBox(width: 12),
-            DropdownButton<String>(
-              value: _status,
-              items: [
-                const DropdownMenuItem(
-                    value: 'all', child: Text('All statuses')),
-                ...statuses.map((item) => DropdownMenuItem(
-                      value: item['name'].toString(),
-                      child: Text(_label(item['name'].toString())),
-                    )),
-              ],
-              onChanged: (value) => setState(() => _status = value ?? 'all'),
+            SizedBox(
+              width: 210,
+              child: DropdownButtonFormField<String>(
+                initialValue: _status,
+                decoration: const InputDecoration(labelText: 'Status'),
+                items: [
+                  const DropdownMenuItem(
+                      value: 'all', child: Text('All statuses')),
+                  ...statuses.map((item) => DropdownMenuItem(
+                        value: item['name'].toString(),
+                        child: Text(_label(item['name'].toString())),
+                      )),
+                ],
+                onChanged: (value) => setState(() => _status = value ?? 'all'),
+              ),
             ),
           ]),
           const SizedBox(height: 14),
@@ -184,7 +188,12 @@ class _LguReservationMonitoringPageState
             reservation['id'].toString(),
             nextStatusId,
           );
+      if (!mounted) return;
       ref.invalidate(lguReservationsProvider);
+      ref.invalidate(lguDashboardStatsProvider);
+      ref.invalidate(lguActivityProvider);
+      ref.invalidate(lguAnalyticsProvider);
+      ref.invalidate(lguReportsProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Reservation status updated.')));

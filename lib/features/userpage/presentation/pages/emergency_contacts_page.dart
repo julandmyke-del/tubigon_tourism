@@ -95,13 +95,17 @@ class _EmergencyCard extends ConsumerWidget {
     }
   }
 
-  void _openMap(BuildContext context, WidgetRef ref, {bool navigate = false}) {
-    if (contact.latitude == null || contact.longitude == null) return;
+  void _openMap(BuildContext context, WidgetRef ref, MapMarker? facility,
+      {bool navigate = false}) {
+    if (facility == null &&
+        (contact.latitude == null || contact.longitude == null)) {
+      return;
+    }
     ref.invalidate(mapMarkersProvider);
     final uri = Uri(
       path: '/map',
       queryParameters: {
-        'marker': 'emergency:${contact.uuid}',
+        'marker': facility?.id ?? 'emergency:${contact.uuid}',
         if (navigate) 'navigate': 'true',
       },
     );
@@ -113,7 +117,13 @@ class _EmergencyCard extends ConsumerWidget {
     final updated = contact.updatedAt == null
         ? null
         : DateFormat.yMMMd().format(contact.updatedAt!.toLocal());
-    final hasLocation = contact.latitude != null && contact.longitude != null;
+    final facility = ref
+        .watch(mapMarkersProvider)
+        .valueOrNull
+        ?.where((marker) => marker.emergencyContactId == contact.uuid)
+        .firstOrNull;
+    final hasLocation = facility?.hasCoordinates == true ||
+        (contact.latitude != null && contact.longitude != null);
     return Semantics(
       label: '${contact.category}: ${contact.name}, ${contact.phone}',
       child: Container(
@@ -185,13 +195,14 @@ class _EmergencyCard extends ConsumerWidget {
                 label: const Text('ALT NUMBER'),
               ),
             OutlinedButton.icon(
-              onPressed: hasLocation ? () => _openMap(context, ref) : null,
+              onPressed:
+                  hasLocation ? () => _openMap(context, ref, facility) : null,
               icon: const Icon(Icons.map_rounded, size: 18),
               label: const Text('VIEW MAP'),
             ),
             OutlinedButton.icon(
               onPressed: hasLocation
-                  ? () => _openMap(context, ref, navigate: true)
+                  ? () => _openMap(context, ref, facility, navigate: true)
                   : null,
               icon: const Icon(Icons.navigation_rounded, size: 18),
               label: const Text('NAVIGATE'),

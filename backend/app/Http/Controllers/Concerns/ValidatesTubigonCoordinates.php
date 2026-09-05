@@ -11,6 +11,8 @@ trait ValidatesTubigonCoordinates
         array $data,
         ?float $currentLatitude = null,
         ?float $currentLongitude = null,
+        bool $allowPreapprovedMarineLocation = false,
+        bool $allowPortServiceArea = false,
     ): void {
         $hasLatitude = array_key_exists('latitude', $data);
         $hasLongitude = array_key_exists('longitude', $data);
@@ -30,7 +32,11 @@ trait ValidatesTubigonCoordinates
             ]);
         }
 
-        if (! app(TubigonBoundary::class)->contains((float) $latitude, (float) $longitude)) {
+        $boundary = app(TubigonBoundary::class);
+        $insideAllowedScope = $boundary->contains((float) $latitude, (float) $longitude)
+            || ($allowPortServiceArea
+                && $boundary->containsPortServiceArea((float) $latitude, (float) $longitude));
+        if (! $allowPreapprovedMarineLocation && ! $insideAllowedScope) {
             $message = 'The selected location must be within the Municipality of Tubigon, Bohol.';
             throw ValidationException::withMessages([
                 'latitude' => [$message],

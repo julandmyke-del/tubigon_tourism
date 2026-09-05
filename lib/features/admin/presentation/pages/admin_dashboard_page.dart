@@ -100,7 +100,7 @@ class AdminDashboardPage extends ConsumerWidget {
                             isUp: null,
                             icon: Icons.people_rounded,
                             color: AdminColors.info,
-                            onTap: () => context.push('/admin/users'),
+                            onTap: () => context.go('/admin/users'),
                           ),
                           _StatCard(
                             label: 'Tourist Spots',
@@ -109,7 +109,7 @@ class AdminDashboardPage extends ConsumerWidget {
                             isUp: null,
                             icon: Icons.landscape_rounded,
                             color: AdminColors.success,
-                            onTap: () => context.push('/admin/tourism'),
+                            onTap: () => context.go('/admin/tourism'),
                           ),
                           _StatCard(
                             label: 'MSME Registrations',
@@ -118,7 +118,7 @@ class AdminDashboardPage extends ConsumerWidget {
                             isUp: null,
                             icon: Icons.store_rounded,
                             color: AdminColors.orange,
-                            onTap: () => context.push('/admin/msmes'),
+                            onTap: () => context.go('/admin/msmes'),
                           ),
                           _StatCard(
                             label: 'Reservations',
@@ -127,7 +127,7 @@ class AdminDashboardPage extends ConsumerWidget {
                             isUp: null,
                             icon: Icons.calendar_month_rounded,
                             color: AdminColors.purple,
-                            onTap: () => context.push('/admin/reservations'),
+                            onTap: () => context.go('/admin/reservations'),
                           ),
                         ],
                       );
@@ -150,27 +150,27 @@ class AdminDashboardPage extends ConsumerWidget {
                       _QuickActionButton(
                         icon: Icons.person_add_rounded,
                         label: 'Manage Users',
-                        onTap: () => context.push('/admin/users'),
+                        onTap: () => context.go('/admin/users'),
                       ),
                       _QuickActionButton(
                         icon: Icons.verified_user_rounded,
                         label: 'Verify MSMEs',
-                        onTap: () => context.push('/admin/msmes'),
+                        onTap: () => context.go('/admin/msmes'),
                       ),
                       _QuickActionButton(
                         icon: Icons.add_location_alt_rounded,
                         label: 'Update Spots',
-                        onTap: () => context.push('/admin/tourism'),
+                        onTap: () => context.go('/admin/tourism'),
                       ),
                       _QuickActionButton(
                         icon: Icons.campaign_rounded,
                         label: 'Post Bulletin',
-                        onTap: () => context.push('/admin/announcements'),
+                        onTap: () => context.go('/admin/announcements'),
                       ),
                       _QuickActionButton(
                         icon: Icons.analytics_rounded,
                         label: 'View Analytics',
-                        onTap: () => context.push('/admin/analytics'),
+                        onTap: () => context.go('/admin/analytics'),
                       ),
                     ],
                   ),
@@ -194,7 +194,7 @@ class AdminDashboardPage extends ConsumerWidget {
                               ),
                             ),
                             TextButton(
-                              onPressed: () => context.push('/admin/logs'),
+                              onPressed: () => context.go('/admin/logs'),
                               child: const Text('View All Logs →',
                                   style: TextStyle(color: AdminColors.orange)),
                             ),

@@ -8,6 +8,8 @@ import '../../../msmepage/models/msme.dart';
 import '../../../msmepage/repositories/msme_repository.dart';
 import '../../../itinerary/presentation/itinerary_add_sheet.dart';
 import '../../../map/providers/map_provider.dart';
+import '../../../map/map_focus.dart';
+import '../widgets/place_reviews_panel.dart';
 
 class MsmeDetailPage extends ConsumerWidget {
   const MsmeDetailPage({super.key, required this.msmeId});
@@ -59,6 +61,14 @@ class MsmeDetailPage extends ConsumerWidget {
                     style: TextStyle(color: Colors.white))),
           );
         }
+
+        final hasCoordinates = msme.latitude != null &&
+            msme.longitude != null &&
+            msme.latitude! >= -90 &&
+            msme.latitude! <= 90 &&
+            msme.longitude! >= -180 &&
+            msme.longitude! <= 180 &&
+            !(msme.latitude == 0 && msme.longitude == 0);
 
         Color catColor = const Color(0xFFF59E0B);
         IconData catIcon = Icons.store_rounded;
@@ -231,31 +241,40 @@ class MsmeDetailPage extends ConsumerWidget {
                 ).animate().fadeIn(duration: 350.ms, delay: 200.ms),
 
                 const SizedBox(height: 32),
-
-                ElevatedButton.icon(
-                  onPressed: () {
-                    final target = Uri(
-                      path: '/reservations/create',
-                      queryParameters: {
-                        'type': 'msme',
-                        'id': msme.uuid,
-                        'name': msme.name,
-                        'price': '0',
-                      },
-                    );
-                    context.push(target.toString());
-                  },
-                  icon: const Icon(Icons.calendar_month_rounded),
-                  label: const Text('Request a Reservation'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFF59E0B),
-                    foregroundColor: Colors.black,
-                    minimumSize: const Size(double.infinity, 50),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
-                  ),
+                PlaceReviewsPanel(
+                  reviewableType: 'msme',
+                  reviewableId: msme.uuid,
+                  targetName: msme.name,
+                  onReviewSaved: () => ref.invalidate(msmeListProvider),
                 ),
-                const SizedBox(height: 12),
+
+                const SizedBox(height: 32),
+
+                if (msme.bookingEnabled)
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      final target = Uri(
+                        path: '/reservations/create',
+                        queryParameters: {
+                          'type': 'msme',
+                          'id': msme.uuid,
+                          'name': msme.name,
+                          'price': '0',
+                        },
+                      );
+                      context.push(target.toString());
+                    },
+                    icon: const Icon(Icons.calendar_month_rounded),
+                    label: const Text('Request a Reservation'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFF59E0B),
+                      foregroundColor: Colors.black,
+                      minimumSize: const Size(double.infinity, 50),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                    ),
+                  ),
+                if (msme.bookingEnabled) const SizedBox(height: 12),
 
                 // Contact Action Button
                 if (msme.contactNumber.isNotEmpty &&
@@ -281,30 +300,71 @@ class MsmeDetailPage extends ConsumerWidget {
                     ),
                   ),
                 const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: () => showAddToItinerarySheet(
-                    context,
-                    ref,
-                    MapMarker(
-                      id: 'msme:${msme.uuid}',
-                      sourceId: msme.uuid,
-                      sourceIntegerId: msme.id,
-                      name: msme.name,
-                      description: msme.description,
-                      address: msme.address,
-                      latitude: msme.latitude,
-                      longitude: msme.longitude,
-                      category: MapMarkerCategory.msme,
-                      categoryName: msme.category,
-                      rating: msme.rating,
-                      reviewCount: msme.reviewCount,
-                      operatingHours: msme.businessHours,
-                      contact: msme.phone,
-                      isVerified: msme.isVerified,
+                if (hasCoordinates) ...[
+                  OutlinedButton.icon(
+                    onPressed: () => context.push(
+                      mapFocusPathForEntity(
+                        entityType: 'msme',
+                        entityId: msme.uuid,
+                      ),
+                    ),
+                    icon: const Icon(Icons.map_rounded),
+                    label: const Text('View on Smart Map'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF38BDF8),
+                      minimumSize: const Size(double.infinity, 50),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: () => context.push(
+                      mapFocusPathForEntity(
+                        entityType: 'msme',
+                        entityId: msme.uuid,
+                        directions: true,
+                      ),
+                    ),
+                    icon: const Icon(Icons.directions_rounded),
+                    label: const Text('Get Directions'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFF59E0B),
+                      minimumSize: const Size(double.infinity, 50),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16)),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                OutlinedButton.icon(
+                  onPressed: hasCoordinates
+                      ? () => showAddToItinerarySheet(
+                            context,
+                            ref,
+                            MapMarker(
+                              id: 'msme:${msme.uuid}',
+                              sourceId: msme.uuid,
+                              sourceIntegerId: msme.id,
+                              name: msme.name,
+                              description: msme.description,
+                              address: msme.address,
+                              latitude: msme.latitude!,
+                              longitude: msme.longitude!,
+                              category: MapMarkerCategory.msme,
+                              categoryName: msme.category,
+                              rating: msme.rating,
+                              reviewCount: msme.reviewCount,
+                              operatingHours: msme.businessHours,
+                              contact: msme.phone,
+                              isVerified: msme.isVerified,
+                            ),
+                          )
+                      : null,
                   icon: const Icon(Icons.luggage_rounded),
-                  label: const Text('Add to Itinerary'),
+                  label: Text(hasCoordinates
+                      ? 'Add to Itinerary'
+                      : 'Map location not yet available'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: const Color(0xFFF59E0B),
                     minimumSize: const Size(double.infinity, 50),

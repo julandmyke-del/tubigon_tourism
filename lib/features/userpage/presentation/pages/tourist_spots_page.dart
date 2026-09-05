@@ -11,6 +11,7 @@ import '../../../authentication/auth_provider.dart';
 import '../../../favorites/repositories/favorites_repository.dart';
 import '../../../map/place_category_style.dart';
 import '../../../map/providers/map_provider.dart';
+import '../../../map/map_focus.dart';
 import '../../../itinerary/presentation/itinerary_add_sheet.dart';
 import '../../../tourist_spots/repositories/tourist_spot_repository.dart';
 
@@ -569,8 +570,7 @@ class _TouristSpotsPageState extends ConsumerState<TouristSpotsPage> {
   }
 
   void _openMap(MapMarker place, {bool directions = false}) {
-    final marker = Uri.encodeQueryComponent(place.id);
-    context.push('/map?marker=$marker${directions ? '&navigate=true' : ''}');
+    context.push(mapFocusPathForMarker(place, directions: directions));
   }
 
   Future<void> _toggleFavorite(MapMarker place) async {

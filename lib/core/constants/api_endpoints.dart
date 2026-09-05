@@ -12,6 +12,7 @@ abstract final class ApiEndpoints {
   static const String refreshToken = '$_base/auth/refresh';
   static const String forgotPassword = '$_base/auth/forgot-password';
   static const String resetPassword = '$_base/auth/reset-password';
+  static const String updatePassword = '$_base/auth/password';
   static const String verifyEmailCode = '$_base/auth/verify-email-code';
   static const String resendVerificationEmail =
       '$_base/auth/resend-verification-code';
@@ -28,7 +29,6 @@ abstract final class ApiEndpoints {
   static String uploadAvatar(String id) => '$_base/users/$id/avatar';
   static const String updateProfile = '$_base/users/profile';
   static const String updateAvatar = '$_base/users/avatar';
-  static const String changePassword = '$_base/users/password';
 
   // ─── Tourist Spots ────────────────────────────────────────────────────────
   static const String touristSpots = '$_base/tourist-spots';
@@ -118,6 +118,15 @@ abstract final class ApiEndpoints {
   static String markRead(String id) => '$_base/notifications/$id/read';
   static const String unreadCount = '$_base/notifications/unread-count';
 
+  // Controlled MSME Owner / Tourism Partner access applications
+  static const String roleApplications = '$_base/role-applications';
+  static const String roleApplicationOptions = '$roleApplications/options';
+  static String roleApplication(String id) => '$roleApplications/$id';
+  static String submitRoleApplication(String id) =>
+      '${roleApplication(id)}/submit';
+  static String withdrawRoleApplication(String id) =>
+      '${roleApplication(id)}/withdraw';
+
   // ─── Analytics & Admin ────────────────────────────────────────────────────
   static const String analytics = '$_base/analytics';
   static const String adminDashboardStats = '$_base/admin/dashboard-stats';
@@ -127,8 +136,14 @@ abstract final class ApiEndpoints {
   static String adminUser(String id) => '$adminUsers/$id';
   static const String adminRoles = '$_base/admin/roles';
   static String adminUpdateUserRole(String id) => '$_base/admin/users/$id/role';
+  static String adminUpdatePartnerAssignment(String id) =>
+      '$_base/admin/users/$id/partner-assignment';
   static String adminUpdateUserVerification(String id) =>
       '$_base/admin/users/$id/verify';
+  static String adminUpdateUserStatus(String id) =>
+      '$_base/admin/users/$id/status';
+  static String adminRevokeUserSessions(String id) =>
+      '$_base/admin/users/$id/sessions';
   static String adminDeleteUser(String id) => '$_base/admin/users/$id';
   static const String adminMsmes = '$_base/admin/msmes';
   static String adminUpdateMsmeVerification(String id) =>
@@ -157,6 +172,10 @@ abstract final class ApiEndpoints {
   static String adminAnnouncement(String id) => '$adminAnnouncements/$id';
   static String adminSystemSettings(String id) =>
       '$_base/admin/system-settings/$id';
+  static const String adminAccessRequests = '$_base/admin/access-requests';
+  static String adminAccessRequest(String id) => '$adminAccessRequests/$id';
+  static String adminAccessRequestAction(String id, String action) =>
+      '${adminAccessRequest(id)}/$action';
 
   // ─── System Settings ──────────────────────────────────────────────────────
   static const String systemSettings = '$_base/system-settings';
@@ -187,8 +206,14 @@ abstract final class ApiEndpoints {
 
   // ─── LGU Staff Scoped Endpoints ───────────────────────────────────────────
   static const String lguDashboardStats = '$_base/lgu/dashboard-stats';
+  static const String lguActivity = '$_base/lgu/activity';
+  static const String lguAnnouncements = '$_base/lgu/announcements';
   static const String lguAnalytics = '$_base/lgu/analytics';
   static const String lguReports = '$_base/lgu/reports';
+  static const String lguRoleApplications = '$_base/lgu/role-applications';
+  static String lguRoleApplication(String id) => '$lguRoleApplications/$id';
+  static String lguRoleApplicationAction(String id, String action) =>
+      '${lguRoleApplication(id)}/$action';
   static const String lguEmergencyContacts = '$_base/lgu/emergency-contacts';
   static String lguEmergencyContact(String id) => '$lguEmergencyContacts/$id';
   static String lguEmergencyContactStatus(String id) =>
@@ -201,6 +226,7 @@ abstract final class ApiEndpoints {
   static String lguUpdateWasteStatus(String id) =>
       '$_base/lgu/waste-reports/$id/status';
   static const String lguMsmes = '$_base/lgu/msmes';
+  static String lguMsme(String id) => '$lguMsmes/$id';
   static const String lguTouristSpots = '$_base/lgu/tourist-spots';
   static String lguUpdateTouristSpot(String id) =>
       '$_base/lgu/tourist-spots/$id';
@@ -233,6 +259,8 @@ abstract final class ApiEndpoints {
   // Tourism Partner
   static const String partnerBase = '$_base/partner';
   static const String partnerDashboardStats = '$partnerBase/dashboard-stats';
+  static const String partnerAssignment = '$partnerBase/assignment';
+  static const String partnerActivity = '$partnerBase/activity';
   static const String partnerListings = '$partnerBase/listings';
   static const String partnerTouristSpots = '$partnerBase/tourist-spots';
   static String partnerTouristSpot(String id) => '$partnerTouristSpots/$id';
@@ -246,6 +274,8 @@ abstract final class ApiEndpoints {
   static String partnerReservationStatus(String id) =>
       '$partnerReservations/$id/status';
   static const String partnerNotifications = '$partnerBase/notifications';
+  static const String partnerNotificationsUnreadCount =
+      '$partnerNotifications/unread-count';
   static String partnerNotificationRead(String id) =>
       '$partnerNotifications/$id/read';
   static const String partnerNotificationsReadAll =

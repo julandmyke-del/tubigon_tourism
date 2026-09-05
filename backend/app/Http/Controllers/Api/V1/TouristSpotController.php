@@ -72,10 +72,36 @@ class TouristSpotController extends Controller
         if ($request->filled('search')) {
             $query->where('name', 'like', '%'.$request->search.'%');
         }
+        if ($request->filled('status')) {
+            $status = (string) $request->status;
+            if (Schema::hasColumn('tourist_spots', 'operational_status')) {
+                $query->where('operational_status', $status);
+            } else {
+                $query->where('is_active', $status === 'active');
+            }
+        }
+        if ($request->filled('booking')) {
+            $query->where('booking_enabled', $request->booking === 'open');
+        }
+        if ($request->filled('partner')) {
+            $request->partner === 'assigned'
+                ? $query->whereHas('partnerAssignments')
+                : $query->whereDoesntHave('partnerAssignments');
+        }
+
+        $sort = (string) $request->query('sort', 'recent');
+        match ($sort) {
+            'name' => $query->orderBy('name'),
+            'status' => Schema::hasColumn('tourist_spots', 'operational_status')
+                ? $query->orderBy('operational_status')->orderBy('name')
+                : $query->orderByDesc('is_active')->orderBy('name'),
+            'booking' => $query->orderByDesc('booking_enabled')->orderBy('name'),
+            default => $query->latest('updated_at'),
+        };
 
         return response()->json([
             'status' => 'success',
-            'data' => $query->orderBy('created_at', 'desc')->get(),
+            'data' => $query->get(),
         ]);
     }
 
@@ -112,8 +138,8 @@ class TouristSpotController extends Controller
             'aliases' => 'nullable|array|max:20',
             'aliases.*' => 'string|max:255|distinct:ignore_case',
             'category_id' => 'nullable|exists:spot_categories,id',
-            'latitude' => 'nullable|numeric',
-            'longitude' => 'nullable|numeric',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
             'address' => 'nullable|string',
             'entrance_fee' => 'nullable|numeric',
             'opening_hours' => 'nullable|string',
@@ -159,8 +185,8 @@ class TouristSpotController extends Controller
             'aliases' => 'nullable|array|max:20',
             'aliases.*' => 'string|max:255|distinct:ignore_case',
             'category_id' => 'nullable|exists:spot_categories,id',
-            'latitude' => 'nullable|numeric',
-            'longitude' => 'nullable|numeric',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
             'address' => 'nullable|string',
             'entrance_fee' => 'nullable|numeric',
             'opening_hours' => 'nullable|string',
@@ -180,6 +206,7 @@ class TouristSpotController extends Controller
             $validated,
             $spot->latitude !== null ? (float) $spot->latitude : null,
             $spot->longitude !== null ? (float) $spot->longitude : null,
+            (bool) $spot->is_preapproved,
         );
 
         DB::transaction(function () use ($request, $spot, $validated): void {

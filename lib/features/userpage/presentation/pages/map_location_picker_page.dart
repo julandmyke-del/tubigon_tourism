@@ -15,12 +15,14 @@ class MapLocationPickerPage extends StatefulWidget {
     this.title = 'Pin Waste Report Location',
     this.instruction =
         'Tap the map or drag the orange pin to the exact report location within Tubigon.',
+    this.allowPortServiceArea = false,
   });
 
   final double initialLatitude;
   final double initialLongitude;
   final String title;
   final String instruction;
+  final bool allowPortServiceArea;
 
   @override
   State<MapLocationPickerPage> createState() => _MapLocationPickerPageState();
@@ -45,7 +47,10 @@ class _MapLocationPickerPageState extends State<MapLocationPickerPage> {
   @override
   void dispose() {
     _styleLoadTimer?.cancel();
-    _mapController?.dispose();
+    _styleLoaded = false;
+    final controller = _mapController;
+    _mapController = null;
+    controller?.dispose();
     super.dispose();
   }
 
@@ -131,6 +136,10 @@ class _MapLocationPickerPageState extends State<MapLocationPickerPage> {
   }
 
   void _onMapCreated(MapLibreMapController controller) {
+    if (!mounted) {
+      controller.dispose();
+      return;
+    }
     _mapController = controller;
     _styleLoadTimer?.cancel();
     _styleLoadTimer = Timer(const Duration(seconds: 15), () {
@@ -139,6 +148,7 @@ class _MapLocationPickerPageState extends State<MapLocationPickerPage> {
   }
 
   Future<void> _onStyleLoaded() async {
+    if (!mounted) return;
     final controller = _mapController;
     if (controller == null) return;
     _styleLoaded = true;
@@ -147,8 +157,10 @@ class _MapLocationPickerPageState extends State<MapLocationPickerPage> {
     _styleLoadTimer?.cancel();
     if (mounted) setState(() => _tileError = false);
     final boundary = await TubigonBoundary.load();
+    if (!mounted || !identical(controller, _mapController)) return;
     _boundary = boundary;
     for (final ring in boundary.outerRings) {
+      if (!mounted || !identical(controller, _mapController)) return;
       _boundaryLines.add(await controller.addLine(LineOptions(
         geometry: ring
             .map((point) => LatLng(point.latitude, point.longitude))
@@ -158,10 +170,7 @@ class _MapLocationPickerPageState extends State<MapLocationPickerPage> {
         lineOpacity: .9,
       )));
     }
-    if (!boundary.contains(
-      latitude: _selected.latitude,
-      longitude: _selected.longitude,
-    )) {
+    if (!_isAllowed(boundary, _selected)) {
       _selected = const LatLng(
         AppConstants.tubigonLat,
         AppConstants.tubigonLng,
@@ -172,6 +181,7 @@ class _MapLocationPickerPageState extends State<MapLocationPickerPage> {
             'Your starting location is outside Tubigon. The pin was reset to Tubigon.');
       }
     }
+    if (!mounted || !identical(controller, _mapController)) return;
     _locationMarker = await controller.addCircle(CircleOptions(
       geometry: _selected,
       circleRadius: 11,
@@ -184,10 +194,8 @@ class _MapLocationPickerPageState extends State<MapLocationPickerPage> {
 
   Future<void> _moveMarker(LatLng point) async {
     final boundary = _boundary ?? await TubigonBoundary.load();
-    if (!boundary.contains(
-      latitude: point.latitude,
-      longitude: point.longitude,
-    )) {
+    if (!mounted) return;
+    if (!_isAllowed(boundary, point)) {
       _showScopeMessage(
           'Locations must be inside the Municipality of Tubigon, Bohol.');
       return;
@@ -201,6 +209,7 @@ class _MapLocationPickerPageState extends State<MapLocationPickerPage> {
   }
 
   Future<void> _retryStyle() async {
+    if (!mounted) return;
     final controller = _mapController;
     if (controller == null) return;
     _styleLoaded = false;
@@ -219,11 +228,7 @@ class _MapLocationPickerPageState extends State<MapLocationPickerPage> {
       _selected = controller.getCircleLatLng(marker);
     }
     final boundary = _boundary;
-    if (boundary == null ||
-        !boundary.contains(
-          latitude: _selected.latitude,
-          longitude: _selected.longitude,
-        )) {
+    if (boundary == null || !_isAllowed(boundary, _selected)) {
       _showScopeMessage(
           'Move the pin inside the orange Tubigon municipal boundary before confirming.');
       return;
@@ -233,6 +238,17 @@ class _MapLocationPickerPageState extends State<MapLocationPickerPage> {
       'longitude': _selected.longitude,
     });
   }
+
+  bool _isAllowed(TubigonBoundary boundary, LatLng point) =>
+      boundary.contains(
+        latitude: point.latitude,
+        longitude: point.longitude,
+      ) ||
+      (widget.allowPortServiceArea &&
+          boundary.containsPortServiceArea(
+            latitude: point.latitude,
+            longitude: point.longitude,
+          ));
 
   void _showScopeMessage(String message) {
     if (!mounted) return;

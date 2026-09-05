@@ -9,7 +9,7 @@ class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._privateConstructor();
 
   static const String _dbName = 'tubigon_tourism.db';
-  static const int _dbVersion = 8;
+  static const int _dbVersion = 9;
 
   /// Native SQLite is intentionally unavailable in browsers. Repositories
   /// use this single capability boundary to select their Laravel API path.
@@ -170,6 +170,10 @@ class DatabaseHelper {
           color TEXT,
           icon TEXT,
           is_verified INTEGER DEFAULT 0,
+          booking_enabled INTEGER DEFAULT 0,
+          operational_status TEXT DEFAULT 'open',
+          opening_hours TEXT,
+          unavailable_dates TEXT,
           products TEXT,
           created_at TEXT,
           updated_at TEXT,
@@ -565,6 +569,21 @@ class DatabaseHelper {
         try {
           await db.execute(
             'ALTER TABLE tourist_spots ADD COLUMN ${entry.key} ${entry.value}',
+          );
+        } catch (_) {}
+      }
+    }
+    if (oldVersion < 9) {
+      const msmeAvailabilityColumns = <String, String>{
+        'booking_enabled': 'INTEGER DEFAULT 0',
+        'operational_status': "TEXT DEFAULT 'open'",
+        'opening_hours': 'TEXT',
+        'unavailable_dates': 'TEXT',
+      };
+      for (final entry in msmeAvailabilityColumns.entries) {
+        try {
+          await db.execute(
+            'ALTER TABLE msmes ADD COLUMN ${entry.key} ${entry.value}',
           );
         } catch (_) {}
       }

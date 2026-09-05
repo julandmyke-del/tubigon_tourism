@@ -22,6 +22,17 @@ final class TubigonBoundary
 
     private const MAX_LONGITUDE = 124.029692;
 
+    // The authoritative land polygon ends at the shoreline. These tight
+    // bounds cover only Tubigon's passenger-port service area so seaport pins
+    // are not incorrectly rejected as outside the municipality.
+    private const PORT_MIN_LATITUDE = 9.9545;
+
+    private const PORT_MAX_LATITUDE = 9.9575;
+
+    private const PORT_MIN_LONGITUDE = 123.9565;
+
+    private const PORT_MAX_LONGITUDE = 123.9595;
+
     private ?array $polygons = null;
 
     public function contains(float $latitude, float $longitude): bool
@@ -46,6 +57,14 @@ final class TubigonBoundary
         }
 
         return false;
+    }
+
+    public function containsPortServiceArea(float $latitude, float $longitude): bool
+    {
+        return $latitude >= self::PORT_MIN_LATITUDE
+            && $latitude <= self::PORT_MAX_LATITUDE
+            && $longitude >= self::PORT_MIN_LONGITUDE
+            && $longitude <= self::PORT_MAX_LONGITUDE;
     }
 
     private function polygons(): array

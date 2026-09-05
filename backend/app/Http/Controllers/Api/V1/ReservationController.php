@@ -10,8 +10,10 @@ use App\Models\PartnerNotification;
 use App\Models\Reservation;
 use App\Models\ReservationStatus;
 use App\Models\ReservationStatusHistory;
+use App\Models\SystemSetting;
 use App\Models\TourismListing;
 use App\Models\TouristSpot;
+use App\Services\EmailNotificationService;
 use App\Services\TouristSpotBookingService;
 use App\Support\ReservationStatusTransitions;
 use Illuminate\Http\JsonResponse;
@@ -64,8 +66,13 @@ class ReservationController extends Controller
         ]);
     }
 
-    public function store(Request $request, TouristSpotBookingService $spotBooking): JsonResponse
+    public function store(
+        Request $request,
+        TouristSpotBookingService $spotBooking,
+        EmailNotificationService $emailDelivery,
+    ): JsonResponse
     {
+        abort_unless(SystemSetting::enabled('global_booking_enabled'), 403, 'Booking is currently disabled.');
         $validated = $request->validate([
             'reservable_type' => 'required|in:spot,msme,tourism_listing',
             'reservable_id' => 'required|uuid',
@@ -82,6 +89,10 @@ class ReservationController extends Controller
                 'msme' => Msme::where('is_verified', true)
                     ->where('verification_status', 'verified')
                     ->where('operational_status', 'open')
+                    ->when(
+                        Schema::hasColumn('msmes', 'booking_enabled'),
+                        fn ($query) => $query->where('booking_enabled', true),
+                    )
                     ->lockForUpdate()->findOrFail($validated['reservable_id']),
                 'tourism_listing' => TourismListing::where('is_active', true)
                     ->where('approval_status', 'approved')
@@ -186,6 +197,9 @@ class ReservationController extends Controller
             ]);
         }
 
+        // Send only after the reservation and its in-app notifications committed.
+        $emailDelivery->reservation($reservation, 'submitted');
+
         return response()->json([
             'status' => 'success',
             'data' => $this->reservationPayload($reservation->load(
@@ -196,13 +210,13 @@ class ReservationController extends Controller
         ], 201);
     }
 
-    public function updateStatus(Request $request, string $id): JsonResponse
+    public function updateStatus(Request $request, string $id, EmailNotificationService $emailDelivery): JsonResponse
     {
         $request->validate(['status_id' => 'required|exists:reservation_status,id']);
 
         $status = ReservationStatus::findOrFail($request->status_id);
         $request->user()->loadMissing('role');
-        DB::transaction(function () use ($request, $id, $status): void {
+        $reservation = DB::transaction(function () use ($request, $id, $status): Reservation {
             $reservation = Reservation::with('status')->lockForUpdate()->findOrFail($id);
             if ($request->user()->role?->name === 'lgu_staff' && $reservation->reservable_type !== 'spot') {
                 abort(403, 'LGU staff may only manage municipal tourist-spot reservations.');
@@ -237,14 +251,20 @@ class ReservationController extends Controller
                 'action' => 'Reservation updated',
                 'details' => "Updated reservation status for ID $id",
             ]);
+
+            return $reservation;
         });
+
+        if (in_array($status->name, ['approved', 'confirmed', 'rejected', 'cancelled'], true)) {
+            $emailDelivery->reservation($reservation, $status->name);
+        }
 
         return response()->json(['status' => 'success', 'message' => 'Reservation status updated']);
     }
 
-    public function cancel(Request $request, string $id): JsonResponse
+    public function cancel(Request $request, string $id, EmailNotificationService $emailDelivery): JsonResponse
     {
-        DB::transaction(function () use ($request, $id): void {
+        $reservation = DB::transaction(function () use ($request, $id): Reservation {
             $reservation = Reservation::with('status')->lockForUpdate()->findOrFail($id);
             $this->authorizeReservationAccess($request, $reservation);
             abort_if(
@@ -281,7 +301,11 @@ class ReservationController extends Controller
                 'body' => 'Your reservation has been cancelled.',
                 'data' => ['reservation_id' => $id, 'route' => "/reservations/{$id}"],
             ]);
+
+            return $reservation;
         });
+
+        $emailDelivery->reservation($reservation, 'cancelled');
 
         return response()->json(['status' => 'success', 'message' => 'Reservation cancelled']);
     }

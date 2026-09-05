@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -72,10 +73,14 @@ final notificationRepositoryProvider = Provider<NotificationRepository>((ref) {
 });
 
 final touristNotificationsProvider =
-    FutureProvider<List<TouristNotification>>((ref) {
+    FutureProvider.autoDispose<List<TouristNotification>>((ref) {
+  final timer = Timer(const Duration(seconds: 30), ref.invalidateSelf);
+  ref.onDispose(timer.cancel);
   return ref.watch(notificationRepositoryProvider).getNotifications();
 });
 
-final touristUnreadCountProvider = FutureProvider<int>((ref) {
+final touristUnreadCountProvider = FutureProvider.autoDispose<int>((ref) {
+  final timer = Timer(const Duration(seconds: 30), ref.invalidateSelf);
+  ref.onDispose(timer.cancel);
   return ref.watch(notificationRepositoryProvider).getUnreadCount();
 });

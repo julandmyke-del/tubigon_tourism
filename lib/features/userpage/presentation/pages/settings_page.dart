@@ -20,16 +20,41 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _offlineSyncEnabled = true;
   bool _locationEnabled = true;
   bool _loadedSettings = false;
+  final Set<String> _savingSettings = {};
 
-  Future<void> _updateSetting(String key, bool value) async {
+  Future<void> _updateSetting(String key, bool value, bool previous) async {
+    if (_savingSettings.contains(key)) return;
+    setState(() {
+      _savingSettings.add(key);
+      _setLocalSetting(key, value);
+    });
     try {
-      await ref.read(settingsRepositoryProvider).updateSettings({key: value});
+      final saved = await ref
+          .read(settingsRepositoryProvider)
+          .updateSettings({key: value});
+      if (!mounted) return;
+      setState(
+          () => _setLocalSetting(key, saved[key] == true || saved[key] == 1));
       ref.invalidate(touristSettingsProvider);
     } catch (error) {
       if (!mounted) return;
+      setState(() => _setLocalSetting(key, previous));
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Unable to save setting: $error')),
       );
+    } finally {
+      if (mounted) setState(() => _savingSettings.remove(key));
+    }
+  }
+
+  void _setLocalSetting(String key, bool value) {
+    switch (key) {
+      case 'notifications_enabled':
+        _notificationsEnabled = value;
+      case 'offline_mode':
+        _offlineSyncEnabled = value;
+      case 'location_enabled':
+        _locationEnabled = value;
     }
   }
 
@@ -87,21 +112,24 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: const Color(0xFF1E293B)),
             ),
-            child: SwitchListTile(
-              title: const Text('Dark Navy Theme',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14)),
-              subtitle: const Text('Use high-contrast dark theme',
-                  style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
-              secondary:
-                  const Icon(Icons.dark_mode_rounded, color: Color(0xFFF59E0B)),
-              activeThumbColor: const Color(0xFFF59E0B),
-              value: isDarkMode,
-              onChanged: (val) {
-                ref.read(themeModeProvider.notifier).toggleTheme();
-              },
+            child: Material(
+              type: MaterialType.transparency,
+              child: SwitchListTile(
+                title: const Text('Dark Navy Theme',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14)),
+                subtitle: const Text('Use high-contrast dark theme',
+                    style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+                secondary: const Icon(Icons.dark_mode_rounded,
+                    color: Color(0xFFF59E0B)),
+                activeThumbColor: const Color(0xFFF59E0B),
+                value: isDarkMode,
+                onChanged: (val) {
+                  ref.read(themeModeProvider.notifier).toggleTheme();
+                },
+              ),
             ),
           ),
           const SizedBox(height: 24),
@@ -120,62 +148,71 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: const Color(0xFF1E293B)),
             ),
-            child: Column(
-              children: [
-                SwitchListTile(
-                  title: const Text('Push Notifications',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14)),
-                  subtitle: const Text('Booking updates & travel advisories',
-                      style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
-                  secondary: const Icon(Icons.notifications_active_rounded,
-                      color: Color(0xFF38BDF8)),
-                  activeThumbColor: const Color(0xFF38BDF8),
-                  value: _notificationsEnabled,
-                  onChanged: (val) {
-                    setState(() => _notificationsEnabled = val);
-                    _updateSetting('notifications_enabled', val);
-                  },
-                ),
-                const Divider(color: Color(0xFF1E293B), height: 1, indent: 56),
-                SwitchListTile(
-                  title: const Text('SQLite Offline Cache',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14)),
-                  subtitle: const Text('Auto-sync spots and bookings locally',
-                      style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
-                  secondary:
-                      const Icon(Icons.sync_rounded, color: Color(0xFF34D399)),
-                  activeThumbColor: const Color(0xFF34D399),
-                  value: _offlineSyncEnabled,
-                  onChanged: (val) {
-                    setState(() => _offlineSyncEnabled = val);
-                    _updateSetting('offline_mode', val);
-                  },
-                ),
-                const Divider(color: Color(0xFF1E293B), height: 1, indent: 56),
-                SwitchListTile(
-                  title: const Text('Location Services',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14)),
-                  subtitle: const Text('Allow map centering and nearby places',
-                      style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
-                  secondary: const Icon(Icons.location_on_rounded,
-                      color: Color(0xFFF59E0B)),
-                  activeThumbColor: const Color(0xFFF59E0B),
-                  value: _locationEnabled,
-                  onChanged: (val) {
-                    setState(() => _locationEnabled = val);
-                    _updateSetting('location_enabled', val);
-                  },
-                ),
-              ],
+            child: Material(
+              type: MaterialType.transparency,
+              child: Column(
+                children: [
+                  SwitchListTile(
+                    title: const Text('Push Notifications',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14)),
+                    subtitle: const Text('Booking updates & travel advisories',
+                        style:
+                            TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+                    secondary: const Icon(Icons.notifications_active_rounded,
+                        color: Color(0xFF38BDF8)),
+                    activeThumbColor: const Color(0xFF38BDF8),
+                    value: _notificationsEnabled,
+                    onChanged: _savingSettings.contains('notifications_enabled')
+                        ? null
+                        : (val) => _updateSetting('notifications_enabled', val,
+                            _notificationsEnabled),
+                  ),
+                  const Divider(
+                      color: Color(0xFF1E293B), height: 1, indent: 56),
+                  SwitchListTile(
+                    title: const Text('SQLite Offline Cache',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14)),
+                    subtitle: const Text('Auto-sync spots and bookings locally',
+                        style:
+                            TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+                    secondary: const Icon(Icons.sync_rounded,
+                        color: Color(0xFF34D399)),
+                    activeThumbColor: const Color(0xFF34D399),
+                    value: _offlineSyncEnabled,
+                    onChanged: _savingSettings.contains('offline_mode')
+                        ? null
+                        : (val) => _updateSetting(
+                            'offline_mode', val, _offlineSyncEnabled),
+                  ),
+                  const Divider(
+                      color: Color(0xFF1E293B), height: 1, indent: 56),
+                  SwitchListTile(
+                    title: const Text('Location Services',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14)),
+                    subtitle: const Text(
+                        'Allow map centering and nearby places',
+                        style:
+                            TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+                    secondary: const Icon(Icons.location_on_rounded,
+                        color: Color(0xFFF59E0B)),
+                    activeThumbColor: const Color(0xFFF59E0B),
+                    value: _locationEnabled,
+                    onChanged: _savingSettings.contains('location_enabled')
+                        ? null
+                        : (val) => _updateSetting(
+                            'location_enabled', val, _locationEnabled),
+                  ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 24),
@@ -194,42 +231,47 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: const Color(0xFF1E293B)),
             ),
-            child: Column(
-              children: [
-                const ListTile(
-                  leading: Icon(Icons.info_outline_rounded,
-                      color: Color(0xFFF59E0B)),
-                  title: Text('Application Version',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14)),
-                  trailing: Text('1.0.0 (Build 1)',
-                      style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
-                ),
-                const Divider(color: Color(0xFF1E293B), height: 1, indent: 56),
-                ListTile(
-                  leading: Icon(
-                      online
-                          ? Icons.cloud_done_rounded
-                          : Icons.cloud_off_rounded,
-                      color: online
-                          ? const Color(0xFF34D399)
-                          : const Color(0xFFF59E0B)),
-                  title: const Text('Connection Status',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14)),
-                  trailing: Text(online ? 'Online' : 'Offline',
-                      style: TextStyle(
-                          color: online
-                              ? const Color(0xFF34D399)
-                              : const Color(0xFFF59E0B),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700)),
-                ),
-              ],
+            child: Material(
+              type: MaterialType.transparency,
+              child: Column(
+                children: [
+                  const ListTile(
+                    leading: Icon(Icons.info_outline_rounded,
+                        color: Color(0xFFF59E0B)),
+                    title: Text('Application Version',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14)),
+                    trailing: Text('1.0.0 (Build 1)',
+                        style:
+                            TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+                  ),
+                  const Divider(
+                      color: Color(0xFF1E293B), height: 1, indent: 56),
+                  ListTile(
+                    leading: Icon(
+                        online
+                            ? Icons.cloud_done_rounded
+                            : Icons.cloud_off_rounded,
+                        color: online
+                            ? const Color(0xFF34D399)
+                            : const Color(0xFFF59E0B)),
+                    title: const Text('Connection Status',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14)),
+                    trailing: Text(online ? 'Online' : 'Offline',
+                        style: TextStyle(
+                            color: online
+                                ? const Color(0xFF34D399)
+                                : const Color(0xFFF59E0B),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700)),
+                  ),
+                ],
+              ),
             ),
           ),
         ],

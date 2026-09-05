@@ -6,42 +6,57 @@ use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\Profile;
 use App\Models\Role;
+use App\Models\Msme;
+use App\Models\Notification;
+use App\Models\PartnerNotification;
 use App\Models\Setting;
+use App\Models\TouristSpot;
+use App\Models\TouristSpotPartnerAssignment;
 use App\Models\User;
+use App\Services\EmailNotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rules\Password;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class UserController extends Controller
 {
+    private const MANAGEABLE_ROLES = ['tourist', 'msme_owner', 'tourism_partner', 'lgu_staff', 'admin'];
     /**
      * GET /api/v1/users
      */
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
         // Use the authentication source of truth so registration method and
         // suspended accounts are visible without exposing auth credentials.
-        $users = User::withTrashed()->with('role')
+        $relations = ['role', 'profile'];
+        if (Schema::hasTable('msmes')) $relations[] = 'msmes:id,profile_id,name';
+        if (Schema::hasTable('tourist_spot_partner_assignments') && Schema::hasTable('tourist_spots')) {
+            $relations[] = 'managedTouristSpots:id,name';
+        }
+        $query = User::withTrashed()->with($relations);
+        if ($request->filled('search')) {
+            $search = '%'.strtolower($request->string('search')).'%';
+            $query->where(fn ($q) => $q
+                ->whereRaw('LOWER(name) LIKE ?', [$search])
+                ->orWhereRaw('LOWER(email) LIKE ?', [$search]));
+        }
+        if ($request->filled('role')) {
+            $query->whereHas('role', fn ($q) => $q->where('name', $request->string('role')));
+        }
+        if ($request->has('verified')) {
+            $query->where('is_verified', $request->boolean('verified'));
+        }
+        if ($request->string('status')->toString() === 'active') $query->whereNull('deleted_at');
+        if ($request->string('status')->toString() === 'disabled') $query->onlyTrashed();
+
+        $users = $query
             ->orderBy('created_at', 'desc')
             ->get()
-            ->map(function ($user) {
-                return [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'role_id' => $user->role_id,
-                    'role' => $user->role?->name ?? 'tourist',
-                    'role_name' => $user->role?->name ?? 'tourist',
-                    'is_verified' => (bool) $user->is_verified,
-                    'registration_method' => $user->auth_provider ?: 'email',
-                    'status' => $user->deleted_at ? 'Suspended' : 'Active',
-                    'created_at' => $user->created_at?->toIso8601String(),
-                    'avatar_url' => $user->avatar_url,
-                    'phone' => $user->phone,
-                ];
-            });
+            ->map(fn (User $user) => $this->userPayload($user));
 
         return response()->json(['status' => 'success', 'data' => $users]);
     }
@@ -52,7 +67,7 @@ class UserController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|email|max:255|unique:users,email',
             'password' => ['required', Password::min(8)],
-            'role_id' => 'required|exists:roles,id',
+            'role_id' => ['required', Rule::exists('roles', 'id')->where(fn ($q) => $q->whereIn('name', self::MANAGEABLE_ROLES))],
             'is_verified' => 'sometimes|boolean',
         ]);
 
@@ -98,8 +113,8 @@ class UserController extends Controller
     public function show(Request $request, string $id): JsonResponse
     {
         $this->authorizeProfileAccess($request, $id);
-        $user = Profile::with('role')->findOrFail($id);
-        return response()->json(['status' => 'success', 'data' => $user]);
+        $user = User::withTrashed()->with(['role', 'profile', 'managedTouristSpots'])->findOrFail($id);
+        return response()->json(['status' => 'success', 'data' => $this->userPayload($user, true)]);
     }
 
     /**
@@ -139,7 +154,7 @@ class UserController extends Controller
             'phone' => 'nullable|string|max:255',
             'bio' => 'nullable|string|max:2000',
             'language' => 'sometimes|required|string|max:50',
-            'role_id' => 'sometimes|required|exists:roles,id',
+            'role_id' => ['sometimes', 'required', Rule::exists('roles', 'id')->where(fn ($q) => $q->whereIn('name', self::MANAGEABLE_ROLES))],
         ]);
 
         $user = User::with('role')->findOrFail($id);
@@ -148,7 +163,9 @@ class UserController extends Controller
             ? Role::findOrFail($validated['role_id'])
             : null;
         if ($newRole !== null) {
+            $this->guardSelfDemotion($request, $user, $newRole);
             $this->guardLastAdmin($user, $newRole);
+            $this->guardOwnership($user, $newRole);
         }
 
         DB::transaction(function () use ($request, $user, $profile, $newRole, $validated): void {
@@ -190,11 +207,15 @@ class UserController extends Controller
      */
     public function updateRole(Request $request, string $id): JsonResponse
     {
-        $request->validate(['role_id' => 'required|exists:roles,id']);
+        $request->validate([
+            'role_id' => ['required', Rule::exists('roles', 'id')->where(fn ($q) => $q->whereIn('name', self::MANAGEABLE_ROLES))],
+        ]);
 
         $target = User::with('role')->findOrFail($id);
         $newRole = Role::findOrFail($request->role_id);
+        $this->guardSelfDemotion($request, $target, $newRole);
         $this->guardLastAdmin($target, $newRole);
+        $this->guardOwnership($target, $newRole);
 
         DB::transaction(function () use ($request, $target, $newRole): void {
             $target->update(['role_id' => $newRole->id]);
@@ -207,6 +228,76 @@ class UserController extends Controller
         });
 
         return response()->json(['status' => 'success', 'message' => 'Role updated']);
+    }
+
+    public function updatePartnerAssignment(Request $request, string $id, EmailNotificationService $emailDelivery): JsonResponse
+    {
+        $validated = $request->validate([
+            'tourist_spot_id' => 'nullable|uuid|exists:tourist_spots,id',
+        ]);
+        $target = User::with('role')->findOrFail($id);
+        abort_unless($target->role?->name === 'tourism_partner', 422, 'Only Tourism Partner accounts can receive a destination assignment.');
+
+        [$assignment, $changed] = DB::transaction(function () use ($request, $target, $validated): array {
+            $current = TouristSpotPartnerAssignment::where('partner_profile_id', $target->id)
+                ->lockForUpdate()->first();
+            $spotId = $validated['tourist_spot_id'] ?? null;
+            if ($spotId) {
+                TouristSpot::whereKey($spotId)->lockForUpdate()->firstOrFail();
+                $conflict = TouristSpotPartnerAssignment::where('tourist_spot_id', $spotId)
+                    ->where('partner_profile_id', '!=', $target->id)->lockForUpdate()->exists();
+                abort_if($conflict, 422, 'This Tourist Spot is already assigned to another Partner.');
+            }
+            $previousSpotId = $current?->tourist_spot_id;
+            if ($current && (string) $current->tourist_spot_id !== (string) $spotId) $current->delete();
+            $newAssignment = $spotId
+                ? TouristSpotPartnerAssignment::updateOrCreate(
+                    ['partner_profile_id' => $target->id],
+                    ['tourist_spot_id' => $spotId, 'is_primary' => true, 'assigned_by' => $request->user()->id, 'assigned_at' => now()],
+                )
+                : null;
+            ActivityLog::create([
+                'user_id' => $request->user()->id,
+                'action' => $spotId ? 'Tourism Partner destination assigned' : 'Tourism Partner destination unassigned',
+                'details' => json_encode([
+                    'partner_user_id' => $target->id,
+                    'previous_tourist_spot_id' => $previousSpotId,
+                    'tourist_spot_id' => $spotId,
+                ], JSON_THROW_ON_ERROR),
+            ]);
+            PartnerNotification::create([
+                'user_id' => $target->id,
+                'type' => 'admin_assignment_changed',
+                'title' => $spotId ? 'Destination Assignment Updated' : 'Destination Assignment Removed',
+                'body' => $spotId
+                    ? 'Admin updated your assigned destination. Your portal now reflects the new assignment.'
+                    : 'Your destination assignment was removed. Contact the Tourism Office for assistance.',
+                'data' => ['tourist_spot_id' => $spotId, 'route' => '/tourism-partner/listings'],
+            ]);
+            User::whereHas('role', fn ($query) => $query->where('name', 'lgu_staff'))
+                ->pluck('id')->each(fn (string $lguId) => Notification::create([
+                    'user_id' => $lguId,
+                    'type' => 'partner_assignment_changed',
+                    'title' => 'Tourism Partner Assignment Updated',
+                    'body' => "{$target->name}'s destination assignment was updated by Admin.",
+                    'data' => ['partner_user_id' => $target->id, 'tourist_spot_id' => $spotId, 'route' => '/lgu/tourist-spots'],
+                ]));
+
+            return [
+                $newAssignment?->load(['touristSpot:id,name,slug', 'assignedBy:id,name']),
+                (string) $previousSpotId !== (string) $spotId,
+            ];
+        }, 3);
+
+        if ($changed) {
+            $emailDelivery->partnerAssignment(
+                $target->fresh(),
+                $assignment?->touristSpot,
+                (string) \Illuminate\Support\Str::uuid(),
+            );
+        }
+
+        return response()->json(['status' => 'success', 'message' => 'Partner destination assignment updated.', 'data' => $assignment]);
     }
 
     /**
@@ -246,7 +337,6 @@ class UserController extends Controller
         $this->guardLastAdmin($target, null);
 
         DB::transaction(function () use ($request, $target): void {
-            Profile::where('id', $target->id)->firstOrFail()->delete();
             $target->tokens()->delete();
             $target->delete();
             ActivityLog::create([
@@ -264,7 +354,7 @@ class UserController extends Controller
      */
     public function roles(): JsonResponse
     {
-        $roles = Role::select('id', 'name')->get();
+        $roles = Role::select('id', 'name')->whereIn('name', self::MANAGEABLE_ROLES)->get();
         return response()->json(['status' => 'success', 'data' => $roles]);
     }
 
@@ -309,5 +399,98 @@ class UserController extends Controller
                 'role_id' => ['The last active Admin cannot be demoted or archived.'],
             ]);
         }
+    }
+
+    public function updateStatus(Request $request, string $id): JsonResponse
+    {
+        $validated = $request->validate(['active' => 'required|boolean']);
+        $target = User::withTrashed()->with('role')->findOrFail($id);
+        if ((string) $request->user()->id === $id && ! $validated['active']) {
+            throw ValidationException::withMessages(['active' => ['You cannot disable your own Admin account.']]);
+        }
+        if (! $validated['active']) $this->guardLastAdmin($target, null);
+
+        DB::transaction(function () use ($request, $target, $validated): void {
+            if ($validated['active']) {
+                $target->restore();
+                Profile::withTrashed()->where('id', $target->id)->restore();
+            } else {
+                $target->tokens()->delete();
+                $target->delete();
+            }
+            ActivityLog::create([
+                'user_id' => $request->user()->id,
+                'action' => $validated['active'] ? 'User activated' : 'User deactivated',
+                'details' => json_encode(['target_type' => 'user', 'target_id' => $target->id]),
+            ]);
+        });
+        return response()->json(['status' => 'success', 'message' => $validated['active'] ? 'User activated.' : 'User deactivated.']);
+    }
+
+    public function revokeSessions(Request $request, string $id): JsonResponse
+    {
+        $target = User::withTrashed()->findOrFail($id);
+        $target->tokens()->delete();
+        ActivityLog::create([
+            'user_id' => $request->user()->id,
+            'action' => 'User sessions revoked',
+            'details' => json_encode(['target_type' => 'user', 'target_id' => $target->id]),
+        ]);
+        return response()->json(['status' => 'success', 'message' => 'User sessions revoked.']);
+    }
+
+    private function guardSelfDemotion(Request $request, User $target, Role $newRole): void
+    {
+        if ((string) $request->user()->id === (string) $target->id
+            && $target->role?->name === 'admin' && $newRole->name !== 'admin') {
+            throw ValidationException::withMessages(['role_id' => ['You cannot demote your own Admin account.']]);
+        }
+    }
+
+    private function guardOwnership(User $target, Role $newRole): void
+    {
+        if ($target->role?->name === 'msme_owner' && $newRole->name !== 'msme_owner'
+            && Msme::where('profile_id', $target->id)->exists()) {
+            throw ValidationException::withMessages(['role_id' => ['Reassign the linked MSME before changing this owner role.']]);
+        }
+        if ($target->role?->name === 'tourism_partner' && $newRole->name !== 'tourism_partner'
+            && ($target->managedTouristSpots()->exists()
+                || (Schema::hasTable('tourism_listings')
+                    && DB::table('tourism_listings')->where('owner_id', $target->id)->whereNull('deleted_at')->exists()))) {
+            throw ValidationException::withMessages(['role_id' => ['Reassign linked Tourist Spots before changing this partner role.']]);
+        }
+    }
+
+    private function userPayload(User $user, bool $detail = false): array
+    {
+        $payload = [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'role_id' => $user->role_id,
+            'role' => $user->role?->name ?? 'tourist',
+            'role_name' => $user->role?->name ?? 'tourist',
+            'is_verified' => (bool) $user->is_verified,
+            'registration_method' => $user->auth_provider ?: 'email',
+            'status' => $user->trashed() ? 'Disabled' : 'Active',
+            'created_at' => $user->created_at?->toIso8601String(),
+            'avatar_url' => $user->avatar_url,
+            'phone' => $user->phone ?? $user->profile?->phone,
+            'linked_msmes' => $user->relationLoaded('msmes')
+                ? $user->msmes->map->only(['id', 'name'])
+                : [],
+            'linked_tourist_spots' => $user->relationLoaded('managedTouristSpots')
+                ? $user->managedTouristSpots->map->only(['id', 'name'])
+                : [],
+        ];
+        if (! $detail) return $payload;
+
+        $payload['bio'] = $user->bio ?? $user->profile?->bio;
+        $payload['language'] = $user->language ?? $user->profile?->language;
+        $payload['linked_msmes'] = Msme::where('profile_id', $user->id)->get(['id', 'name', 'verification_status']);
+        $payload['linked_tourist_spots'] = $user->managedTouristSpots->map->only(['id', 'name']);
+        $payload['recent_activity'] = ActivityLog::where('user_id', $user->id)
+            ->latest()->limit(10)->get(['id', 'action', 'details', 'created_at']);
+        return $payload;
     }
 }

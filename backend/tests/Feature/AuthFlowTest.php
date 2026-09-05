@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Mail\VerifyEmail;
+use App\Notifications\ResetPasswordNotification;
 use App\Models\Profile;
 use App\Models\Image;
 use App\Models\Role;
@@ -12,6 +13,8 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\URL;
@@ -232,6 +235,76 @@ class AuthFlowTest extends TestCase
 
         $this->assertDatabaseMissing('users', ['email' => 'not-an-email']);
         Mail::assertNothingSent();
+    }
+
+    public function test_password_recovery_sends_a_real_link_and_resets_the_hash(): void
+    {
+        Notification::fake();
+        $user = $this->makeUser(['email' => 'recover@example.test']);
+
+        $this->postJson('/api/v1/auth/forgot-password', [
+            'email' => $user->email,
+        ])->assertOk();
+        Notification::assertSentTo($user, ResetPasswordNotification::class);
+
+        $token = Password::broker()->createToken($user);
+        $user->createToken('existing-session');
+        $this->postJson('/api/v1/auth/reset-password', [
+            'email' => $user->email,
+            'token' => $token,
+            'password' => 'new-safe-password',
+            'password_confirmation' => 'new-safe-password',
+        ])->assertOk();
+
+        $this->assertTrue(Hash::check('new-safe-password', $user->fresh()->password));
+        $this->assertDatabaseMissing('personal_access_tokens', [
+            'tokenable_id' => $user->id,
+        ]);
+    }
+
+    public function test_tourist_profile_and_password_updates_are_owner_scoped_and_cannot_escalate(): void
+    {
+        $user = $this->makeUser(['email' => 'profile-owner@example.test']);
+        $other = $this->makeUser(['email' => 'profile-other@example.test']);
+        foreach ([$user, $other] as $profileUser) {
+            Profile::create([
+                'id' => $profileUser->id,
+                'name' => $profileUser->name,
+                'email' => $profileUser->email,
+                'role_id' => $profileUser->role_id,
+                'is_verified' => true,
+            ]);
+        }
+
+        $this->actingAs($user, 'sanctum')
+            ->putJson("/api/v1/users/{$user->id}", [
+                'name' => 'Updated Tourist',
+                'phone' => '09171234567',
+                'role_id' => Role::create(['name' => 'admin'])->id,
+                'is_verified' => false,
+            ])->assertOk();
+        $this->assertDatabaseHas('users', [
+            'id' => $user->id,
+            'name' => 'Updated Tourist',
+            'role_id' => $this->touristRole->id,
+            'is_verified' => true,
+        ]);
+        $this->getJson("/api/v1/users/{$other->id}")->assertForbidden();
+        $this->putJson("/api/v1/users/{$other->id}", [
+            'name' => 'Hijacked',
+        ])->assertForbidden();
+
+        $this->putJson('/api/v1/auth/password', [
+            'current_password' => 'wrong-password',
+            'password' => 'changed-password',
+            'password_confirmation' => 'changed-password',
+        ])->assertUnprocessable();
+        $this->putJson('/api/v1/auth/password', [
+            'current_password' => 'safe-password',
+            'password' => 'changed-password',
+            'password_confirmation' => 'changed-password',
+        ])->assertOk();
+        $this->assertTrue(Hash::check('changed-password', $user->fresh()->password));
     }
 
     public function test_unverified_password_account_cannot_log_in(): void
@@ -712,7 +785,7 @@ class AuthFlowTest extends TestCase
 
     private function createAuthSchema(): void
     {
-        foreach (['personal_access_tokens', 'images', 'activity_logs', 'admin_notifications', 'settings', 'profiles', 'users', 'roles'] as $table) {
+        foreach (['personal_access_tokens', 'password_reset_tokens', 'images', 'activity_logs', 'admin_notifications', 'settings', 'profiles', 'users', 'roles'] as $table) {
             Schema::dropIfExists($table);
         }
 
@@ -803,6 +876,11 @@ class AuthFlowTest extends TestCase
             $table->timestamp('expires_at')->nullable();
             $table->timestamps();
             $table->index(['tokenable_type', 'tokenable_id']);
+        });
+        Schema::create('password_reset_tokens', function (Blueprint $table) {
+            $table->string('email')->primary();
+            $table->string('token');
+            $table->timestamp('created_at')->nullable();
         });
     }
 }

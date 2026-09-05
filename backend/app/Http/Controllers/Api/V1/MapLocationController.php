@@ -75,7 +75,7 @@ class MapLocationController extends Controller
             'name' => 'required|string|max:255',
             'latitude' => 'nullable|numeric|between:-90,90|required_with:longitude',
             'longitude' => 'nullable|numeric|between:-180,180|required_with:latitude',
-            'entity_type' => ['nullable', Rule::in(['tourist_spot', 'msme'])],
+            'entity_type' => ['nullable', Rule::in(['tourist_spot', 'msme', 'emergency_contact'])],
             'entity_id' => 'nullable|required_with:entity_type|uuid',
             'exclude_id' => 'nullable|uuid',
         ]);
@@ -230,7 +230,7 @@ class MapLocationController extends Controller
             'description' => ['nullable', 'string', 'max:2000'],
             'category_id' => [$required, 'uuid', Rule::exists('map_location_categories', 'id')->where(fn ($q) => $q->where('active', true)->whereNull('deleted_at'))],
             'subcategory_id' => ['nullable', 'uuid', Rule::exists('map_location_categories', 'id')->where(fn ($q) => $q->where('active', true)->whereNull('deleted_at'))],
-            'entity_type' => ['nullable', Rule::in(['tourist_spot', 'msme'])],
+            'entity_type' => ['nullable', Rule::in(['tourist_spot', 'msme', 'emergency_contact'])],
             'entity_id' => ['nullable', 'required_with:entity_type', 'uuid'],
             'address' => ['nullable', 'string', 'max:1000'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90', 'required_with:longitude'],
@@ -256,10 +256,16 @@ class MapLocationController extends Controller
         $entityType = $data['entity_type'] ?? $location?->entity_type;
         $entityId = $data['entity_id'] ?? $location?->entity_id;
         $this->assertEntityExists($entityType, $entityId);
+        $categoryId = $data['category_id'] ?? $location?->category_id;
+        $isPortLocation = MapLocationCategory::whereKey($categoryId)
+            ->where('slug', 'port-transport')
+            ->exists();
         $this->validateTubigonCoordinates(
             $data,
             $location?->latitude,
             $location?->longitude,
+            false,
+            $isPortLocation,
         );
         $subcategoryId = $data['subcategory_id'] ?? null;
         if ($subcategoryId) {
@@ -284,6 +290,7 @@ class MapLocationController extends Controller
         $exists = match ($type) {
             'tourist_spot' => TouristSpot::whereKey($id)->exists(),
             'msme' => Msme::whereKey($id)->exists(),
+            'emergency_contact' => \App\Models\EmergencyContact::whereKey($id)->exists(),
             default => false,
         };
         if (! $exists) {
@@ -296,6 +303,15 @@ class MapLocationController extends Controller
         $errors = [];
         if ($location->latitude === null || $location->longitude === null) {
             $errors['latitude'][] = 'Place the exact map pin before verification or publication.';
+        } elseif (! app(\App\Support\TubigonBoundary::class)->contains(
+            (float) $location->latitude,
+            (float) $location->longitude,
+        ) && ! ($location->category?->slug === 'port-transport'
+            && app(\App\Support\TubigonBoundary::class)->containsPortServiceArea(
+                (float) $location->latitude,
+                (float) $location->longitude,
+            ))) {
+            $errors['latitude'][] = 'The map pin must be within Tubigon or its passenger-port service area.';
         }
         if (! $location->active) {
             $errors['active'][] = 'Activate the location before publication.';

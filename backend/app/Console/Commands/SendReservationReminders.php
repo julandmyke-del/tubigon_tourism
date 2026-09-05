@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Notification;
 use App\Models\Reservation;
+use App\Services\EmailNotificationService;
 use Illuminate\Console\Command;
 
 class SendReservationReminders extends Command
@@ -12,7 +13,7 @@ class SendReservationReminders extends Command
 
     protected $description = 'Send idempotent reminders for tomorrow\'s active reservations';
 
-    public function handle(): int
+    public function handle(EmailNotificationService $emailDelivery): int
     {
         $reminderDate = today()->addDay()->toDateString();
         $created = 0;
@@ -21,7 +22,7 @@ class SendReservationReminders extends Command
             ->whereHas('status', fn ($query) => $query->whereIn('name', [
                 'pending', 'approved', 'confirmed',
             ]))
-            ->chunkById(100, function ($reservations) use ($reminderDate, &$created): void {
+            ->chunkById(100, function ($reservations) use ($reminderDate, &$created, $emailDelivery): void {
                 foreach ($reservations as $reservation) {
                     $exists = Notification::where('user_id', $reservation->user_id)
                         ->where('type', 'reservation_reminder')
@@ -42,6 +43,7 @@ class SendReservationReminders extends Command
                             'route' => "/reservations/{$reservation->id}",
                         ],
                     ]);
+                    $emailDelivery->reservation($reservation, 'reminder');
                     $created++;
                 }
             });

@@ -12,6 +12,7 @@ import '../../features/splash/splash_page.dart';
 import '../../features/onboarding/pages/redesign_onboarding_page.dart';
 import '../../features/authentication/pages/register_page.dart';
 import '../../features/authentication/pages/forgot_password_page.dart';
+import '../../features/authentication/pages/reset_password_page.dart';
 import '../../features/authentication/pages/email_verification_page.dart';
 
 // ─── Tourist / User Module Imports ──────────────────────────────────────────
@@ -37,7 +38,6 @@ import '../../features/admin/presentation/pages/admin_activity_logs_page.dart';
 import '../../features/tourism_partner/presentation/partner_shell.dart';
 import '../../features/tourism_partner/presentation/pages/partner_dashboard_page.dart';
 import '../../features/tourism_partner/presentation/pages/partner_listings_page.dart';
-import '../../features/tourism_partner/presentation/pages/partner_create_listing_page.dart';
 import '../../features/tourism_partner/presentation/pages/partner_reservations_page.dart';
 import '../../features/tourism_partner/presentation/pages/partner_notifications_page.dart';
 import '../../features/tourism_partner/presentation/pages/partner_reviews_page.dart';
@@ -53,6 +53,8 @@ import '../../features/itinerary/presentation/itinerary_detail_page.dart';
 
 // ─── MSME Module Imports ───────────────────────────────────────────────────
 import '../../features/msmepage/msmepage.dart';
+import '../../features/role_applications/presentation/applicant_role_applications_page.dart';
+import '../../features/role_applications/presentation/role_application_review_page.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 final _shellNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'shell');
@@ -150,7 +152,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         }
 
         // Tourism Partner section protection: Only Partner and Admin
-        if (location.startsWith('/tourism-partner') && !isPartner && !isAdmin) {
+        if (location.startsWith('/tourism-partner') && !isPartner) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -212,7 +214,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         }
         if (isAdmin &&
             !location.startsWith('/admin') &&
-            !location.startsWith('/tourism-partner') &&
             !location.startsWith('/lgu') &&
             !isSharedMap) {
           return '/admin';
@@ -291,6 +292,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const ForgotPasswordPage(),
           ),
           GoRoute(
+            path: 'reset-password',
+            name: RouteNames.resetPassword,
+            builder: (context, state) => ResetPasswordPage(
+              token: state.uri.queryParameters['token'] ?? '',
+              email: state.uri.queryParameters['email'] ?? '',
+            ),
+          ),
+          GoRoute(
             path: 'verify-email',
             name: RouteNames.verifyEmail,
             builder: (context, state) {
@@ -366,6 +375,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 path: 'pick',
                 parentNavigatorKey: _rootNavigatorKey,
                 builder: (context, state) => MapLocationPickerPage(
+                  allowPortServiceArea:
+                      state.uri.queryParameters['port_service_area'] == 'true',
                   initialLatitude:
                       double.tryParse(state.uri.queryParameters['lat'] ?? '') ??
                           9.9515,
@@ -488,6 +499,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const NotificationsPage(),
       ),
       GoRoute(
+        path: '/applications',
+        builder: (context, state) => const ApplicantRoleApplicationsPage(),
+        routes: [
+          GoRoute(
+            path: ':id',
+            builder: (context, state) => ApplicantRoleApplicationsPage(
+              initialApplicationId: state.pathParameters['id'],
+            ),
+          ),
+        ],
+      ),
+      GoRoute(
         path: '/eco-tips',
         name: RouteNames.ecoTips,
         builder: (context, state) => const EcoTipsPage(),
@@ -517,6 +540,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/admin/users',
             name: 'admin-users',
             builder: (context, state) => const AdminUserManagementPage(),
+          ),
+          GoRoute(
+            path: '/admin/access-requests',
+            builder: (context, state) =>
+                const RoleApplicationReviewPage(admin: true),
+            routes: [
+              GoRoute(
+                path: ':id',
+                builder: (context, state) => RoleApplicationReviewPage(
+                  admin: true,
+                  initialId: state.pathParameters['id'],
+                ),
+              ),
+            ],
           ),
           GoRoute(
             path: '/admin/users/:id/edit',
@@ -611,18 +648,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: 'create',
                 name: RouteNames.partnerCreateListing,
-                builder: (context, state) => PartnerCreateListingPage(
-                  listingId: state.uri.queryParameters['edit'],
-                ),
+                builder: (context, state) => const PartnerListingsPage(),
               ),
               GoRoute(
                 path: 'edit/:id',
                 name: RouteNames.partnerEditListing,
-                builder: (context, state) => PartnerCreateListingPage(
-                  listingId: state.pathParameters['id'],
-                ),
+                builder: (context, state) => const PartnerListingsPage(),
               ),
             ],
+          ),
+          GoRoute(
+            path: '/tourism-partner/preview/:id',
+            builder: (context, state) => TouristSpotDetailPage(
+              spotId: int.tryParse(state.pathParameters['id'] ?? '') ?? 0,
+            ),
           ),
           GoRoute(
             path: '/tourism-partner/reservations',
@@ -680,6 +719,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/lgu/tourist-spots',
             name: RouteNames.lguTouristSpots,
             builder: (context, state) => const LguTouristSpotsPage(),
+          ),
+          GoRoute(
+            path: '/lgu/role-applications',
+            builder: (context, state) =>
+                const RoleApplicationReviewPage(admin: false),
+            routes: [
+              GoRoute(
+                path: ':id',
+                builder: (context, state) => RoleApplicationReviewPage(
+                  admin: false,
+                  initialId: state.pathParameters['id'],
+                ),
+              ),
+            ],
           ),
           GoRoute(
             path: '/lgu/tourism-monitoring',

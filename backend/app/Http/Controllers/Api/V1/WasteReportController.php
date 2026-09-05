@@ -8,6 +8,7 @@ use App\Models\ActivityLog;
 use App\Models\WasteReport;
 use App\Models\Notification;
 use App\Models\User;
+use App\Models\SystemSetting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -44,6 +45,7 @@ class WasteReportController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        abort_unless(SystemSetting::enabled('waste_reporting_enabled'), 403, 'Waste reporting is currently disabled.');
         $validated = $request->validate([
             'category' => 'required|in:garbage,water_pollution,beach_coastal,environmental_damage,road_infrastructure,public_facility,safety,tourism_site,marine_wildlife,other,Plastic Waste,Coastal Pollution,Illegal Dumping,Overflowing Bin,Hazardous Material,Other',
             'description' => 'required|string|min:10|max:2000',

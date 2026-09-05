@@ -3,15 +3,20 @@
 namespace Tests\Feature;
 
 use App\Models\Profile;
+use App\Models\PartnerNotification;
 use App\Models\Reservation;
 use App\Models\ReservationStatus;
 use App\Models\Role;
+use App\Models\Review;
 use App\Models\TouristSpot;
+use App\Models\TouristSpotPartnerAssignment;
 use App\Models\User;
 use Database\Seeders\DevelopmentFeaturedDestinationPartnerSeeder;
 use Database\Seeders\FeaturedDestinationSeeder;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -28,12 +33,19 @@ class FeaturedDestinationPartnerOwnershipTest extends TestCase
         foreach (['pending', 'approved', 'confirmed', 'rejected', 'completed', 'cancelled'] as $name) {
             ReservationStatus::create(['name' => $name]);
         }
-        config()->set('tourist_spot_partners.development_password', 'LocalOnly!Partner2026');
+        config()->set('tourist_spot_partners.development_password', 'Partner123!');
     }
 
     public function test_controlled_seeder_creates_eight_idempotent_accounts_profiles_and_assignments(): void
     {
         $existing = $this->user('Original Partner', 'partner@gmail.com', 'tourism_partner');
+        $existingPasswordHash = $existing->password;
+        $controlledExisting = $this->user(
+            'Previously Provisioned Mundong Partner',
+            'mundong@gmail.com',
+            'tourism_partner',
+        );
+        $controlledExistingHash = $controlledExisting->password;
 
         $this->seed(FeaturedDestinationSeeder::class);
         $this->seed(DevelopmentFeaturedDestinationPartnerSeeder::class);
@@ -47,11 +59,15 @@ class FeaturedDestinationPartnerOwnershipTest extends TestCase
         $this->assertDatabaseCount('tourist_spot_partner_assignments', 8);
         $this->assertSame(8, Profile::whereIn('email', array_keys(DevelopmentFeaturedDestinationPartnerSeeder::ACCOUNTS))->count());
         $this->assertDatabaseHas('users', ['id' => $existing->id, 'email' => 'partner@gmail.com']);
+        $this->assertSame($existingPasswordHash, $existing->fresh()->password);
+        $this->assertNotSame($controlledExistingHash, $controlledExisting->fresh()->password);
 
         foreach (DevelopmentFeaturedDestinationPartnerSeeder::ACCOUNTS as $email => [, $slug]) {
             $user = User::with('role')->where('email', $email)->firstOrFail();
             $spot = TouristSpot::where('slug', $slug)->firstOrFail();
             $this->assertSame('tourism_partner', $user->role->name);
+            $this->assertTrue(Hash::check('Partner123!', $user->password));
+            $this->assertNotSame('Partner123!', $user->password);
             $this->assertDatabaseHas('profiles', ['id' => $user->id, 'role_id' => $user->role_id]);
             $this->assertDatabaseHas('tourist_spot_partner_assignments', [
                 'tourist_spot_id' => $spot->id,
@@ -66,7 +82,7 @@ class FeaturedDestinationPartnerOwnershipTest extends TestCase
             $this->assertSame('date_only', $spot->booking_mode);
             $this->postJson('/api/v1/auth/login', [
                 'email' => $email,
-                'password' => 'LocalOnly!Partner2026',
+                'password' => 'Partner123!',
             ])->assertOk()
                 ->assertJsonPath('data.role', 'tourism_partner')
                 ->assertJsonPath('data.user.email', $email);
@@ -221,6 +237,206 @@ class FeaturedDestinationPartnerOwnershipTest extends TestCase
         ]);
     }
 
+    public function test_assigned_partner_sees_only_reviews_for_owned_destinations(): void
+    {
+        $this->seedAccounts();
+        $tourist = $this->user('Reviewing Tourist', 'reviewer@example.test', 'tourist');
+        $mundongPartner = User::where('email', 'mundong@gmail.com')->firstOrFail();
+        $ilijanPartner = User::where('email', 'ilijan@gmail.com')->firstOrFail();
+        $mundong = TouristSpot::where('slug', 'mundong-sandbar')->firstOrFail();
+        $ilijan = TouristSpot::where('slug', 'enchanted-ilijan-hill')->firstOrFail();
+
+        Sanctum::actingAs($tourist);
+        $ownReviewId = $this->postJson('/api/v1/reviews', [
+            'reviewable_type' => 'spot',
+            'reviewable_id' => $mundong->id,
+            'rating' => 5,
+            'content' => 'A verified destination review.',
+        ])->assertCreated()->json('data.id');
+        $otherReviewId = $this->postJson('/api/v1/reviews', [
+            'reviewable_type' => 'spot',
+            'reviewable_id' => $ilijan->id,
+            'rating' => 4,
+            'content' => 'Another destination review.',
+        ])->assertCreated()->json('data.id');
+
+        $this->assertDatabaseHas('partner_notifications', [
+            'user_id' => $mundongPartner->id,
+            'type' => 'new_review',
+        ]);
+
+        Sanctum::actingAs($mundongPartner);
+        $this->getJson('/api/v1/partner/reviews')
+            ->assertOk()
+            ->assertJsonFragment(['id' => $ownReviewId])
+            ->assertJsonMissing(['id' => $otherReviewId]);
+        $this->getJson('/api/v1/partner/review-stats')
+            ->assertOk()
+            ->assertJsonPath('data.totalReviews', 1);
+
+        Sanctum::actingAs($ilijanPartner);
+        $this->getJson('/api/v1/partner/reviews')
+            ->assertOk()
+            ->assertJsonFragment(['id' => $otherReviewId])
+            ->assertJsonMissing(['id' => $ownReviewId]);
+    }
+
+    public function test_assignment_endpoint_profile_and_duplicate_listing_guard_use_authoritative_spot(): void
+    {
+        $this->seedAccounts();
+        $partner = User::where('email', 'mundong@gmail.com')->firstOrFail();
+        $spot = TouristSpot::where('slug', 'mundong-sandbar')->firstOrFail();
+
+        Sanctum::actingAs($partner);
+        $this->getJson('/api/v1/partner/assignment')
+            ->assertOk()
+            ->assertJsonPath('data.status', 'active')
+            ->assertJsonPath('data.destination.id', $spot->id);
+        $this->getJson('/api/v1/partner/profile')
+            ->assertOk()
+            ->assertJsonPath('data.assignment.destination.id', $spot->id);
+        $count = DB::table('tourism_listings')->count();
+        $this->postJson('/api/v1/partner/listings', [
+            'listing_name' => 'Duplicate Mundong',
+        ])->assertStatus(409);
+        $this->assertSame($count, DB::table('tourism_listings')->count());
+
+        Sanctum::actingAs($this->user('Unassigned Partner', 'unassigned-partner@example.test', 'tourism_partner'));
+        $this->getJson('/api/v1/partner/assignment')->assertOk()->assertJsonPath('data', null);
+
+        Sanctum::actingAs($this->user('Wrong Role', 'wrong-role@example.test', 'tourist'));
+        $this->getJson('/api/v1/partner/assignment')->assertForbidden();
+    }
+
+    public function test_reservation_queue_filters_summary_history_and_rejection_reason_are_persisted(): void
+    {
+        $this->seedAccounts();
+        $partner = User::where('email', 'mundong@gmail.com')->firstOrFail();
+        $spot = TouristSpot::where('slug', 'mundong-sandbar')->firstOrFail();
+        $tourist = $this->user('Queue Tourist', 'queue-tourist@example.test', 'tourist');
+        $reservation = Reservation::create([
+            'user_id' => $tourist->id,
+            'reservable_type' => 'spot',
+            'reservable_id' => $spot->id,
+            'reservation_date' => now(),
+            'guests' => 3,
+            'status_id' => ReservationStatus::where('name', 'pending')->value('id'),
+        ]);
+
+        Sanctum::actingAs($partner);
+        $this->getJson('/api/v1/partner/reservations?scope=today&status_filter=pending&search='.urlencode($reservation->public_reference))
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $reservation->id)
+            ->assertJsonPath('meta.summary.pending', 1);
+        $this->putJson("/api/v1/partner/reservations/{$reservation->id}/status", [
+            'status_name' => 'rejected',
+        ])->assertUnprocessable()->assertJsonValidationErrors('reason');
+        $this->putJson("/api/v1/partner/reservations/{$reservation->id}/status", [
+            'status_name' => 'rejected',
+            'reason' => 'Destination capacity is unavailable for this visit.',
+        ])->assertOk();
+        $this->assertDatabaseHas('reservation_status_history', [
+            'reservation_id' => $reservation->id,
+            'notes' => 'Rejected by assigned Tourism Partner: Destination capacity is unavailable for this visit.',
+        ]);
+        $this->getJson("/api/v1/partner/reservations/{$reservation->id}")
+            ->assertOk()->assertJsonPath('data.status.name', 'rejected')
+            ->assertJsonCount(1, 'data.status_history');
+    }
+
+    public function test_admin_reassignment_immediately_revokes_old_destination_and_notifies_partner_and_lgu(): void
+    {
+        Mail::fake();
+        $this->seedAccounts();
+        $partner = User::where('email', 'mundong@gmail.com')->firstOrFail();
+        $oldSpot = TouristSpot::where('slug', 'mundong-sandbar')->firstOrFail();
+        $newSpot = TouristSpot::create([
+            'name' => 'New Controlled Destination',
+            'slug' => 'new-controlled-destination',
+            'description' => 'Authoritative municipal destination.',
+            'is_active' => true,
+            'is_published' => true,
+            'is_bookable' => true,
+            'booking_enabled' => true,
+        ]);
+        $admin = $this->user('Assignment Admin', 'assignment-admin@example.test', 'admin');
+        $lgu = $this->user('Assignment LGU', 'assignment-lgu@example.test', 'lgu_staff');
+
+        Sanctum::actingAs($admin);
+        $this->putJson("/api/v1/admin/users/{$partner->id}/partner-assignment", [
+            'tourist_spot_id' => $newSpot->id,
+        ])->assertOk()->assertJsonPath('data.tourist_spot_id', $newSpot->id);
+        $this->assertDatabaseHas('partner_notifications', [
+            'user_id' => $partner->id,
+            'type' => 'admin_assignment_changed',
+        ]);
+        $this->assertDatabaseHas('notifications', [
+            'user_id' => $lgu->id,
+            'type' => 'partner_assignment_changed',
+        ]);
+        Mail::assertSent(\App\Mail\TourTubigonMessage::class, 1);
+
+        Sanctum::actingAs($partner);
+        $this->getJson("/api/v1/partner/tourist-spots/{$oldSpot->id}")->assertForbidden();
+        $this->getJson("/api/v1/partner/tourist-spots/{$newSpot->id}")->assertOk();
+        $this->getJson('/api/v1/partner/assignment')
+            ->assertOk()->assertJsonPath('data.destination.id', $newSpot->id);
+    }
+
+    public function test_partner_analytics_and_notification_filters_are_assignment_and_user_scoped(): void
+    {
+        $this->seedAccounts();
+        $partner = User::where('email', 'mundong@gmail.com')->firstOrFail();
+        $otherPartner = User::where('email', 'ilijan@gmail.com')->firstOrFail();
+        $spot = TouristSpot::where('slug', 'mundong-sandbar')->firstOrFail();
+        $otherSpot = TouristSpot::where('slug', 'enchanted-ilijan-hill')->firstOrFail();
+        $tourist = $this->user('Analytics Tourist', 'analytics-tourist@example.test', 'tourist');
+        $pending = ReservationStatus::where('name', 'pending')->firstOrFail();
+        foreach ([$spot, $otherSpot] as $target) {
+            Reservation::create([
+                'user_id' => $tourist->id,
+                'reservable_type' => 'spot',
+                'reservable_id' => $target->id,
+                'reservation_date' => now(),
+                'guests' => 2,
+                'status_id' => $pending->id,
+            ]);
+            Review::create([
+                'user_id' => $tourist->id,
+                'reviewable_type' => 'spot',
+                'reviewable_id' => $target->id,
+                'rating' => 5,
+                'content' => 'Assignment-scoped feedback.',
+            ]);
+        }
+        $reviewNotice = PartnerNotification::create([
+            'user_id' => $partner->id, 'type' => 'new_review',
+            'title' => 'New Review', 'body' => 'Feedback received.',
+        ]);
+        PartnerNotification::create([
+            'user_id' => $partner->id, 'type' => 'new_reservation',
+            'title' => 'New Reservation', 'body' => 'Booking received.',
+        ]);
+        PartnerNotification::create([
+            'user_id' => $otherPartner->id, 'type' => 'new_review',
+            'title' => 'Other Review', 'body' => 'Must remain private.',
+        ]);
+
+        Sanctum::actingAs($partner);
+        $this->getJson('/api/v1/partner/analytics?period=7_days')
+            ->assertOk()
+            ->assertJsonPath('data.totalReservations', 1)
+            ->assertJsonPath('data.totalReviews', 1)
+            ->assertJsonPath('data.ratingDistribution.5', 1);
+        $this->getJson('/api/v1/partner/notifications?filter=reviews')
+            ->assertOk()->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $reviewNotice->id)
+            ->assertJsonMissing(['title' => 'Other Review']);
+        $this->getJson('/api/v1/partner/notifications/unread-count')
+            ->assertOk()->assertJsonPath('data.count', 2);
+    }
+
     private function seedAccounts(): void
     {
         $this->seed(FeaturedDestinationSeeder::class);
@@ -254,7 +470,7 @@ class FeaturedDestinationPartnerOwnershipTest extends TestCase
         foreach ([
             'tourist_spot_booking_availability_history', 'tourist_spot_partner_assignments',
             'personal_access_tokens',
-            'reservation_status_history', 'notifications', 'partner_notifications', 'favorites',
+            'reservation_status_history', 'notifications', 'partner_notifications', 'reviews', 'favorites',
             'reservations', 'reservation_status', 'activity_logs', 'tourist_spots',
             'tourism_listings', 'spot_categories', 'profiles', 'users', 'roles',
         ] as $table) {
@@ -297,6 +513,9 @@ class FeaturedDestinationPartnerOwnershipTest extends TestCase
                 $table->uuid('id')->primary(); $table->uuid('user_id')->nullable(); $table->string('type'); $table->string('title'); $table->text('body')->nullable(); $table->json('data')->nullable(); $table->boolean('is_read')->default(false); $table->timestamps(); $table->softDeletes();
             });
         }
+        Schema::create('reviews', function (Blueprint $table): void {
+            $table->uuid('id')->primary(); $table->uuid('user_id'); $table->string('reviewable_type'); $table->uuid('reviewable_id'); $table->unsignedTinyInteger('rating'); $table->text('content'); $table->json('images')->nullable(); $table->timestamps(); $table->softDeletes();
+        });
         Schema::create('favorites', function (Blueprint $table): void {
             $table->uuid('id')->primary(); $table->uuid('user_id'); $table->string('favoritable_type'); $table->uuid('favoritable_id'); $table->timestamps(); $table->softDeletes();
         });

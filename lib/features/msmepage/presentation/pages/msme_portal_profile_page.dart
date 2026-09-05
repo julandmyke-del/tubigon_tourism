@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../../core/theme/app_spacing.dart';
 import '../../../map/providers/map_provider.dart';
 import '../../providers/msme_portal_providers.dart';
+import '../../models/msme.dart';
 import '../../repositories/msme_repository.dart';
 import '../msme_theme.dart';
+import '../widgets/msme_portal_states.dart';
 
 class MsmePortalProfilePage extends ConsumerStatefulWidget {
   const MsmePortalProfilePage({super.key});
@@ -39,8 +42,23 @@ class _ProfileState extends ConsumerState<MsmePortalProfilePage> {
   };
   bool _initialized = false;
   bool _saving = false;
+  bool _uploading = false;
+  bool _bookingEnabled = false;
   String _operationalStatus = 'open';
   String? _businessId;
+  final List<String> _images = [];
+  final Map<String, bool> _closed = {
+    for (final day in const [
+      'monday',
+      'tuesday',
+      'wednesday',
+      'thursday',
+      'friday',
+      'saturday',
+      'sunday'
+    ])
+      day: false,
+  };
 
   @override
   void dispose() {
@@ -68,7 +86,8 @@ class _ProfileState extends ConsumerState<MsmePortalProfilePage> {
       body: profile.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => _ErrorState(
-          message: error.toString(),
+          message: friendlyMsmeError(
+              error, 'We couldn’t load your business profile.'),
           retry: () => ref.invalidate(msmePortalProfileProvider),
         ),
         data: (data) {
@@ -96,12 +115,25 @@ class _ProfileState extends ConsumerState<MsmePortalProfilePage> {
                         OutlinedButton.icon(
                           onPressed: _businessId == null
                               ? null
-                              : () =>
-                                  context.push('/map?marker=msme:$_businessId'),
+                              : () {
+                                  final hasLocation =
+                                      data['latitude'] != null &&
+                                          data['longitude'] != null;
+                                  if (hasLocation) {
+                                    context
+                                        .push('/map?marker=msme:$_businessId');
+                                  } else if (data['integer_id'] != null) {
+                                    context.push(
+                                        '/explore/msme/${data['integer_id']}');
+                                  }
+                                },
                           icon: const Icon(Icons.visibility_rounded),
-                          label: Text(status == 'verified'
-                              ? 'Preview as Tourist'
-                              : 'Private Preview'),
+                          label: Text(data['latitude'] != null &&
+                                  data['longitude'] != null
+                              ? (status == 'verified'
+                                  ? 'Preview on Map'
+                                  : 'Private Map Preview')
+                              : 'Preview Directory Details'),
                         ),
                       ],
                     ),
@@ -122,16 +154,78 @@ class _ProfileState extends ConsumerState<MsmePortalProfilePage> {
                             const SizedBox(height: 16),
                             _responsiveFields([
                               _field('Business name', _name, isRequired: true),
-                              _field('Category / type', _category,
-                                  isRequired: true),
-                              _field('Phone / contact', _phone,
-                                  isRequired: true),
+                              _categoryField(),
+                              _field('Phone / contact', _phone),
                               _field('Tagline', _tagline),
                             ]),
                             const SizedBox(height: 12),
-                            _field('Address', _address, isRequired: true),
+                            _field('Address', _address),
                             const SizedBox(height: 12),
                             _field('Description', _description, lines: 4),
+                            const SizedBox(height: 20),
+                            Text('Media', style: MsmeTheme.headingSmall()),
+                            const SizedBox(height: 4),
+                            const Text(
+                                'Upload a cover or gallery image (JPEG/PNG/WebP, maximum 5 MB).',
+                                style: TextStyle(color: MsmeTheme.textMuted)),
+                            const SizedBox(height: 10),
+                            if (_images.isNotEmpty)
+                              Wrap(
+                                spacing: 10,
+                                runSpacing: 10,
+                                children: _images
+                                    .asMap()
+                                    .entries
+                                    .map((entry) => Stack(children: [
+                                          ClipRRect(
+                                            borderRadius:
+                                                BorderRadius.circular(10),
+                                            child: Image.network(entry.value,
+                                                width: 150,
+                                                height: 95,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (_, __, ___) =>
+                                                    Container(
+                                                      width: 150,
+                                                      height: 95,
+                                                      color:
+                                                          MsmeTheme.surfaceDark,
+                                                      child: const Icon(Icons
+                                                          .broken_image_rounded),
+                                                    )),
+                                          ),
+                                          Positioned(
+                                            right: 4,
+                                            top: 4,
+                                            child: IconButton.filled(
+                                              tooltip:
+                                                  'Remove image from profile',
+                                              onPressed: _saving
+                                                  ? null
+                                                  : () => setState(() => _images
+                                                      .removeAt(entry.key)),
+                                              icon: const Icon(Icons.close,
+                                                  size: 16),
+                                            ),
+                                          ),
+                                        ]))
+                                    .toList(),
+                              ),
+                            const SizedBox(height: 10),
+                            OutlinedButton.icon(
+                              onPressed: _uploading || _images.length >= 10
+                                  ? null
+                                  : _pickImage,
+                              icon: _uploading
+                                  ? const SizedBox.square(
+                                      dimension: 16,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2))
+                                  : const Icon(
+                                      Icons.add_photo_alternate_rounded),
+                              label:
+                                  Text(_uploading ? 'Uploading…' : 'Add image'),
+                            ),
                             const SizedBox(height: 16),
                             Text('Operational availability',
                                 style: MsmeTheme.headingSmall()),
@@ -153,15 +247,22 @@ class _ProfileState extends ConsumerState<MsmePortalProfilePage> {
                               onChanged: (value) => setState(
                                   () => _operationalStatus = value ?? 'open'),
                             ),
+                            SwitchListTile.adaptive(
+                              contentPadding: EdgeInsets.zero,
+                              value: _bookingEnabled,
+                              title: const Text('Accept customer reservations'),
+                              subtitle: const Text(
+                                  'Enable only if this business supports advance booking.'),
+                              onChanged: (value) =>
+                                  setState(() => _bookingEnabled = value),
+                            ),
                             const SizedBox(height: 16),
                             Text('Map location',
                                 style: MsmeTheme.headingSmall()),
                             const SizedBox(height: 8),
                             _responsiveFields([
-                              _field('Latitude', _latitude,
-                                  isRequired: true, numeric: true),
-                              _field('Longitude', _longitude,
-                                  isRequired: true, numeric: true),
+                              _field('Latitude', _latitude, numeric: true),
+                              _field('Longitude', _longitude, numeric: true),
                             ]),
                             const SizedBox(height: 8),
                             OutlinedButton.icon(
@@ -177,11 +278,15 @@ class _ProfileState extends ConsumerState<MsmePortalProfilePage> {
                                 'Use 24-hour HH:mm-HH:mm, or leave blank for Closed.',
                                 style: TextStyle(color: MsmeTheme.textMuted)),
                             const SizedBox(height: 10),
-                            _responsiveFields(_hours.entries
-                                .map((entry) => _field(
-                                    _title(entry.key), entry.value,
-                                    hint: '08:00-18:00'))
-                                .toList()),
+                            ..._hours.entries.map(_scheduleRow),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton.icon(
+                                onPressed: _copyMondaySchedule,
+                                icon: const Icon(Icons.copy_all_rounded),
+                                label: const Text('Copy Monday to all days'),
+                              ),
+                            ),
                           ]),
                     ),
                     const SizedBox(height: 16),
@@ -195,8 +300,8 @@ class _ProfileState extends ConsumerState<MsmePortalProfilePage> {
                                     CircularProgressIndicator(strokeWidth: 2))
                             : const Icon(Icons.save_rounded),
                         label: Text(_businessId == null
-                            ? 'Create and submit'
-                            : 'Save profile'),
+                            ? 'Save Business Draft'
+                            : 'Save Profile'),
                       ),
                       if (_businessId != null &&
                           status != 'verified' &&
@@ -227,12 +332,21 @@ class _ProfileState extends ConsumerState<MsmePortalProfilePage> {
     _latitude.text = data['latitude']?.toString() ?? '';
     _longitude.text = data['longitude']?.toString() ?? '';
     _operationalStatus = data['operational_status']?.toString() ?? 'open';
+    _bookingEnabled =
+        data['booking_enabled'] == true || data['booking_enabled'] == 1;
+    _images
+      ..clear()
+      ..addAll(
+          (data['images'] as List? ?? const []).map((item) => item.toString()));
     final opening = data['opening_hours'];
     if (opening is Map) {
       for (final entry in _hours.entries) {
         final value = opening[entry.key];
-        if (value is Map && value['closed'] != true) {
-          entry.value.text = '${value['open'] ?? ''}-${value['close'] ?? ''}';
+        if (value is Map) {
+          _closed[entry.key] = value['closed'] == true;
+          if (value['closed'] != true) {
+            entry.value.text = '${value['open'] ?? ''}-${value['close'] ?? ''}';
+          }
         }
       }
     }
@@ -262,28 +376,37 @@ class _ProfileState extends ConsumerState<MsmePortalProfilePage> {
         'phone': _phone.text.trim(),
         'address': _address.text.trim(),
         'description': _description.text.trim(),
-        'latitude': double.parse(_latitude.text),
-        'longitude': double.parse(_longitude.text),
+        'latitude': double.tryParse(_latitude.text.trim()),
+        'longitude': double.tryParse(_longitude.text.trim()),
         'operational_status': _operationalStatus,
+        'booking_enabled': _bookingEnabled,
+        'images': _images,
         'opening_hours': {
           for (final entry in _hours.entries)
-            entry.key: _hoursValue(entry.value.text),
+            entry.key: (_closed[entry.key] ?? false)
+                ? {'closed': true}
+                : _hoursValue(entry.value.text),
         },
       };
       final repo = ref.read(msmePortalRepositoryProvider);
       if (_businessId == null) {
-        await repo.createListing(payload);
+        await repo.createListing(payload, saveAsDraft: true);
       } else {
         await repo.updateProfile(payload);
       }
+      if (!mounted) return;
       _refresh();
       if (mounted) {
         _message(_businessId == null
-            ? 'Business submitted for review.'
+            ? 'Business draft saved. Review it, then submit for LGU verification.'
             : 'Business profile saved.');
       }
     } catch (error) {
-      if (mounted) _message(error.toString(), error: true);
+      if (mounted) {
+        _message(
+            friendlyMsmeError(error, 'We couldn’t save your business profile.'),
+            error: true);
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -293,10 +416,16 @@ class _ProfileState extends ConsumerState<MsmePortalProfilePage> {
     setState(() => _saving = true);
     try {
       await ref.read(msmePortalRepositoryProvider).submitProfile();
+      if (!mounted) return;
       _refresh();
       if (mounted) _message('Business submitted for review.');
     } catch (error) {
-      if (mounted) _message(error.toString(), error: true);
+      if (mounted) {
+        _message(
+            friendlyMsmeError(
+                error, 'We couldn’t submit your business profile.'),
+            error: true);
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -304,6 +433,7 @@ class _ProfileState extends ConsumerState<MsmePortalProfilePage> {
 
   void _refresh() {
     _initialized = false;
+    ref.invalidate(currentMsmeProvider);
     ref.invalidate(msmePortalProfileProvider);
     ref.invalidate(msmePortalDashboardStatsProvider);
     ref.invalidate(msmePortalListingsProvider);
@@ -318,6 +448,123 @@ class _ProfileState extends ConsumerState<MsmePortalProfilePage> {
       return {'closed': true};
     }
     return {'closed': false, 'open': parts[0], 'close': parts[1]};
+  }
+
+  Widget _categoryField() {
+    final options = <String>{
+      ...msmeCategories.where((item) => item != 'All'),
+      if (_category.text.trim().isNotEmpty) _category.text.trim(),
+    }.toList();
+    return DropdownButtonFormField<String>(
+      initialValue:
+          _category.text.trim().isEmpty ? null : _category.text.trim(),
+      decoration: const InputDecoration(labelText: 'Category / type *'),
+      items: options
+          .map((item) => DropdownMenuItem(value: item, child: Text(item)))
+          .toList(),
+      onChanged: (value) => _category.text = value ?? '',
+      validator: (value) => value == null || value.isEmpty
+          ? 'Category / type is required.'
+          : null,
+    );
+  }
+
+  Widget _scheduleRow(MapEntry<String, TextEditingController> entry) {
+    final hoursField = TextFormField(
+      controller: entry.value,
+      enabled: !(_closed[entry.key] ?? false),
+      decoration: const InputDecoration(
+        labelText: 'Opening - closing',
+        hintText: '08:00-18:00',
+      ),
+      validator: (value) {
+        if (_closed[entry.key] ?? false) return null;
+        final parts = (value ?? '').split('-');
+        if (parts.length != 2 ||
+            parts.any(
+              (part) => !RegExp(r'^([01]\d|2[0-3]):[0-5]\d$').hasMatch(part),
+            )) {
+          return 'Use HH:mm-HH:mm.';
+        }
+        return parts[1].compareTo(parts[0]) <= 0
+            ? 'Closing must be after opening.'
+            : null;
+      },
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final dayToggle = Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 105,
+                child: Text(
+                  _title(entry.key),
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+              Switch.adaptive(
+                value: !(_closed[entry.key] ?? false),
+                onChanged: (open) => setState(() => _closed[entry.key] = !open),
+              ),
+            ],
+          );
+
+          if (constraints.maxWidth < 600) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [dayToggle, hoursField],
+            );
+          }
+
+          return Row(
+            children: [dayToggle, Expanded(child: hoursField)],
+          );
+        },
+      ),
+    );
+  }
+
+  void _copyMondaySchedule() {
+    final value = _hours['monday']!.text;
+    final closed = _closed['monday'] ?? false;
+    setState(() {
+      for (final entry in _hours.entries) {
+        entry.value.text = value;
+        _closed[entry.key] = closed;
+      }
+    });
+  }
+
+  Future<void> _pickImage() async {
+    final file = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 2200,
+      imageQuality: 88,
+    );
+    if (file == null || !mounted) return;
+    setState(() => _uploading = true);
+    try {
+      final bytes = await file.readAsBytes();
+      if (bytes.length > 5 * 1024 * 1024) {
+        throw StateError('The selected image exceeds the 5 MB limit.');
+      }
+      final url = await ref
+          .read(msmePortalRepositoryProvider)
+          .uploadImage(file.name, bytes);
+      if (!mounted) return;
+      setState(() => _images.add(url));
+    } catch (error) {
+      if (mounted) {
+        _message(friendlyMsmeError(error, 'The image could not be uploaded.'),
+            error: true);
+      }
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
   }
 
   Widget _responsiveFields(List<Widget> fields) =>
@@ -344,11 +591,21 @@ class _ProfileState extends ConsumerState<MsmePortalProfilePage> {
       keyboardType:
           numeric ? const TextInputType.numberWithOptions(decimal: true) : null,
       style: const TextStyle(color: MsmeTheme.textWhite),
-      validator: isRequired
-          ? (value) => (value == null || value.trim().isEmpty)
-              ? '$label is required.'
-              : null
-          : null,
+      validator: (value) {
+        final text = value?.trim() ?? '';
+        if (isRequired && text.isEmpty) return '$label is required.';
+        if (numeric && text.isNotEmpty) {
+          final parsed = double.tryParse(text);
+          if (parsed == null) return 'Enter a valid number.';
+          if (label == 'Latitude' && (parsed < -90 || parsed > 90)) {
+            return 'Latitude must be between -90 and 90.';
+          }
+          if (label == 'Longitude' && (parsed < -180 || parsed > 180)) {
+            return 'Longitude must be between -180 and 180.';
+          }
+        }
+        return null;
+      },
       decoration: InputDecoration(
           labelText: label,
           hintText: hint,

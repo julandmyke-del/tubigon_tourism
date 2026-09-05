@@ -30,4 +30,21 @@ void main() {
       isFalse,
     );
   });
+
+  test('recognizes only the narrow passenger-port service area', () async {
+    final boundary = await TubigonBoundary.load();
+
+    expect(
+      boundary.contains(latitude: 9.95636, longitude: 123.95778),
+      isFalse,
+    );
+    expect(
+      boundary.containsPortServiceArea(latitude: 9.95636, longitude: 123.95778),
+      isTrue,
+    );
+    expect(
+      boundary.containsPortServiceArea(latitude: 9.9500, longitude: 123.95778),
+      isFalse,
+    );
+  });
 }
