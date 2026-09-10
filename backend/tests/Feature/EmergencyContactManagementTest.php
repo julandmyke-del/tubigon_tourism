@@ -33,6 +33,7 @@ class EmergencyContactManagementTest extends TestCase
         $active = $this->contact([
             'name' => 'Active Police',
             'is_verified' => true,
+            'notes' => 'INTERNAL-ONLY-NOTE',
         ]);
         $this->contact(['name' => 'Unverified Hotline']);
         $this->contact(['name' => 'Inactive Fire', 'is_active' => false]);
@@ -43,7 +44,9 @@ class EmergencyContactManagementTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.id', $active->id)
-            ->assertJsonPath('data.0.is_verified', true);
+            ->assertJsonPath('data.0.is_verified', true)
+            ->assertJsonMissing(['notes' => 'INTERNAL-ONLY-NOTE'])
+            ->assertJsonMissingPath('data.0.updated_by');
         $this->assertStringContainsString(
             'no-store',
             (string) $response->headers->get('Cache-Control')
@@ -168,7 +171,7 @@ class EmergencyContactManagementTest extends TestCase
             ->assertJsonValidationErrors(['latitude', 'longitude']);
     }
 
-    public function test_initial_directory_seed_is_idempotent_and_requires_lgu_verification(): void
+    public function test_initial_directory_seed_is_idempotent_and_publishes_only_officially_sourced_records(): void
     {
         $seeder = new EmergencyContactSeeder;
         $seeder->run();
@@ -176,12 +179,14 @@ class EmergencyContactManagementTest extends TestCase
 
         $this->assertDatabaseCount('emergency_contacts', 6);
         $this->assertSame(6, EmergencyContact::where('is_active', true)->count());
-        $this->assertSame(0, EmergencyContact::where('is_verified', true)->count());
+        $this->assertSame(2, EmergencyContact::where('is_verified', true)->count());
         $this->assertDatabaseHas('emergency_contacts', [
             'name' => 'Emergency Hotline',
             'phone' => '911',
             'category' => 'National Emergency Hotline',
+            'is_verified' => true,
         ]);
+        $this->getJson('/api/v1/emergency-contacts')->assertOk()->assertJsonCount(2, 'data');
     }
 
     /** @param array<string, mixed> $overrides */
@@ -197,13 +202,21 @@ class EmergencyContactManagementTest extends TestCase
             'operating_hours' => '24/7',
             'classification' => 'emergency',
             'is_active' => true,
+            'is_public' => true,
+            'source' => 'Official test directory',
+            'source_name' => 'Official test directory',
+            'source_url' => 'https://example.gov.test/emergency',
         ], $overrides);
     }
 
     /** @param array<string, mixed> $overrides */
     private function contact(array $overrides = []): EmergencyContact
     {
-        return EmergencyContact::create(array_merge($this->payload(), $overrides));
+        $values = array_merge($this->payload(), $overrides);
+        $values['verification_status'] ??= ! ($values['is_active'] ?? true)
+            ? 'inactive'
+            : (($values['is_verified'] ?? false) ? 'verified' : 'draft');
+        return EmergencyContact::create($values);
     }
 
     private function user(Role $role): User
@@ -253,8 +266,12 @@ class EmergencyContactManagementTest extends TestCase
             $table->string('classification')->default('emergency');
             $table->boolean('is_active')->default(true);
             $table->boolean('is_verified')->default(false);
+            $table->boolean('is_public')->default(false);
+            $table->string('verification_status')->default('draft');
             $table->string('source')->nullable();
+            $table->string('source_name')->nullable();
             $table->text('source_url')->nullable();
+            $table->text('notes')->nullable();
             $table->uuid('verified_by')->nullable();
             $table->timestamp('verified_at')->nullable();
             $table->timestamp('last_verified_at')->nullable();

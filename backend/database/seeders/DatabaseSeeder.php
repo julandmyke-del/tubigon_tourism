@@ -26,6 +26,10 @@ class DatabaseSeeder extends Seeder
 
         $this->call(MapLocationSeeder::class);
         $this->call(FeaturedDestinationSeeder::class);
+        // Source-backed, idempotent directory records. Only records marked
+        // verified by the seeder are public; conflicting local numbers remain
+        // in needs_reverification for authorized LGU review.
+        $this->call(EmergencyContactSeeder::class);
         $this->call(DevelopmentFeaturedDestinationBookingSeeder::class);
         if (app()->environment(['local', 'testing'])) {
             $this->call(DevelopmentFeaturedDestinationPartnerSeeder::class);

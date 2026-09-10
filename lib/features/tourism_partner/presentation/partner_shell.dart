@@ -41,6 +41,12 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
       route: '/tourism-partner/reservations',
     ),
     const _PartnerNavItem(
+      id: 'destination-operations',
+      label: 'Booking & Gallery',
+      icon: Icons.room_service_rounded,
+      route: '/tourism-partner/destination-operations',
+    ),
+    const _PartnerNavItem(
       id: 'reviews',
       label: 'Reviews',
       icon: Icons.star_rate_rounded,
@@ -491,7 +497,7 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Tubigon Tourism',
+                          'Tour Tubigon',
                           style: GoogleFonts.plusJakartaSans(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,

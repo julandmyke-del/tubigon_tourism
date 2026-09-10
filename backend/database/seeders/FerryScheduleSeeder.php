@@ -40,6 +40,9 @@ class FerryScheduleSeeder extends Seeder
                     'route' => 'Cebu City → Tubigon',
                     'fare' => null,
                     'status' => 'scheduled',
+                    'is_active' => true,
+                    'is_published' => true,
+                    'published_at' => now(),
                 ],
             );
         }

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/admin_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../notifications/repositories/notification_repository.dart';
+import '../../../connected_operations/data/connected_operations_repository.dart';
 import '../../providers/admin_providers.dart';
 
 class AdminAnnouncementsPage extends ConsumerStatefulWidget {
@@ -125,7 +127,13 @@ class _AdminAnnouncementsPageState
                               'draft')
                           .toString();
                       return (_status == 'all' || status == _status) &&
-                          (_audience == 'all' || item['audience'] == _audience);
+                          (_audience == 'all' ||
+                              (item['audiences'] is List &&
+                                  (item['audiences'] as List).contains(
+                                      _audience == 'everyone'
+                                          ? 'public'
+                                          : _audience)) ||
+                              item['audience'] == _audience);
                     }).toList();
                     if (filtered.isEmpty) {
                       return const _Empty();
@@ -145,6 +153,7 @@ class _AdminAnnouncementsPageState
                           onPreview: () => _preview(filtered[index]),
                           onEdit: () => _compose(existing: filtered[index]),
                           onPublish: () => _publish(filtered[index]),
+                          onUnpublish: () => _unpublish(filtered[index]),
                           onArchive: () => _archive(filtered[index]),
                         ),
                       );
@@ -205,9 +214,58 @@ class _AdminAnnouncementsPageState
         backgroundColor: AdminColors.navy900,
         title: Text(item['title']?.toString() ?? 'Announcement',
             style: const TextStyle(color: AdminColors.textPrimary)),
-        content: SingleChildScrollView(
-          child: Text(item['body']?.toString() ?? '',
-              style: const TextStyle(color: AdminColors.textSecondary)),
+        content: SizedBox(
+          width: 680,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(item['body']?.toString() ?? '',
+                    style: const TextStyle(color: AdminColors.textSecondary)),
+                const SizedBox(height: 16),
+                const Text('Approximate placements',
+                    style: TextStyle(
+                        color: AdminColors.textPrimary,
+                        fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                for (final placement in const [
+                  ('Mobile banner', Icons.smartphone),
+                  ('Web carousel card', Icons.web),
+                  ('Notification item', Icons.notifications_outlined),
+                ])
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AdminColors.cardBg,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AdminColors.cardBorder),
+                    ),
+                    child: Row(children: [
+                      Icon(placement.$2, color: AdminColors.orange),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(placement.$1,
+                                style: const TextStyle(
+                                    color: AdminColors.textMuted,
+                                    fontSize: 11)),
+                            Text(item['title']?.toString() ?? 'Announcement',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    color: AdminColors.textPrimary,
+                                    fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      ),
+                    ]),
+                  ),
+              ],
+            ),
+          ),
         ),
         actions: [
           TextButton(
@@ -228,6 +286,20 @@ class _AdminAnnouncementsPageState
       _message('Announcement published.');
     } catch (_) {
       if (mounted) _message('Unable to publish announcement.', error: true);
+    }
+  }
+
+  Future<void> _unpublish(Map<String, dynamic> item) async {
+    try {
+      await ref.read(adminRepositoryProvider).manageAnnouncement(
+        {'status': 'draft'},
+        id: item['id'].toString(),
+      );
+      if (!mounted) return;
+      _refresh();
+      _message('Announcement moved to drafts.');
+    } catch (_) {
+      if (mounted) _message('Unable to unpublish announcement.', error: true);
     }
   }
 
@@ -283,11 +355,17 @@ class _ComposeDialogState extends ConsumerState<_ComposeDialog> {
   final _key = GlobalKey<FormState>();
   late final TextEditingController _title;
   late final TextEditingController _body;
+  late final TextEditingController _cta;
   late String _type;
-  late String _audience;
+  late Set<String> _audiences;
   late String _priority;
+  late String _displayType;
   DateTime? _start;
   DateTime? _expiry;
+  String? _relatedType;
+  String? _relatedId;
+  Future<List<Map<String, dynamic>>>? _relatedOptions;
+  XFile? _image;
   bool _saving = false;
 
   @override
@@ -296,18 +374,35 @@ class _ComposeDialogState extends ConsumerState<_ComposeDialog> {
     final item = widget.existing;
     _title = TextEditingController(text: item?['title']?.toString());
     _body = TextEditingController(text: item?['body']?.toString());
+    _cta = TextEditingController(text: item?['cta_label']?.toString());
     _type = item?['type']?.toString() ?? 'general';
-    _audience = item?['audience']?.toString() ?? 'everyone';
+    final existingAudiences = item?['audiences'];
+    _audiences = existingAudiences is List
+        ? existingAudiences.map((e) => e.toString()).toSet()
+        : {
+            item?['audience'] == 'everyone'
+                ? 'public'
+                : item?['audience']?.toString() ?? 'public'
+          };
     _priority = item?['priority']?.toString() ?? 'normal';
+    _displayType = item?['display_type']?.toString() ?? 'notification';
     _start = DateTime.tryParse(item?['starts_at']?.toString() ?? '')?.toLocal();
     _expiry =
         DateTime.tryParse(item?['expires_at']?.toString() ?? '')?.toLocal();
+    _relatedType = item?['related_type']?.toString();
+    _relatedId = item?['related_id']?.toString();
+    if (_relatedType != null) {
+      _relatedOptions = ref
+          .read(connectedOperationsRepositoryProvider)
+          .announcementRelatedOptions(_relatedType!);
+    }
   }
 
   @override
   void dispose() {
     _title.dispose();
     _body.dispose();
+    _cta.dispose();
     super.dispose();
   }
 
@@ -344,23 +439,46 @@ class _ComposeDialogState extends ConsumerState<_ComposeDialog> {
                         ],
                         (v) => setState(() => _type = v)),
                     _dropdown(
-                        'Audience',
-                        _audience,
+                        'Priority',
+                        _priority,
+                        const ['normal', 'important', 'urgent'],
+                        (v) => setState(() => _priority = v)),
+                    _dropdown(
+                        'Display',
+                        _displayType,
                         const [
-                          'everyone',
+                          'notification',
+                          'banner',
+                          'carousel',
+                          'pinned',
+                          'urgent_alert'
+                        ],
+                        (v) => setState(() => _displayType = v)),
+                  ]),
+                  const SizedBox(height: 12),
+                  Align(
+                      alignment: Alignment.centerLeft,
+                      child: Wrap(
+                        spacing: 8,
+                        children: [
+                          'public',
                           'tourist',
                           'msme_owner',
                           'tourism_partner',
                           'lgu_staff',
                           'admin'
-                        ],
-                        (v) => setState(() => _audience = v)),
-                    _dropdown(
-                        'Priority',
-                        _priority,
-                        const ['normal', 'important', 'urgent'],
-                        (v) => setState(() => _priority = v)),
-                  ]),
+                        ]
+                            .map((role) => FilterChip(
+                                  label: Text(_label(role)),
+                                  selected: _audiences.contains(role),
+                                  onSelected: _saving
+                                      ? null
+                                      : (selected) => setState(() => selected
+                                          ? _audiences.add(role)
+                                          : _audiences.remove(role)),
+                                ))
+                            .toList(),
+                      )),
                   const SizedBox(height: 12),
                   Wrap(spacing: 12, runSpacing: 8, children: [
                     OutlinedButton.icon(
@@ -378,6 +496,98 @@ class _ComposeDialogState extends ConsumerState<_ComposeDialog> {
                           : DateFormat('MMM d, y h:mm a').format(_expiry!)),
                     ),
                   ]),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _cta,
+                    enabled: !_saving,
+                    maxLength: 80,
+                    decoration: const InputDecoration(
+                        labelText: 'Call-to-action label (optional)'),
+                  ),
+                  DropdownButtonFormField<String>(
+                    initialValue: _relatedType,
+                    decoration:
+                        const InputDecoration(labelText: 'Related content'),
+                    items: const [
+                      'tourist_spot',
+                      'ferry_schedule',
+                      'msme',
+                      'eco_tip',
+                      'emergency_advisory',
+                    ]
+                        .map((value) => DropdownMenuItem(
+                            value: value, child: Text(_label(value))))
+                        .toList(),
+                    onChanged: _saving
+                        ? null
+                        : (value) => setState(() {
+                              _relatedType = value;
+                              _relatedId = null;
+                              _relatedOptions = value == null
+                                  ? null
+                                  : ref
+                                      .read(
+                                          connectedOperationsRepositoryProvider)
+                                      .announcementRelatedOptions(value);
+                            }),
+                  ),
+                  if (_relatedOptions != null)
+                    FutureBuilder<List<Map<String, dynamic>>>(
+                      future: _relatedOptions,
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState != ConnectionState.done) {
+                          return const LinearProgressIndicator();
+                        }
+                        final options = snapshot.data ?? const [];
+                        if (options.isEmpty) {
+                          return const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text('No available records for this type.'),
+                          );
+                        }
+                        final valid = options.any(
+                            (item) => item['id']?.toString() == _relatedId);
+                        return DropdownButtonFormField<String>(
+                          initialValue: valid ? _relatedId : null,
+                          isExpanded: true,
+                          decoration: const InputDecoration(
+                              labelText: 'Related record'),
+                          items: options
+                              .map((item) => DropdownMenuItem(
+                                    value: item['id'].toString(),
+                                    child: Text(
+                                      _announcementRelatedLabel(item),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ))
+                              .toList(),
+                          onChanged: _saving
+                              ? null
+                              : (value) => setState(() => _relatedId = value),
+                        );
+                      },
+                    ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.image_outlined),
+                    title: Text(_image?.name ??
+                        (widget.existing?['image_url'] != null
+                            ? 'Current announcement image'
+                            : 'Add optional image')),
+                    subtitle: const Text('JPEG, PNG, or WebP up to 5 MB'),
+                    onTap: _saving
+                        ? null
+                        : () async {
+                            final image = await ImagePicker().pickImage(
+                              source: ImageSource.gallery,
+                              imageQuality: 88,
+                              maxWidth: 1920,
+                            );
+                            if (image != null && mounted) {
+                              setState(() => _image = image);
+                            }
+                          },
+                  ),
                 ],
               ),
             ),
@@ -387,6 +597,9 @@ class _ComposeDialogState extends ConsumerState<_ComposeDialog> {
           TextButton(
               onPressed: _saving ? null : () => Navigator.pop(context),
               child: const Text('Cancel')),
+          TextButton(
+              onPressed: _saving ? null : _previewDraft,
+              child: const Text('Preview')),
           TextButton(
               onPressed: _saving ? null : () => _save('draft'),
               child: const Text('Save Draft')),
@@ -401,6 +614,52 @@ class _ComposeDialogState extends ConsumerState<_ComposeDialog> {
           ),
         ],
       );
+
+  Future<void> _previewDraft() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AdminColors.navy900,
+        title: Text(
+          _title.text.trim().isEmpty
+              ? 'Announcement title'
+              : _title.text.trim(),
+          style: const TextStyle(color: AdminColors.textPrimary),
+        ),
+        content: SizedBox(
+          width: 520,
+          child: Card(
+            color: _priority == 'urgent'
+                ? AdminColors.danger.withValues(alpha: .35)
+                : AdminColors.cardBg,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${_label(_priority)} · ${_label(_displayType)}',
+                      style: const TextStyle(color: AdminColors.orange)),
+                  const SizedBox(height: 8),
+                  Text(
+                    _body.text.trim().isEmpty
+                        ? 'Announcement message preview'
+                        : _body.text.trim(),
+                    style: const TextStyle(color: AdminColors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Close')),
+        ],
+      ),
+    );
+  }
 
   Widget _field(TextEditingController controller, String label, int max,
           {int lines = 1}) =>
@@ -452,9 +711,19 @@ class _ComposeDialogState extends ConsumerState<_ComposeDialog> {
 
   Future<void> _save(String status) async {
     if (_saving || !(_key.currentState?.validate() ?? false)) return;
+    if (_audiences.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Select at least one audience.')));
+      return;
+    }
     if (_expiry != null && _start != null && !_expiry!.isAfter(_start!)) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Expiry must be after the start time.')));
+      return;
+    }
+    if (_relatedType != null && _relatedId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Select the related record or clear its type.')));
       return;
     }
     setState(() => _saving = true);
@@ -464,14 +733,21 @@ class _ComposeDialogState extends ConsumerState<_ComposeDialog> {
         'body': _body.text.trim(),
         'category': _type,
         'type': _type,
-        'audience': _audience,
+        'audiences': _audiences.toList(),
         'priority': _priority,
+        'display_type': _displayType,
         'status': status,
         'starts_at': status == 'published'
             ? DateTime.now().toUtc().toIso8601String()
             : _start?.toUtc().toIso8601String(),
         'expires_at': _expiry?.toUtc().toIso8601String(),
-      }, id: widget.existing?['id']?.toString());
+        'cta_label': _cta.text.trim().isEmpty ? null : _cta.text.trim(),
+        'related_type': _relatedType,
+        'related_id': _relatedId,
+      },
+          id: widget.existing?['id']?.toString(),
+          image: await _image?.readAsBytes(),
+          imageName: _image?.name);
       if (!mounted) return;
       Navigator.pop(context, true);
     } catch (_) {
@@ -490,11 +766,13 @@ class _AnnouncementCard extends StatelessWidget {
       required this.onPreview,
       required this.onEdit,
       required this.onPublish,
+      required this.onUnpublish,
       required this.onArchive});
   final Map<String, dynamic> item;
   final VoidCallback onPreview;
   final VoidCallback onEdit;
   final VoidCallback onPublish;
+  final VoidCallback onUnpublish;
   final VoidCallback onArchive;
 
   @override
@@ -543,6 +821,9 @@ class _AnnouncementCard extends StatelessWidget {
             TextButton(onPressed: onEdit, child: const Text('Edit')),
             if (status == 'draft' || status == 'scheduled')
               TextButton(onPressed: onPublish, child: const Text('Publish')),
+            if (status == 'published')
+              TextButton(
+                  onPressed: onUnpublish, child: const Text('Unpublish')),
             TextButton(
                 onPressed: status == 'archived' ? null : onArchive,
                 child: const Text('Archive',
@@ -598,3 +879,9 @@ String _label(String value) => value
     .map((part) =>
         part.isEmpty ? part : '${part[0].toUpperCase()}${part.substring(1)}')
     .join(' ');
+
+String _announcementRelatedLabel(Map<String, dynamic> item) {
+  final name = item['name'] ?? item['title'] ?? item['route'];
+  final reference = item['public_reference'] ?? item['reference_no'];
+  return (name ?? reference ?? 'Related record').toString();
+}

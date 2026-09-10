@@ -8,6 +8,9 @@ class RoleApplication {
     this.applicant,
     this.requestedSpot,
     this.linkedMsme,
+    this.requestedMsmeCategory,
+    this.recommendedMsmeCategory,
+    this.finalMsmeCategory,
     this.lguReviewer,
     this.adminReviewer,
     this.lguNotes,
@@ -24,6 +27,9 @@ class RoleApplication {
   final Map<String, dynamic>? applicant;
   final Map<String, dynamic>? requestedSpot;
   final Map<String, dynamic>? linkedMsme;
+  final Map<String, dynamic>? requestedMsmeCategory;
+  final Map<String, dynamic>? recommendedMsmeCategory;
+  final Map<String, dynamic>? finalMsmeCategory;
   final Map<String, dynamic>? lguReviewer;
   final Map<String, dynamic>? adminReviewer;
   final String? lguNotes;
@@ -52,6 +58,9 @@ class RoleApplication {
       applicant: map(json['applicant']),
       requestedSpot: map(json['requested_tourist_spot']),
       linkedMsme: map(json['linked_msme']),
+      requestedMsmeCategory: map(json['requested_msme_category']),
+      recommendedMsmeCategory: map(json['recommended_msme_category']),
+      finalMsmeCategory: map(json['final_msme_category']),
       lguReviewer: map(json['lgu_reviewer']),
       adminReviewer: map(json['admin_reviewer']),
       lguNotes: json['lgu_notes']?.toString(),

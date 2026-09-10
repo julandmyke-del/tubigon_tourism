@@ -1,6 +1,6 @@
 import 'package:logger/logger.dart';
 
-/// Structured logger wrapper for the Tubigon Smart Tourism App.
+/// Structured logger wrapper for Tour Tubigon.
 ///
 /// Usage:
 /// ```dart

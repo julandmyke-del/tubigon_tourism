@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../connected_operations/presentation/public_spot_gallery.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../../core/routes/route_names.dart';
 import '../../../../core/utils/auth_action_guard.dart';
 import '../../../../core/widgets/rating_stars.dart';
 import '../../../tourist_spots/models/tourist_spot.dart';
@@ -499,6 +499,10 @@ class _TouristSpotDetailPageState extends ConsumerState<TouristSpotDetailPage> {
 
                       const SizedBox(height: 24),
 
+                      PublicSpotGallery(spotId: spot.uuid),
+
+                      const SizedBox(height: 24),
+
                       if (spot.canAcceptBookings) ...[
                         Container(
                           width: double.infinity,
@@ -766,13 +770,11 @@ class _TouristSpotDetailPageState extends ConsumerState<TouristSpotDetailPage> {
                               context,
                               ref,
                               returnTo:
-                                  '/reservations/create?spot=${Uri.encodeComponent(spot.uuid)}',
+                                  '/reservations/offering?spot=${Uri.encodeComponent(spot.uuid)}',
                             ) &&
                             context.mounted) {
-                          context.goNamed(
-                            RouteNames.createReservation,
-                            queryParameters: {'spot': spot.uuid},
-                          );
+                          context.go(
+                              '/reservations/offering?spot=${Uri.encodeComponent(spot.uuid)}');
                         }
                       },
                       icon: const Icon(Icons.calendar_month_rounded),

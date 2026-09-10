@@ -1,45 +1,86 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import '../theme/app_colors.dart';
-import '../theme/app_typography.dart';
-import '../network/connectivity_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Animated banner that slides in when offline and slides out when online.
-class OfflineBanner extends ConsumerWidget {
+import '../network/connectivity_provider.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_typography.dart';
+
+/// One app-wide, non-modal connectivity notice. It remains visible offline and
+/// shows one short recovery message when connectivity returns.
+class OfflineBanner extends ConsumerStatefulWidget {
   const OfflineBanner({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final status = ref.watch(connectivityProvider);
+  ConsumerState<OfflineBanner> createState() => _OfflineBannerState();
+}
 
-    final isOffline = status.when(
-      data: (s) => s == ConnectivityStatus.offline,
-      loading: () => false,
-      error: (_, __) => false,
-    );
+class _OfflineBannerState extends ConsumerState<OfflineBanner> {
+  ConnectivityStatus? _lastStatus;
+  bool _showBackOnline = false;
+  Timer? _timer;
 
-    return AnimatedSlide(
-      offset: isOffline ? Offset.zero : const Offset(0, -1),
-      duration: const Duration(milliseconds: 350),
-      curve: Curves.easeInOut,
-      child: AnimatedOpacity(
-        opacity: isOffline ? 1.0 : 0.0,
-        duration: const Duration(milliseconds: 350),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-          decoration: const BoxDecoration(
-            color: AppColors.warning,
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.wifi_off_rounded, color: Colors.white, size: 16),
-              const SizedBox(width: 8),
-              Text(
-                'You are offline. Some features may be limited.',
-                style: AppTypography.bodySmall.copyWith(color: Colors.white),
-              ),
-            ],
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.listen<AsyncValue<ConnectivityStatus>>(connectivityProvider,
+        (previous, next) {
+      final status = next.valueOrNull;
+      if (status == null || status == _lastStatus) return;
+      final wasOffline = _lastStatus == ConnectivityStatus.offline ||
+          previous?.valueOrNull == ConnectivityStatus.offline;
+      _lastStatus = status;
+      if (status == ConnectivityStatus.online && wasOffline) {
+        _timer?.cancel();
+        if (mounted) setState(() => _showBackOnline = true);
+        _timer = Timer(const Duration(seconds: 3), () {
+          if (mounted) setState(() => _showBackOnline = false);
+        });
+      } else if (status == ConnectivityStatus.offline && _showBackOnline) {
+        _timer?.cancel();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() => _showBackOnline = false);
+        });
+      }
+    });
+
+    final isOffline = ref.watch(connectivityProvider).valueOrNull ==
+        ConnectivityStatus.offline;
+    final visible = isOffline || _showBackOnline;
+    return IgnorePointer(
+      child: SafeArea(
+        bottom: false,
+        child: AnimatedSlide(
+          offset: visible ? Offset.zero : const Offset(0, -1.5),
+          duration: const Duration(milliseconds: 300),
+          child: AnimatedOpacity(
+            opacity: visible ? 1 : 0,
+            duration: const Duration(milliseconds: 250),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+              color: isOffline ? AppColors.warning : const Color(0xFF047857),
+              child: Row(children: [
+                Icon(isOffline ? Icons.wifi_off_rounded : Icons.wifi_rounded,
+                    color: Colors.white, size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    isOffline
+                        ? 'Offline mode — showing saved information. Some information may be outdated.'
+                        : 'Back online — refreshing saved information.',
+                    style:
+                        AppTypography.bodySmall.copyWith(color: Colors.white),
+                  ),
+                ),
+              ]),
+            ),
           ),
         ),
       ),

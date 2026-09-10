@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
@@ -113,6 +114,12 @@ class AuthState {
   final String? email;
   final String? userId;
 
+  /// True only when a previously server-verified identity is being rendered
+  /// from local metadata because Laravel could not be reached.
+  final bool isOfflineSession;
+  final DateTime? lastVerifiedAt;
+  final String? cachedProfileVersion;
+
   const AuthState({
     this.isLoggedIn = false,
     this.isGuest = false,
@@ -121,6 +128,9 @@ class AuthState {
     this.name,
     this.email,
     this.userId,
+    this.isOfflineSession = false,
+    this.lastVerifiedAt,
+    this.cachedProfileVersion,
   });
 
   bool get isAuthenticated => !isRestoring && (isLoggedIn || isGuest);
@@ -153,6 +163,9 @@ class AuthState {
     String? name,
     String? email,
     String? userId,
+    bool? isOfflineSession,
+    DateTime? lastVerifiedAt,
+    String? cachedProfileVersion,
   }) {
     return AuthState(
       isLoggedIn: isLoggedIn ?? this.isLoggedIn,
@@ -162,6 +175,9 @@ class AuthState {
       name: name ?? this.name,
       email: email ?? this.email,
       userId: userId ?? this.userId,
+      isOfflineSession: isOfflineSession ?? this.isOfflineSession,
+      lastVerifiedAt: lastVerifiedAt ?? this.lastVerifiedAt,
+      cachedProfileVersion: cachedProfileVersion ?? this.cachedProfileVersion,
     );
   }
 }
@@ -174,8 +190,12 @@ class AuthNotifier extends Notifier<AuthState> {
   static const _nameKey = 'auth_name';
   static const _emailKey = 'auth_email';
   static const _userIdKey = 'auth_user_id';
+  static const _lastVerifiedAtKey = 'auth_last_successful_at';
+  static const _lastModeKey = 'auth_last_mode';
+  static const _profileVersionKey = 'auth_cached_profile_version';
 
   final SecureStorageService _secureStorage = SecureStorageService();
+  Future<void>? _activeSessionVerification;
 
   @override
   AuthState build() {
@@ -184,6 +204,8 @@ class AuthNotifier extends Notifier<AuthState> {
     final isGuest = storage.getBool(_guestKey) ?? false;
     final roleStr = storage.getString(_roleKey) ?? 'tourist';
     final role = _parseRole(roleStr);
+    final lastVerifiedAt =
+        DateTime.tryParse(storage.getString(_lastVerifiedAtKey) ?? '');
 
     final localState = AuthState(
       isLoggedIn: isLoggedIn,
@@ -193,10 +215,12 @@ class AuthNotifier extends Notifier<AuthState> {
       name: storage.getString(_nameKey),
       email: storage.getString(_emailKey),
       userId: storage.getString(_userIdKey),
+      lastVerifiedAt: lastVerifiedAt,
+      cachedProfileVersion: storage.getString(_profileVersionKey),
     );
 
     if (isLoggedIn) {
-      _verifySession();
+      unawaited(_verifySession());
     }
 
     return localState;
@@ -234,7 +258,20 @@ class AuthNotifier extends Notifier<AuthState> {
     return UserRole.tourist;
   }
 
-  Future<void> _verifySession() async {
+  Future<void> _verifySession() {
+    final active = _activeSessionVerification;
+    if (active != null) return active;
+
+    final operation = _verifySessionOnce();
+    _activeSessionVerification = operation;
+    return operation.whenComplete(() {
+      if (identical(_activeSessionVerification, operation)) {
+        _activeSessionVerification = null;
+      }
+    });
+  }
+
+  Future<void> _verifySessionOnce() async {
     try {
       final token = await _secureStorage.readAuthToken().timeout(
             const Duration(seconds: 2),
@@ -242,6 +279,12 @@ class AuthNotifier extends Notifier<AuthState> {
           );
       if (token == null || token.isEmpty) {
         await _clearPersistedSession();
+        return;
+      }
+
+      final networks = await Connectivity().checkConnectivity();
+      if (networks.every((network) => network == ConnectivityResult.none)) {
+        await _enterControlledOfflineSession();
         return;
       }
 
@@ -254,6 +297,19 @@ class AuthNotifier extends Notifier<AuthState> {
         final roleStr = response.data['data']['role'] as String?;
         if (userData != null) {
           final role = _parseRole(roleStr);
+          final storage = LocalStorageService.instance;
+          final previousRole = storage.getString(_roleKey);
+          final previousUserId = storage.getString(_userIdKey);
+          if (previousUserId != null &&
+              previousUserId.isNotEmpty &&
+              (previousUserId != userData['id']?.toString() ||
+                  (previousRole != null && previousRole != role.name))) {
+            await PrivateSessionDataService.clear(
+              userId: previousUserId,
+              role: previousRole ?? role.name,
+            );
+          }
+          final verifiedAt = DateTime.now();
           final newState = AuthState(
             isLoggedIn: true,
             isGuest: false,
@@ -262,14 +318,17 @@ class AuthNotifier extends Notifier<AuthState> {
             name: userData['name'] as String? ?? 'Explorer',
             email: userData['email'] as String?,
             userId: userData['id'] as String?,
+            isOfflineSession: false,
+            lastVerifiedAt: verifiedAt,
+            cachedProfileVersion: userData['updated_at']?.toString(),
           );
           await _persist(newState);
           state = newState;
         } else {
-          state = const AuthState();
+          await _clearPersistedSession();
         }
       } else {
-        state = const AuthState();
+        await _clearPersistedSession();
       }
     } catch (e) {
       debugPrint('[AUTH] _verifySession error or timeout: $e');
@@ -277,12 +336,40 @@ class AuthNotifier extends Notifier<AuthState> {
           e.toString().contains('401') ||
           e.toString().contains('Session expired')) {
         await _clearPersistedSession();
+      } else if (e is NetworkException || e is ServerException) {
+        await _enterControlledOfflineSession();
       } else {
-        // Never render a privileged shell from unverified persisted role data.
-        // Keep the token for a later retry, but reset the in-memory identity.
-        state = const AuthState();
+        // Unknown failures are not proof that a token was revoked. A cached
+        // identity is presentation-only and privileged requests still require
+        // Laravel authorization when connectivity returns.
+        await _enterControlledOfflineSession();
       }
     }
+  }
+
+  Future<void> _enterControlledOfflineSession() async {
+    final storage = LocalStorageService.instance;
+    final userId = storage.getString(_userIdKey);
+    final name = storage.getString(_nameKey);
+    final email = storage.getString(_emailKey);
+    final wasLoggedIn = storage.getBool(_loggedInKey) ?? false;
+    if (!wasLoggedIn || userId == null || userId.isEmpty || name == null) {
+      await _clearPersistedSession();
+      return;
+    }
+    state = AuthState(
+      isLoggedIn: true,
+      isGuest: false,
+      isRestoring: false,
+      role: _parseRole(storage.getString(_roleKey)),
+      name: name,
+      email: email,
+      userId: userId,
+      isOfflineSession: true,
+      lastVerifiedAt:
+          DateTime.tryParse(storage.getString(_lastVerifiedAtKey) ?? ''),
+      cachedProfileVersion: storage.getString(_profileVersionKey),
+    );
   }
 
   String _sanitizeAuthException(Object error) {
@@ -747,6 +834,14 @@ class AuthNotifier extends Notifier<AuthState> {
 
   /// Continue as guest
   Future<void> continueAsGuest() async {
+    // A remembered account token must never accompany an unauthenticated
+    // Guest request. Preserve public caches while removing private state.
+    if (state.isLoggedIn ||
+        LocalStorageService.instance.getBool(_loggedInKey) == true) {
+      await _clearPersistedSession();
+    } else {
+      await _secureStorage.clearAuthData();
+    }
     const newState = AuthState(
       isLoggedIn: false,
       isGuest: true,
@@ -784,9 +879,18 @@ class AuthNotifier extends Notifier<AuthState> {
     await storage.setBool(_loggedInKey, value: s.isLoggedIn);
     await storage.setBool(_guestKey, value: s.isGuest);
     await storage.setString(_roleKey, s.role.name);
+    await storage.setString(_lastModeKey,
+        s.isGuest ? 'guest' : (s.isLoggedIn ? 'authenticated' : 'unknown'));
     if (s.name != null) await storage.setString(_nameKey, s.name!);
     if (s.email != null) await storage.setString(_emailKey, s.email!);
     if (s.userId != null) await storage.setString(_userIdKey, s.userId!);
+    if (s.isLoggedIn && !s.isOfflineSession) {
+      final verifiedAt = s.lastVerifiedAt ?? DateTime.now();
+      await storage.setString(_lastVerifiedAtKey, verifiedAt.toIso8601String());
+      if (s.cachedProfileVersion != null) {
+        await storage.setString(_profileVersionKey, s.cachedProfileVersion!);
+      }
+    }
     await _persistLocalUser(s);
   }
 
@@ -834,6 +938,9 @@ class AuthNotifier extends Notifier<AuthState> {
     await storage.remove(_nameKey);
     await storage.remove(_emailKey);
     await storage.remove(_userIdKey);
+    await storage.remove(_lastVerifiedAtKey);
+    await storage.remove(_profileVersionKey);
+    await storage.setString(_lastModeKey, 'unknown');
 
     if (DatabaseHelper.isSupported &&
         localUserId != null &&

@@ -4,7 +4,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Laravel CORS — Tubigon Smart Tourism API
+    | Laravel CORS — Tour Tubigon API
     |--------------------------------------------------------------------------
     | Allows Flutter Web (running on localhost) to make cross-origin requests
     | to this Laravel API during development. Tighten for production.
@@ -14,9 +14,16 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['*'],
+    'allowed_origins' => array_values(array_filter(array_map(
+        'trim',
+        explode(',', (string) env('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://localhost:5000,http://localhost:8080')),
+    ))),
 
-    'allowed_origins_patterns' => [],
+    // Flutter Web chooses an ephemeral localhost port in development. Hosted
+    // production origins must still be supplied explicitly above.
+    'allowed_origins_patterns' => env('APP_ENV', 'production') === 'local'
+        ? ['#^https?://(localhost|127\.0\.0\.1)(:\d+)?$#']
+        : [],
 
     'allowed_headers' => ['*'],
 

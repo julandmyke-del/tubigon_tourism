@@ -1,6 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/api_endpoints.dart';
 import '../../../core/network/api_client.dart';
+import 'package:dio/dio.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:typed_data';
 
 final lguRepositoryProvider = Provider<LguRepository>((ref) {
   final apiClient = ref.watch(apiClientProvider);
@@ -80,19 +83,44 @@ class LguRepository {
     String? assignedPersonnel,
     String? assignedTo,
     String? priority,
+    String? severity,
+    String? publicNote,
+    String? internalNote,
   }) async {
     final response = await _apiClient.put(
       ApiEndpoints.lguUpdateWasteStatus(reportId),
       data: {
         'status': status,
         if (remarks != null) 'notes': remarks,
+        if (publicNote != null) 'public_note': publicNote,
+        if (internalNote != null) 'internal_note': internalNote,
         if (assignedPersonnel != null) 'assigned_personnel': assignedPersonnel,
         if (assignedTo != null) 'assigned_to': assignedTo,
         if (priority != null) 'priority': priority,
+        if (severity != null) 'severity': severity,
       },
     );
     _map(response);
     return true;
+  }
+
+  Future<Map<String, dynamic>> uploadWasteResolutionPhoto(
+      String reportId, XFile photo) async {
+    return _map(await _apiClient.post(
+      ApiEndpoints.wasteResolutionMedia(reportId),
+      data: FormData.fromMap({
+        'photo': MultipartFile.fromBytes(await photo.readAsBytes(),
+            filename: photo.name),
+      }),
+    ));
+  }
+
+  Future<Uint8List> getAuthorizedWasteMedia(String url) async {
+    final response = await _apiClient.get<List<int>>(
+      url,
+      options: Options(responseType: ResponseType.bytes),
+    );
+    return Uint8List.fromList(response.data ?? const []);
   }
 
   /// Fetch municipal tourism analytics & performance metrics
@@ -131,7 +159,20 @@ class LguRepository {
 
   /// Fetch all waste reports for municipal monitoring
   Future<List<Map<String, dynamic>>> getWasteReports() async {
-    return _list(await _apiClient.get(ApiEndpoints.wasteReports));
+    final reports = <Map<String, dynamic>>[];
+    var page = 1;
+    var lastPage = 1;
+    do {
+      final response = await _apiClient.get(ApiEndpoints.wasteReports,
+          queryParameters: {'page': page, 'per_page': 100});
+      reports.addAll(_list(response));
+      final meta = response.data['meta'];
+      lastPage = meta is Map
+          ? int.tryParse(meta['last_page']?.toString() ?? '') ?? page
+          : page;
+      page++;
+    } while (page <= lastPage);
+    return reports;
   }
 
   Future<Map<String, dynamic>> getWasteReport(String id) async =>
@@ -193,7 +234,58 @@ class LguRepository {
       _list(await _apiClient.get(ApiEndpoints.lguAnnouncements));
 
   Future<List<Map<String, dynamic>>> getEcoTips() async =>
-      _list(await _apiClient.get(ApiEndpoints.ecoTips));
+      _list(await _apiClient.get(ApiEndpoints.lguEcoTips));
+
+  Future<void> saveEcoTip(Map<String, dynamic> data, {String? id}) async {
+    final response = id == null
+        ? await _apiClient.post(ApiEndpoints.lguEcoTips, data: data)
+        : await _apiClient.put(ApiEndpoints.lguEcoTip(id), data: data);
+    _map(response);
+  }
+
+  Future<void> archiveEcoTip(String id) async {
+    final response = await _apiClient.delete(ApiEndpoints.lguEcoTip(id));
+    if (response.statusCode == null || response.statusCode! >= 300) {
+      throw StateError('Unable to archive the eco tip.');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getFerrySchedules() async =>
+      _list(await _apiClient.get(ApiEndpoints.lguFerrySchedules));
+
+  Future<Map<String, dynamic>> getFerryCatalogs() async =>
+      _map(await _apiClient.get(ApiEndpoints.ferryCatalogs));
+
+  Future<void> createFerryPort(Map<String, dynamic> data) async {
+    _map(await _apiClient.post(ApiEndpoints.lguFerryPorts, data: data));
+  }
+
+  Future<void> updateFerryPort(String id, Map<String, dynamic> data) async {
+    _map(await _apiClient.put(ApiEndpoints.lguFerryPort(id), data: data));
+  }
+
+  Future<void> createFerryRoute(Map<String, dynamic> data) async {
+    _map(await _apiClient.post(ApiEndpoints.lguFerryRoutes, data: data));
+  }
+
+  Future<void> updateFerryRoute(String id, Map<String, dynamic> data) async {
+    _map(await _apiClient.put(ApiEndpoints.lguFerryRoute(id), data: data));
+  }
+
+  Future<void> saveFerrySchedule(Map<String, dynamic> data,
+      {String? id}) async {
+    final response = id == null
+        ? await _apiClient.post(ApiEndpoints.lguFerrySchedules, data: data)
+        : await _apiClient.put(ApiEndpoints.lguFerrySchedule(id), data: data);
+    _map(response);
+  }
+
+  Future<void> archiveFerrySchedule(String id) async {
+    final response = await _apiClient.delete(ApiEndpoints.lguFerrySchedule(id));
+    if (response.statusCode == null || response.statusCode! >= 300) {
+      throw StateError('Unable to archive the ferry schedule.');
+    }
+  }
 
   Future<List<Map<String, dynamic>>> getTourismListings(
           {String? status}) async =>
@@ -219,11 +311,6 @@ class LguRepository {
   /// Post a new municipal announcement
   Future<bool> createAnnouncement(Map<String, dynamic> data) async {
     throw UnsupportedError('Announcements are read-only for LGU staff.');
-  }
-
-  /// Add a new eco-tourism tip
-  Future<bool> createEcoTip(Map<String, dynamic> data) async {
-    throw UnsupportedError('Eco tips are read-only for LGU staff.');
   }
 
   Future<List<Map<String, dynamic>>> getEmergencyContacts() async {
@@ -257,6 +344,14 @@ class LguRepository {
 
   Future<bool> verifyEmergencyContact(String id) async {
     _map(await _apiClient.patch(ApiEndpoints.lguVerifyEmergencyContact(id)));
+    return true;
+  }
+
+  Future<bool> setEmergencyContactVerification(String id, String status) async {
+    _map(await _apiClient.patch(
+      ApiEndpoints.lguEmergencyContactVerification(id),
+      data: {'verification_status': status},
+    ));
     return true;
   }
 

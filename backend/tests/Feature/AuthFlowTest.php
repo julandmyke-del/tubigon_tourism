@@ -3,11 +3,11 @@
 namespace Tests\Feature;
 
 use App\Mail\VerifyEmail;
-use App\Notifications\ResetPasswordNotification;
-use App\Models\Profile;
 use App\Models\Image;
+use App\Models\Profile;
 use App\Models\Role;
 use App\Models\User;
+use App\Notifications\ResetPasswordNotification;
 use App\Services\GoogleIdTokenVerifier;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Auth;
@@ -67,9 +67,8 @@ class AuthFlowTest extends TestCase
         $this->assertSame('email', $user->auth_provider);
         $this->assertTrue(Hash::check('safe-password', $user->password));
         $this->assertFalse((bool) Profile::findOrFail($user->id)->is_verified);
-        Mail::assertSent(VerifyEmail::class, fn (VerifyEmail $mail) =>
-            preg_match('/^\d{6}$/', $mail->verificationCode) === 1
-            && $mail->envelope()->subject === 'Tubigon Smart Tourism Verification Code'
+        Mail::assertSent(VerifyEmail::class, fn (VerifyEmail $mail) => preg_match('/^\d{6}$/', $mail->verificationCode) === 1
+            && $mail->envelope()->subject === 'Tour Tubigon Verification Code'
         );
     }
 

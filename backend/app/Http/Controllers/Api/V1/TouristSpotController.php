@@ -314,6 +314,15 @@ class TouristSpotController extends Controller
             }, $payload['booking_time_slots']);
         }
         $payload['fee_configured'] = $spot->reservation_fee !== null;
+        if (Schema::hasTable('tourist_spot_media')) {
+            $cover = $spot->media()->where('is_active', true)->where('is_cover', true)->first();
+            $payload['gallery_count'] = $spot->media()->where('is_active', true)->count();
+            if ($cover) {
+                $url = url("/api/v1/tourist-spot-media/{$cover->id}");
+                $payload['cover_image_url'] = $url;
+                $payload['images'] = array_values(array_unique([$url, ...($payload['images'] ?? [])]));
+            }
+        }
 
         return $payload;
     }

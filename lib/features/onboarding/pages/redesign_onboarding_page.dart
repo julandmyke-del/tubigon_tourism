@@ -48,7 +48,7 @@ const _pages = <_PageDef>[
   _PageDef(
     id: 0,
     tag: 'WELCOME',
-    headline: 'Welcome to\nTubigon Tourism',
+    headline: 'Welcome to\nTour Tubigon',
     sub: 'Municipality of Tubigon, Bohol',
     desc:
         'Discover the beauty, culture, and adventures of Tubigon — where pristine beaches, volcanic landmarks, and warm communities await your arrival.',
@@ -125,7 +125,7 @@ const _pages = <_PageDef>[
     id: 5,
     tag: 'BEGIN',
     headline: 'Your Adventure\nStarts Now',
-    sub: 'Join the Tubigon Tourism Community',
+    sub: 'Join the Tour Tubigon Community',
     desc:
         'Experience a smarter way to travel with one complete tourism platform built exclusively for Tubigon, Bohol.',
     image: AssetPaths.onboarding6,

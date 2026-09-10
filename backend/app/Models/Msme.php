@@ -16,6 +16,7 @@ class Msme extends Model
         'profile_id',
         'name',
         'category',
+        'category_id',
         'tagline',
         'description',
         'phone',
@@ -59,5 +60,10 @@ class Msme extends Model
     public function profile()
     {
         return $this->belongsTo(Profile::class, 'profile_id');
+    }
+
+    public function categoryRecord()
+    {
+        return $this->belongsTo(MsmeCategory::class, 'category_id');
     }
 }

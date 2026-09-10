@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\EmergencyContact;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Schema;
 
 class EmergencyContactSeeder extends Seeder
 {
@@ -17,7 +18,9 @@ class EmergencyContactSeeder extends Seeder
                 'alternative_phone' => '0998-598-6445',
                 'address' => 'Tubigon, Bohol',
                 'description' => 'Local direct police contact. Confirm the current number with the station before relying on it for non-urgent inquiries.',
-                'source' => 'PNP telephone-directory material',
+                'source' => 'Philippine National Police directory material',
+                'source_url' => 'https://itms.pnp.gov.ph/wp-content/uploads/2025/04/PRO-7.pdf',
+                'verification_status' => 'needs_reverification',
             ],
             [
                 'name' => 'Tubigon Fire Station',
@@ -26,7 +29,9 @@ class EmergencyContactSeeder extends Seeder
                 'alternative_phone' => '(038) 510-7022',
                 'address' => 'Potohan, Tubigon, Bohol',
                 'description' => 'Local fire and rescue contact. Supplied sources list conflicting current and older telephone numbers; LGU verification is required.',
-                'source' => 'Local directory and Bohol government material (conflicting numbers)',
+                'source' => 'PPDO Bohol / BFP-Bohol material (published phone references conflict)',
+                'source_url' => 'https://ppdo.bohol.gov.ph/profile/socio-economic-profile/development-administration/justice-and-safety/fire-incidence-protection-services/fire-fighting-force-and-facilities-jan-2014/',
+                'verification_status' => 'needs_reverification',
             ],
             [
                 'name' => 'Coast Guard Detachment Tubigon',
@@ -34,7 +39,9 @@ class EmergencyContactSeeder extends Seeder
                 'phone' => '0929-674-2112',
                 'address' => 'Tubigon, Bohol',
                 'description' => 'Local maritime emergency contact.',
-                'source' => 'Philippine Coast Guard material',
+                'source' => 'Philippine Coast Guard National Oil Spill Contingency Plan directory',
+                'source_url' => 'https://www.coastguard.gov.ph/images/2017_Files/Memorandum_Circulars/NOSCOP2.pdf',
+                'verification_status' => 'needs_reverification',
             ],
             [
                 'name' => 'Tubigon Rural Health Unit',
@@ -43,7 +50,9 @@ class EmergencyContactSeeder extends Seeder
                 'alternative_phone' => '0917-894-5676',
                 'address' => 'Potohan, Tubigon, Bohol',
                 'description' => 'Local rural health unit contact.',
-                'source' => 'PhilHealth 2025 accredited-provider listing',
+                'source' => 'PhilHealth List of Accredited TB-DOTS Package Providers, 31 December 2025',
+                'source_url' => 'https://www.philhealth.gov.ph/partners/providers/facilities/accredited/DOTS_123125.pdf',
+                'verification_status' => 'verified',
             ],
             [
                 'name' => 'Tubigon Community Hospital',
@@ -52,7 +61,9 @@ class EmergencyContactSeeder extends Seeder
                 'alternative_phone' => '(038) 411-4801',
                 'address' => 'Potohan, Tubigon, Bohol',
                 'description' => 'Local hospital contact.',
-                'source' => 'PhilHealth hospital-provider information',
+                'source' => 'PhilHealth provider information; current direct verification required',
+                'source_url' => 'https://www.philhealth.gov.ph/partners/providers/institutional/map/',
+                'verification_status' => 'needs_reverification',
             ],
             [
                 'name' => 'Emergency Hotline',
@@ -60,22 +71,54 @@ class EmergencyContactSeeder extends Seeder
                 'phone' => '911',
                 'address' => 'Philippines',
                 'description' => 'National emergency hotline. This is distinct from Tubigon local direct numbers.',
-                'source' => 'National emergency hotline',
+                'source' => 'Philippine Government Emergency Hotlines directory',
+                'source_url' => 'https://ehotlines.e.gov.ph/',
+                'verification_status' => 'verified',
             ],
         ];
 
         foreach ($contacts as $contact) {
-            EmergencyContact::firstOrCreate(
+            $record = EmergencyContact::firstOrCreate(
                 [
                     'name' => $contact['name'],
                     'category' => $contact['category'],
                 ],
-                $contact + [
+                $this->supportedAttributes($contact + [
                     'classification' => 'emergency',
                     'is_active' => true,
-                    'is_verified' => false,
-                ],
+                    'is_verified' => $contact['verification_status'] === 'verified',
+                    'is_public' => $contact['verification_status'] === 'verified',
+                    'source_name' => $contact['source'],
+                    'verified_at' => $contact['verification_status'] === 'verified' ? now() : null,
+                    'last_verified_at' => $contact['verification_status'] === 'verified' ? now() : null,
+                ]),
             );
+            // Safely repair earlier installs that had the same exact official
+            // source and number but were seeded before the publication
+            // lifecycle existed. Conflicting or staff-edited records are not
+            // auto-promoted.
+            if ($contact['verification_status'] === 'verified'
+                && ! $record->is_verified
+                && $record->phone === $contact['phone']
+                && $record->source_url === $contact['source_url']) {
+                $record->update($this->supportedAttributes([
+                    'is_verified' => true,
+                    'is_public' => true,
+                    'verification_status' => 'verified',
+                    'source_name' => $contact['source'],
+                    'verified_at' => now(),
+                    'last_verified_at' => now(),
+                ]));
+            }
         }
+    }
+
+    private function supportedAttributes(array $attributes): array
+    {
+        return array_filter(
+            $attributes,
+            fn (string $column): bool => Schema::hasColumn('emergency_contacts', $column),
+            ARRAY_FILTER_USE_KEY,
+        );
     }
 }

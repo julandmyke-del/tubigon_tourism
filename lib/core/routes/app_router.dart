@@ -50,11 +50,15 @@ import '../../features/map/presentation/map_location_management_page.dart';
 import '../../features/itinerary/presentation/itinerary_list_page.dart';
 import '../../features/itinerary/presentation/itinerary_form_page.dart';
 import '../../features/itinerary/presentation/itinerary_detail_page.dart';
+import '../../features/carbon/presentation/carbon_estimator_page.dart';
 
 // ─── MSME Module Imports ───────────────────────────────────────────────────
 import '../../features/msmepage/msmepage.dart';
 import '../../features/role_applications/presentation/applicant_role_applications_page.dart';
 import '../../features/role_applications/presentation/role_application_review_page.dart';
+import '../../features/connected_operations/presentation/dynamic_booking_page.dart';
+import '../../features/connected_operations/presentation/partner_destination_operations_page.dart';
+import '../../features/connected_operations/presentation/concerns_pages.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 final _shellNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'shell');
@@ -68,11 +72,12 @@ final _msmeShellNavigatorKey =
     GlobalKey<NavigatorState>(debugLabel: 'msme-shell');
 
 final appRouterProvider = Provider<GoRouter>((ref) {
-  return GoRouter(
+  final authListenable = _AuthListenable(ref);
+  final router = GoRouter(
     navigatorKey: _rootNavigatorKey,
     initialLocation: '/splash',
     debugLogDiagnostics: true,
-    refreshListenable: _AuthListenable(ref),
+    refreshListenable: authListenable,
     redirect: (context, state) {
       final location = state.matchedLocation;
       final authState = ref.read(authProvider);
@@ -87,7 +92,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       // Guest discovery is authenticated only for public browsing. Account-
       // owned booking routes require a real Sanctum session and retain a safe
       // internal destination through the login flow.
-      if (authState.isGuest && location.startsWith('/reservations')) {
+      if (authState.isGuest &&
+          (location.startsWith('/reservations') ||
+              location.startsWith('/concerns'))) {
         return Uri(
           path: '/onboarding',
           queryParameters: {
@@ -124,74 +131,26 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 location.startsWith('/tourism-partner') ||
                 location.startsWith('/lgu') ||
                 location.startsWith('/msme-portal'))) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                    'Access Denied: Tourist / User accounts can only access Tourist pages.'),
-                backgroundColor: Color(0xFFEF4444),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          });
           return '/home';
         }
 
         // Admin section protection: Only Admin
         if (location.startsWith('/admin') && !isAdmin) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Access Denied: Admin permissions required.'),
-                backgroundColor: Color(0xFFEF4444),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          });
           return roleHome;
         }
 
         // Tourism Partner section protection: Only Partner and Admin
         if (location.startsWith('/tourism-partner') && !isPartner) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                    'Access Denied: Tourism Partner permissions required.'),
-                backgroundColor: Color(0xFFEF4444),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          });
           return roleHome;
         }
 
         // LGU section protection: Only LGU Staff and Admin
         if (location.startsWith('/lgu') && !isLgu && !isAdmin) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Access Denied: LGU Staff permissions required.'),
-                backgroundColor: Color(0xFFEF4444),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          });
           return roleHome;
         }
 
         // MSME Portal section protection: Only MSME Owner can access /msme-portal
         if (location.startsWith('/msme-portal') && !isMsme) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content:
-                    Text('Access Denied: MSME Owner permissions required.'),
-                backgroundColor: Color(0xFFEF4444),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          });
           return roleHome;
         }
 
@@ -284,7 +243,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: 'register',
             name: RouteNames.register,
-            builder: (context, state) => const RegisterPage(),
+            builder: (context, state) => RegisterPage(
+              returnTo: state.uri.queryParameters['returnTo'],
+            ),
           ),
           GoRoute(
             path: 'forgot-password',
@@ -304,7 +265,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: RouteNames.verifyEmail,
             builder: (context, state) {
               final email = state.uri.queryParameters['email'] ?? '';
-              return EmailVerificationPage(email: email);
+              return EmailVerificationPage(
+                email: email,
+                returnTo: state.uri.queryParameters['returnTo'],
+              );
             },
           ),
         ],
@@ -419,6 +383,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 ),
               ),
               GoRoute(
+                path: 'offering',
+                builder: (context, state) => DynamicBookingPage(
+                  spotId: state.uri.queryParameters['spot'] ?? '',
+                ),
+              ),
+              GoRoute(
                 path: ':uuid',
                 name: RouteNames.reservationDetail,
                 builder: (context, state) => ReservationDetailPage(
@@ -443,6 +413,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 builder: (context, state) => const SettingsPage(),
               ),
             ],
+          ),
+          GoRoute(
+            path: '/concerns',
+            builder: (context, state) => const ConcernsPage(),
           ),
         ],
       ),
@@ -489,6 +463,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ],
       ),
       GoRoute(
+        path: '/carbon-estimator',
+        name: RouteNames.carbonEstimator,
+        builder: (context, state) => CarbonEstimatorPage(
+          initialDistance:
+              double.tryParse(state.uri.queryParameters['distance'] ?? ''),
+          initialDistanceSource: state.uri.queryParameters['source'],
+          itineraryId: state.uri.queryParameters['itinerary'],
+          initialLegDistances: (state.uri.queryParameters['legs'] ?? '')
+              .split(',')
+              .map(double.tryParse)
+              .whereType<double>()
+              .where((value) => value > 0)
+              .toList(growable: false),
+        ),
+      ),
+      GoRoute(
         path: '/ferry',
         name: RouteNames.ferrySchedule,
         builder: (context, state) => const FerrySchedulePage(),
@@ -524,6 +514,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/waste-report',
         name: RouteNames.wasteReport,
         builder: (context, state) => const WasteReportPage(),
+      ),
+      GoRoute(
+        path: '/waste-reports',
+        name: RouteNames.wasteReportHistory,
+        builder: (context, state) => const WasteReportHistoryPage(),
       ),
 
       // ── Admin Shell (Dashboard sidebar/drawer) ───────────────────────────
@@ -604,6 +599,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const AdminAnnouncementsPage(),
           ),
           GoRoute(
+            path: '/admin/concerns',
+            builder: (context, state) => const StaffConcernsPage(role: 'admin'),
+          ),
+          GoRoute(
             path: '/admin/analytics',
             name: RouteNames.analytics,
             builder: (context, state) => const AdminAnalyticsPage(),
@@ -667,6 +666,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/tourism-partner/reservations',
             name: RouteNames.partnerReservations,
             builder: (context, state) => const PartnerReservationsPage(),
+          ),
+          GoRoute(
+            path: '/tourism-partner/destination-operations',
+            builder: (context, state) =>
+                const PartnerDestinationOperationsPage(),
           ),
           GoRoute(
             path: '/tourism-partner/notifications',
@@ -768,9 +772,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ),
           ),
           GoRoute(
+            path: '/lgu/waste-map',
+            builder: (context, state) => const MapPage(
+              initialCategoryKeys: {'waste-reports'},
+            ),
+          ),
+          GoRoute(
             path: '/lgu/emergency',
             name: RouteNames.lguEmergency,
             builder: (context, state) => const LguEmergencyContactsPage(),
+          ),
+          GoRoute(
+            path: '/lgu/ferry',
+            name: RouteNames.lguFerry,
+            builder: (context, state) => const LguFerryManagementPage(),
           ),
           GoRoute(
             path: '/lgu/eco-tips',
@@ -781,6 +796,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/lgu/announcements',
             name: RouteNames.lguAnnouncements,
             builder: (context, state) => const LguAnnouncementsPage(),
+          ),
+          GoRoute(
+            path: '/lgu/concerns',
+            builder: (context, state) =>
+                const StaffConcernsPage(role: 'lgu_staff'),
           ),
           GoRoute(
             path: '/lgu/analytics',
@@ -933,11 +953,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
     ),
   );
+  ref.onDispose(() {
+    router.dispose();
+    authListenable.dispose();
+  });
+  return router;
 });
 
 /// Makes the GoRouter refresh whenever auth state changes.
 class _AuthListenable extends ChangeNotifier {
   _AuthListenable(Ref ref) {
-    ref.listen(authProvider, (_, __) => notifyListeners());
+    ref.listen(authProvider, (_, __) {
+      if (!hasListeners) return;
+      notifyListeners();
+    });
   }
 }

@@ -92,6 +92,11 @@ class User extends Authenticatable
         return $this->hasMany(RoleApplication::class, 'applicant_user_id');
     }
 
+    public function preferences()
+    {
+        return $this->hasOne(UserPreference::class);
+    }
+
     public function sendPasswordResetNotification($token): void
     {
         $this->notify(new ResetPasswordNotification($token));

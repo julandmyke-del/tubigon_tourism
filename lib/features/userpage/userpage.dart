@@ -21,6 +21,7 @@ export 'presentation/pages/ferry_schedule_page.dart';
 export 'presentation/pages/eco_tips_page.dart';
 export 'presentation/pages/emergency_contacts_page.dart';
 export 'presentation/pages/waste_report_page.dart';
+export 'presentation/pages/waste_report_history_page.dart';
 export 'presentation/pages/notifications_page.dart';
 export 'presentation/pages/profile_page.dart';
 export 'presentation/pages/edit_profile_page.dart';

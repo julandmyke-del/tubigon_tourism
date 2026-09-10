@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\Notification;
 use App\Models\Reservation;
+use App\Models\ReservationMessage;
 use App\Models\ReservationStatus;
 use App\Models\ReservationStatusHistory;
 use App\Models\TourismListing;
@@ -16,6 +17,7 @@ use App\Support\ReservationStatusTransitions;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
@@ -33,7 +35,11 @@ class PartnerReservationController extends Controller
             'sort' => ['nullable', Rule::in(['visit_asc', 'visit_desc', 'newest'])],
         ]);
         [$spotIds, $listingIds] = $this->ownedTargetIds($request);
-        $query = Reservation::with(['user:id,name,phone', 'status']);
+        $relations = ['user:id,name,phone', 'status'];
+        if (Schema::hasTable('reservation_items')) {
+            $relations[] = 'items';
+        }
+        $query = Reservation::with($relations);
         $this->scopeOwned($query, $spotIds, $listingIds);
 
         if (! empty($validated['status_filter'])) {
@@ -52,8 +58,12 @@ class PartnerReservationController extends Controller
         } elseif (($validated['scope'] ?? null) === 'upcoming') {
             $query->whereDate('reservation_date', '>=', now()->toDateString());
         }
-        if (! empty($validated['from'])) $query->whereDate('reservation_date', '>=', $validated['from']);
-        if (! empty($validated['to'])) $query->whereDate('reservation_date', '<=', $validated['to']);
+        if (! empty($validated['from'])) {
+            $query->whereDate('reservation_date', '>=', $validated['from']);
+        }
+        if (! empty($validated['to'])) {
+            $query->whereDate('reservation_date', '<=', $validated['to']);
+        }
 
         match ($validated['sort'] ?? 'visit_asc') {
             'visit_desc' => $query->orderByDesc('reservation_date'),
@@ -71,10 +81,11 @@ class PartnerReservationController extends Controller
 
     public function show(Request $request, string $id): JsonResponse
     {
-        $reservation = Reservation::with([
-            'user:id,name,phone', 'status',
-            'statusHistory.status', 'statusHistory.changedBy:id,name',
-        ])->findOrFail($id);
+        $relations = ['user:id,name,phone', 'status', 'statusHistory.status', 'statusHistory.changedBy:id,name'];
+        if (Schema::hasTable('reservation_items')) {
+            $relations[] = 'items';
+        }
+        $reservation = Reservation::with($relations)->findOrFail($id);
         $this->authorizeOwnership($request, $reservation);
 
         return response()->json(['status' => 'success', 'data' => $this->payload($reservation)]);
@@ -101,6 +112,16 @@ class PartnerReservationController extends Controller
             }
 
             $reservation->update(['status_id' => $status->id]);
+            if (Schema::hasTable('reservation_messages')) {
+                ReservationMessage::create([
+                    'reservation_id' => $reservation->id,
+                    'sender_user_id' => null,
+                    'sender_role_at_time' => 'system',
+                    'message' => 'Reservation '.ucfirst($status->name),
+                    'message_type' => 'system_update',
+                    'is_internal' => false,
+                ]);
+            }
             if (Schema::hasTable('reservation_status_history')) {
                 ReservationStatusHistory::create([
                     'reservation_id' => $reservation->id,
@@ -164,7 +185,7 @@ class PartnerReservationController extends Controller
         }
     }
 
-    /** @return array{0: \Illuminate\Support\Collection, 1: \Illuminate\Support\Collection} */
+    /** @return array{0: Collection, 1: Collection} */
     private function ownedTargetIds(Request $request): array
     {
         return [
@@ -193,6 +214,14 @@ class PartnerReservationController extends Controller
         return array_merge($reservation->toArray(), [
             'reservable_name' => $this->targetName($reservation),
             'allowed_transitions' => ReservationStatusTransitions::allowedFrom($reservation->status?->name),
+            'customer' => [
+                'name' => $reservation->customer_name_snapshot ?? $reservation->user?->name,
+                'email' => $reservation->customer_email_snapshot,
+                'phone' => $reservation->customer_phone_snapshot ?? $reservation->user?->phone,
+            ],
+            'unread_message_count' => Schema::hasTable('reservation_messages')
+                ? $reservation->messages()->where('is_internal', false)->where('sender_user_id', '!=', $reservation->partner_id)->whereDoesntHave('readers', fn ($q) => $q->where('users.id', $reservation->partner_id))->count()
+                : 0,
         ]);
     }
 

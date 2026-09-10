@@ -1,3 +1,7 @@
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
+
 import '../../../core/constants/api_endpoints.dart';
 import '../../../core/network/api_client.dart';
 
@@ -23,15 +27,8 @@ class AdminRepository {
   // ─── User Management ───────────────────────────────────────────────
 
   Future<List<Map<String, dynamic>>> getUsers() async {
-    try {
-      final response = await apiClient.get(ApiEndpoints.adminUsers);
-      if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return List<Map<String, dynamic>>.from(response.data['data']);
-      }
-      throw Exception('Failed to fetch users');
-    } catch (e) {
-      throw Exception('Failed to fetch users: $e');
-    }
+    final response = await apiClient.get(ApiEndpoints.adminUsers);
+    return _decodeCollection(response, 'users');
   }
 
   Future<Map<String, dynamic>> getUser(String userId) async {
@@ -43,15 +40,32 @@ class AdminRepository {
   }
 
   Future<List<Map<String, dynamic>>> getRoles() async {
-    try {
-      final response = await apiClient.get(ApiEndpoints.adminRoles);
-      if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return List<Map<String, dynamic>>.from(response.data['data']);
+    final response = await apiClient.get(ApiEndpoints.adminRoles);
+    return _decodeCollection(response, 'roles');
+  }
+
+  List<Map<String, dynamic>> _decodeCollection(
+    Response<dynamic> response,
+    String resource,
+  ) {
+    final body = response.data;
+    if (response.statusCode == 200 &&
+        body is Map &&
+        body['status'] == 'success') {
+      final payload = body['data'];
+      final rows = payload is List
+          ? payload
+          : payload is Map && payload['data'] is List
+              ? payload['data'] as List
+              : null;
+      if (rows != null) {
+        return rows
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList(growable: false);
       }
-      throw Exception('Failed to fetch roles');
-    } catch (e) {
-      throw Exception('Failed to fetch roles: $e');
     }
+    throw FormatException('The $resource response has an invalid format.');
   }
 
   Future<bool> createUser(Map<String, dynamic> userData) async {
@@ -175,10 +189,7 @@ class AdminRepository {
   Future<List<Map<String, dynamic>>> getTouristSpots() async {
     try {
       final response = await apiClient.get(ApiEndpoints.adminSpots);
-      if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return List<Map<String, dynamic>>.from(response.data['data']);
-      }
-      throw Exception('Failed to fetch tourist spots');
+      return _decodeCollection(response, 'tourist spots');
     } catch (e) {
       throw Exception('Failed to fetch tourist spots: $e');
     }
@@ -226,10 +237,7 @@ class AdminRepository {
   Future<List<Map<String, dynamic>>> getCategories() async {
     try {
       final response = await apiClient.get(ApiEndpoints.spotCategories);
-      if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return List<Map<String, dynamic>>.from(response.data['data']);
-      }
-      throw Exception('Failed to fetch categories');
+      return _decodeCollection(response, 'spot categories');
     } catch (e) {
       throw Exception('Failed to fetch categories: $e');
     }
@@ -261,11 +269,8 @@ class AdminRepository {
   // 3. Ferry Schedules
   Future<List<Map<String, dynamic>>> getFerrySchedules() async {
     try {
-      final response = await apiClient.get(ApiEndpoints.ferrySchedules);
-      if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return List<Map<String, dynamic>>.from(response.data['data']);
-      }
-      throw Exception('Failed to fetch ferry schedules');
+      final response = await apiClient.get(ApiEndpoints.adminFerrySchedules);
+      return _decodeCollection(response, 'ferry schedules');
     } catch (e) {
       throw Exception('Failed to fetch ferry schedules: $e');
     }
@@ -298,10 +303,7 @@ class AdminRepository {
   Future<List<Map<String, dynamic>>> getEmergencyContacts() async {
     try {
       final response = await apiClient.get(ApiEndpoints.adminEmergencyContacts);
-      if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return List<Map<String, dynamic>>.from(response.data['data']);
-      }
-      throw Exception('Failed to fetch emergency contacts');
+      return _decodeCollection(response, 'emergency contacts');
     } catch (e) {
       throw Exception('Failed to fetch emergency contacts: $e');
     }
@@ -333,11 +335,8 @@ class AdminRepository {
   // 5. Eco Tips
   Future<List<Map<String, dynamic>>> getEcoTips() async {
     try {
-      final response = await apiClient.get(ApiEndpoints.ecoTips);
-      if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return List<Map<String, dynamic>>.from(response.data['data']);
-      }
-      throw Exception('Failed to fetch eco tips');
+      final response = await apiClient.get(ApiEndpoints.adminEcoTips);
+      return _decodeCollection(response, 'eco tips');
     } catch (e) {
       throw Exception('Failed to fetch eco tips: $e');
     }
@@ -480,8 +479,22 @@ class AdminRepository {
   }
 
   Future<void> manageAnnouncement(Map<String, dynamic> data,
-      {String? id}) async {
+      {String? id, Uint8List? image, String? imageName}) async {
     try {
+      if (image != null) {
+        final form = FormData.fromMap({
+          ...data,
+          'image': MultipartFile.fromBytes(image,
+              filename: imageName ?? 'announcement.jpg'),
+          if (id != null) '_method': 'PUT',
+        });
+        await apiClient.post(
+            id == null
+                ? ApiEndpoints.adminAnnouncements
+                : ApiEndpoints.adminAnnouncement(id),
+            data: form);
+        return;
+      }
       if (id != null) {
         await apiClient.put(ApiEndpoints.adminAnnouncement(id), data: data);
       } else {
@@ -528,11 +541,37 @@ class AdminRepository {
 
   // ─── Activity Logs ─────────────────────────────────────────────────
 
-  Future<List<Map<String, dynamic>>> getActivityLogs() async {
+  Future<Map<String, dynamic>> getActivityLogs({
+    int page = 1,
+    int perPage = 25,
+    String? role,
+    String? action,
+    String? dateFrom,
+    String? dateTo,
+    String? search,
+  }) async {
     try {
-      final response = await apiClient.get(ApiEndpoints.adminActivityLogs);
+      final response =
+          await apiClient.get(ApiEndpoints.adminActivityLogs, queryParameters: {
+        'page': page,
+        'per_page': perPage,
+        if (role?.isNotEmpty == true) 'role': role,
+        if (action?.isNotEmpty == true) 'action': action,
+        if (dateFrom != null) 'date_from': dateFrom,
+        if (dateTo != null) 'date_to': dateTo,
+        if (search?.trim().isNotEmpty == true) 'search': search!.trim(),
+      });
       if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return List<Map<String, dynamic>>.from(response.data['data']);
+        final data = response.data['data'];
+        if (data is Map) return Map<String, dynamic>.from(data);
+        if (data is List) {
+          return {
+            'data': List<Map<String, dynamic>>.from(data),
+            'current_page': 1,
+            'last_page': 1,
+            'total': data.length,
+          };
+        }
       }
       throw Exception('Failed to fetch activity logs');
     } catch (e) {

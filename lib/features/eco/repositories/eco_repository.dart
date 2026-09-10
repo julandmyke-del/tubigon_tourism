@@ -1,9 +1,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:convert';
 
 import '../../../core/constants/api_endpoints.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/services/sync_service.dart';
+import '../../../core/services/local_storage_service.dart';
 import '../../../database/database_helper.dart';
 import '../models/eco_tip.dart';
 
@@ -12,10 +14,23 @@ class EcoRepository {
 
   final ApiClient apiClient;
   final dbHelper = DatabaseHelper.instance;
+  static const _webCacheKey = 'eco_tips_public_cache_v2';
 
   Future<List<EcoTip>> getEcoTips() async {
     if (!DatabaseHelper.isSupported) {
-      return _fetchRemote();
+      try {
+        final remote = await _fetchRemote();
+        await LocalStorageService.instance.setString(_webCacheKey,
+            jsonEncode(remote.map((item) => item.toJson()).toList()));
+        return remote;
+      } catch (_) {
+        final cached = LocalStorageService.instance.getString(_webCacheKey);
+        if (cached == null) rethrow;
+        return (jsonDecode(cached) as List<dynamic>)
+            .whereType<Map>()
+            .map((item) => EcoTip.fromJson(Map<String, dynamic>.from(item)))
+            .toList(growable: false);
+      }
     }
 
     final localMaps = await dbHelper.query('eco_tips', orderBy: 'id ASC');
@@ -24,23 +39,10 @@ class EcoRepository {
     if (SyncService.instance.isOnline) {
       try {
         final remoteItems = await _fetchRemote();
+        await dbHelper.delete('eco_tips', where: '1 = 1', whereArgs: const []);
         for (final parsedItem in remoteItems) {
-          final localResult = await dbHelper.query(
-            'eco_tips',
-            where: 'uuid = ?',
-            whereArgs: [parsedItem.uuid],
-          );
           final itemJson = parsedItem.toJson();
-          if (localResult.isEmpty) {
-            await dbHelper.insert('eco_tips', itemJson);
-          } else {
-            await dbHelper.update(
-              'eco_tips',
-              itemJson,
-              where: 'uuid = ?',
-              whereArgs: [parsedItem.uuid],
-            );
-          }
+          await dbHelper.insert('eco_tips', itemJson);
         }
         final updatedLocal =
             await dbHelper.query('eco_tips', orderBy: 'id ASC');

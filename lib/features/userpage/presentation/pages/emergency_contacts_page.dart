@@ -4,17 +4,29 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../../core/localization/app_localization.dart';
+import '../../../../core/network/connectivity_provider.dart';
 import '../../../../core/routes/route_names.dart';
 import '../../../emergency/models/emergency_contact.dart';
 import '../../../emergency/repositories/emergency_repository.dart';
 import '../../../map/providers/map_provider.dart';
 
-class EmergencyContactsPage extends ConsumerWidget {
+class EmergencyContactsPage extends ConsumerStatefulWidget {
   const EmergencyContactsPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<EmergencyContactsPage> createState() =>
+      _EmergencyContactsPageState();
+}
+
+class _EmergencyContactsPageState extends ConsumerState<EmergencyContactsPage> {
+  String _category = 'All';
+
+  @override
+  Widget build(BuildContext context) {
     final contacts = ref.watch(emergencyContactsListProvider);
+    final offline = !ref.watch(isOnlineProvider);
+    final cachedAt = EmergencyRepository.cacheUpdatedAt;
     return Scaffold(
       backgroundColor: const Color(0xFF080F1A),
       appBar: AppBar(
@@ -27,7 +39,7 @@ class EmergencyContactsPage extends ConsumerWidget {
               : context.goNamed(RouteNames.home),
           icon: const Icon(Icons.arrow_back_rounded),
         ),
-        title: const Text('Emergency Contacts'),
+        title: Text(context.tr('emergency_contacts')),
       ),
       body: contacts.when(
         loading: () => const Center(
@@ -42,17 +54,71 @@ class EmergencyContactsPage extends ConsumerWidget {
                 message: 'No active emergency contacts are configured.',
                 onRetry: () => ref.invalidate(emergencyContactsListProvider),
               )
-            : RefreshIndicator(
-                onRefresh: () =>
-                    ref.refresh(emergencyContactsListProvider.future),
-                child: ListView.separated(
-                  padding: const EdgeInsets.all(20),
-                  itemCount: items.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) =>
-                      _EmergencyCard(contact: items[index]),
-                ),
-              ),
+            : Builder(builder: (context) {
+                final categories = items
+                    .map((item) => item.category)
+                    .toSet()
+                    .toList(growable: false)
+                  ..sort();
+                final selected =
+                    _category == 'All' || categories.contains(_category)
+                        ? _category
+                        : 'All';
+                final visible = selected == 'All'
+                    ? items
+                    : items
+                        .where((item) => item.category == selected)
+                        .toList(growable: false);
+                return Column(
+                  children: [
+                    if (offline)
+                      Container(
+                        width: double.infinity,
+                        color: const Color(0xFFF59E0B),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        child: Text(
+                          cachedAt == null
+                              ? '${context.tr('showing_saved_information')} — Offline copy'
+                              : 'Offline copy — last updated ${DateFormat.yMMMd().add_jm().format(cachedAt.toLocal())}',
+                          style: const TextStyle(
+                              color: Colors.black, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                      child: Row(
+                        children: ['All', ...categories]
+                            .map((category) => Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: ChoiceChip(
+                                    label: Text(category),
+                                    selected: selected == category,
+                                    onSelected: (_) =>
+                                        setState(() => _category = category),
+                                  ),
+                                ))
+                            .toList(growable: false),
+                      ),
+                    ),
+                    Expanded(
+                      child: RefreshIndicator(
+                        onRefresh: () =>
+                            ref.refresh(emergencyContactsListProvider.future),
+                        child: ListView.separated(
+                          padding: const EdgeInsets.all(20),
+                          itemCount: visible.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 12),
+                          itemBuilder: (context, index) =>
+                              _EmergencyCard(contact: visible[index]),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }),
       ),
     );
   }
@@ -153,7 +219,10 @@ class _EmergencyCard extends ConsumerWidget {
                             color: Colors.white, fontWeight: FontWeight.w700)),
                   ]),
             ),
-            _VerificationBadge(verified: contact.isVerified),
+            _VerificationBadge(
+              verified: contact.isVerified &&
+                  contact.verificationStatus == 'verified',
+            ),
           ]),
           const SizedBox(height: 12),
           Text(contact.phone,
@@ -167,6 +236,9 @@ class _EmergencyCard extends ConsumerWidget {
           if (contact.address?.isNotEmpty == true)
             Text(contact.address!,
                 style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+          if (contact.barangay?.isNotEmpty == true)
+            Text('Barangay ${contact.barangay}',
+                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
           if (contact.description?.isNotEmpty == true) ...[
             const SizedBox(height: 6),
             Text(contact.description!,
@@ -175,6 +247,18 @@ class _EmergencyCard extends ConsumerWidget {
           if (contact.operatingHours?.isNotEmpty == true)
             Text('Hours: ${contact.operatingHours}',
                 style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+          if (contact.availabilityNotes?.isNotEmpty == true)
+            Text('Availability: ${contact.availabilityNotes}',
+                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+          if (contact.sourceName?.isNotEmpty == true)
+            Text('Verified source: ${contact.sourceName}',
+                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11)),
+          if (contact.emergencyInstructions?.isNotEmpty == true) ...[
+            const SizedBox(height: 8),
+            Text(contact.emergencyInstructions!,
+                style: const TextStyle(
+                    color: Color(0xFFFDE68A), fontWeight: FontWeight.w600)),
+          ],
           if (updated != null) ...[
             const SizedBox(height: 6),
             Text('Last updated: $updated',

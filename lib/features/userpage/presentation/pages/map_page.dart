@@ -14,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/location/tubigon_boundary.dart';
+import '../../../../core/localization/app_localization.dart';
 import '../../../../core/network/connectivity_provider.dart';
 import '../../../../core/services/local_storage_service.dart';
 import '../../../../core/utils/auth_action_guard.dart';
@@ -27,6 +28,7 @@ import '../../../map/providers/map_provider.dart';
 import '../../../map/place_category_style.dart';
 import '../../../map/services/directions_service.dart';
 import '../../../map/services/route_cache_service.dart';
+import '../../../map/services/smart_map_style_enhancer.dart';
 import '../../../offline_maps/offline_map_provider.dart';
 
 class MapPage extends ConsumerStatefulWidget {
@@ -37,6 +39,7 @@ class MapPage extends ConsumerStatefulWidget {
     this.itineraryId,
     this.itineraryDay = 1,
     this.offlineMode = false,
+    this.initialCategoryKeys = const <String>{},
   });
 
   final String? initialMarkerId;
@@ -44,6 +47,7 @@ class MapPage extends ConsumerStatefulWidget {
   final String? itineraryId;
   final int itineraryDay;
   final bool offlineMode;
+  final Set<String> initialCategoryKeys;
 
   @override
   ConsumerState<MapPage> createState() => _MapPageState();
@@ -82,12 +86,14 @@ class _MapPageState extends ConsumerState<MapPage> {
   bool _showPlaceLabels = true;
   bool _searchResultsExpanded = false;
   bool _initialMarkerUnavailableShown = false;
+  bool _nativeOfflineModeActivated = false;
   String? _pendingSelectionId;
   String? _focusedMarkerId;
   String? _renderedMarkerFingerprint;
   Timer? _searchDebounce;
   Timer? _styleLoadTimer;
   CancelToken? _routeCancelToken;
+  int _styleGeneration = 0;
   late final UserLocationNotifier _userLocationNotifier;
   late final StateController<MapMarker?> _selectedMarkerController;
   late final StateController<NavigationState> _navigationController;
@@ -95,6 +101,7 @@ class _MapPageState extends ConsumerState<MapPage> {
   late final StateController<bool> _offlineMapModeController;
   late final DirectionsService _directionsService;
   late final RouteCacheService _routeCacheService;
+  MapFilterState? _filterBeforeInitialScope;
 
   @override
   void initState() {
@@ -106,13 +113,16 @@ class _MapPageState extends ConsumerState<MapPage> {
     _offlineMapModeController = ref.read(offlineMapModeProvider.notifier);
     _directionsService = ref.read(directionsServiceProvider);
     _routeCacheService = ref.read(routeCacheServiceProvider);
+    if (widget.initialCategoryKeys.isNotEmpty) {
+      _filterBeforeInitialScope = _mapFilterController.state;
+      _mapFilterController.state = MapFilterState(
+        activeCategoryKeys: widget.initialCategoryKeys,
+      );
+    }
     if (widget.offlineMode) {
       Future.microtask(() {
         if (!mounted) return;
         _offlineMapModeController.state = true;
-        if (OfflineMapNotifier.supportsNativeMapResources) {
-          unawaited(setOffline(true));
-        }
       });
     }
     _showPlaceLabels = LocalStorageService.instance
@@ -130,6 +140,7 @@ class _MapPageState extends ConsumerState<MapPage> {
 
   @override
   void dispose() {
+    _styleGeneration++;
     _searchDebounce?.cancel();
     _searchController.dispose();
     _styleLoadTimer?.cancel();
@@ -149,9 +160,14 @@ class _MapPageState extends ConsumerState<MapPage> {
       if (_navigationController.mounted) {
         _navigationController.state = const NavigationState();
       }
+      if (_filterBeforeInitialScope != null && _mapFilterController.mounted) {
+        _mapFilterController.state = _filterBeforeInitialScope!;
+      }
       if (widget.offlineMode && _offlineMapModeController.mounted) {
         _offlineMapModeController.state = false;
-        if (!kIsWeb && OfflineMapNotifier.supportsNativeMapResources) {
+        if (_nativeOfflineModeActivated &&
+            !kIsWeb &&
+            OfflineMapNotifier.supportsNativeMapResources) {
           unawaited(setOffline(false));
         }
       }
@@ -173,6 +189,48 @@ class _MapPageState extends ConsumerState<MapPage> {
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
+    final offlinePackage = ref.watch(offlineMapProvider);
+
+    if (widget.offlineMode && !offlinePackage.canOpen) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF080F1A),
+        appBar: AppBar(title: Text(context.tr('offline_maps'))),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.offline_bolt_outlined,
+                    color: Color(0xFFF59E0B), size: 48),
+                const SizedBox(height: 16),
+                Text(
+                  context.tr('offline_package_unavailable'),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                ),
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  onPressed: () => context.go('/map'),
+                  icon: const Icon(Icons.wifi_rounded),
+                  label: Text(context.tr('open_online_map')),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (widget.offlineMode &&
+        !_nativeOfflineModeActivated &&
+        OfflineMapNotifier.supportsNativeMapResources) {
+      _nativeOfflineModeActivated = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(setOffline(true));
+      });
+    }
+
     final locations = ref.watch(filteredMapMarkersProvider);
     final allLocations =
         ref.watch(mapMarkersProvider).valueOrNull ?? const <MapMarker>[];
@@ -769,6 +827,12 @@ class _MapPageState extends ConsumerState<MapPage> {
     if (!mounted) return;
     final controller = _mapController;
     if (controller == null) return;
+    final styleGeneration = ++_styleGeneration;
+    bool styleIsActive() =>
+        mounted &&
+        _styleLoaded &&
+        styleGeneration == _styleGeneration &&
+        identical(controller, _mapController);
 
     _styleLoadTimer?.cancel();
     _styleLoaded = true;
@@ -787,6 +851,11 @@ class _MapPageState extends ConsumerState<MapPage> {
     if (mounted) setState(() => _tileError = false);
 
     try {
+      await const SmartMapStyleEnhancer().install(
+        controller,
+        isActive: styleIsActive,
+      );
+      if (!styleIsActive()) return;
       await controller.setSymbolIconAllowOverlap(true);
       await controller.setSymbolIconIgnorePlacement(true);
       await controller.setSymbolTextAllowOverlap(false);
@@ -1925,7 +1994,9 @@ class _CategoryBar extends ConsumerWidget {
                         ? Colors.black
                         : placeCategoryColor(category.markerColor),
                   ),
-            label: Text(category?.name ?? 'All'),
+            label: Text(category == null
+                ? context.tr('all')
+                : _localizedMapCategory(context, category)),
             onSelected: (_) => onSelected(category?.slug),
             backgroundColor: const Color(0xFF0F172A).withValues(alpha: .92),
             selectedColor: const Color(0xFFF59E0B),
@@ -1943,6 +2014,12 @@ class _CategoryBar extends ConsumerWidget {
       ),
     );
   }
+}
+
+String _localizedMapCategory(BuildContext context, MapPlaceCategory category) {
+  final key = 'map_category_${category.slug}';
+  final translated = context.tr(key);
+  return translated == key ? category.name : translated;
 }
 
 class _LocationCard extends StatelessWidget {

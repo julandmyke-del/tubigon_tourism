@@ -19,6 +19,7 @@ export 'presentation/pages/lgu_waste_reports_page.dart';
 export 'presentation/pages/lgu_waste_report_detail_page.dart';
 export 'presentation/pages/lgu_announcements_page.dart';
 export 'presentation/pages/lgu_eco_tips_page.dart';
+export 'presentation/pages/lgu_ferry_management_page.dart';
 export 'presentation/pages/lgu_emergency_contacts_page.dart';
 export 'presentation/pages/lgu_analytics_page.dart';
 export 'presentation/pages/lgu_reports_page.dart';

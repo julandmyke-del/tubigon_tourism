@@ -3,7 +3,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/localization/app_localization.dart';
 import '../../../../core/routes/route_names.dart';
+import '../../../../core/network/connectivity_provider.dart';
 import '../../../eco/repositories/eco_repository.dart';
 
 class EcoTipsPage extends ConsumerWidget {
@@ -12,6 +14,7 @@ class EcoTipsPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tips = ref.watch(ecoTipsListProvider);
+    final offline = !ref.watch(isOnlineProvider);
     return Scaffold(
       backgroundColor: const Color(0xFF080F1A),
       appBar: AppBar(
@@ -23,7 +26,7 @@ class EcoTipsPage extends ConsumerWidget {
               ? context.pop()
               : context.goNamed(RouteNames.home),
         ),
-        title: const Text('Eco-Tourism Guidelines'),
+        title: Text(context.tr('eco_guidelines')),
       ),
       body: tips.when(
         loading: () => const Center(
@@ -48,6 +51,20 @@ class EcoTipsPage extends ConsumerWidget {
                   padding: const EdgeInsets.all(20),
                   children: [
                     _buildBanner(),
+                    if (offline) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF59E0B).withValues(alpha: .1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Text(
+                          'Showing saved guidance. Publication changes may not appear until you reconnect.',
+                          style: TextStyle(color: Color(0xFFFDE68A)),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 24),
                     const Text(
                       'Green Travel Practices',
@@ -89,11 +106,27 @@ class EcoTipsPage extends ConsumerWidget {
                                             fontSize: 15,
                                             fontWeight: FontWeight.w700)),
                                     const SizedBox(height: 4),
+                                    if (tip.shortMessage?.isNotEmpty ==
+                                        true) ...[
+                                      Text(tip.shortMessage!,
+                                          style: TextStyle(
+                                              color: tip.color,
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600)),
+                                      const SizedBox(height: 5),
+                                    ],
                                     Text(tip.content,
                                         style: const TextStyle(
                                             color: Color(0xFFCBD5E1),
                                             fontSize: 13,
                                             height: 1.5)),
+                                    if (tip.spotName?.isNotEmpty == true) ...[
+                                      const SizedBox(height: 7),
+                                      Text('For: ${tip.spotName}',
+                                          style: const TextStyle(
+                                              color: Color(0xFF94A3B8),
+                                              fontSize: 11)),
+                                    ],
                                   ],
                                 ),
                               ),

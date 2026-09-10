@@ -11,6 +11,7 @@ use App\Models\Role;
 use App\Models\Setting;
 use App\Models\SystemSetting;
 use App\Models\User;
+use App\Models\UserPreference;
 use App\Services\GoogleIdTokenVerifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,6 +20,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 use Illuminate\Validation\ValidationException;
@@ -626,6 +628,9 @@ class AuthController extends Controller
     {
         $this->syncProfile($user);
         Setting::firstOrCreate(['user_id' => $user->id]);
+        if (Schema::hasTable('user_preferences')) {
+            UserPreference::firstOrCreate(['user_id' => $user->id]);
+        }
     }
 
     private function syncProfile(User $user): void

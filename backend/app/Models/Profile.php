@@ -11,6 +11,7 @@ class Profile extends Model
     use HasUuids, SoftDeletes;
 
     public $incrementing = false;
+
     protected $keyType = 'string';
 
     protected $fillable = [
@@ -20,6 +21,8 @@ class Profile extends Model
         'role_id',
         'avatar_url',
         'phone',
+        'address',
+        'barangay',
         'bio',
         'language',
         'is_verified',

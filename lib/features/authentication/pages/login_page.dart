@@ -227,7 +227,7 @@ const _introPages = <_IntroPageDef>[
     headline: 'Your Adventure\nStarts Here',
     sub: 'Sign In to Continue Exploring',
     desc:
-        "Whether you're a first-time visitor or a returning explorer, welcome to Tubigon Smart Tourism.",
+        "Whether you're a first-time visitor or a returning explorer, welcome to Tour Tubigon.",
     image:
         'https://images.unsplash.com/photo-1549294413-26f195200c16?w=1600&h=1000&fit=crop&auto=format',
     alt: 'Tropical resort swimming pool surrounded by lush palm trees',
@@ -577,8 +577,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    desc ??
-                        'Discover this feature in Tubigon Smart Tourism app.',
+                    desc ?? 'Discover this feature in the Tour Tubigon app.',
                     style: GoogleFonts.outfit(
                       color: Colors.white70,
                       fontSize: 14,

@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
 
 import '../../../core/constants/api_endpoints.dart';
 import '../../../core/network/api_client.dart';
@@ -17,13 +18,36 @@ class ProfileRepository {
     String userId, {
     required String name,
     String? phone,
+    String? address,
+    String? barangay,
     String? bio,
+    String? language,
+    Map<String, dynamic>? preferences,
   }) async {
     final response = await _client.put(
       ApiEndpoints.updateUserProfile(userId),
-      data: {'name': name, 'phone': phone, 'bio': bio},
+      data: {
+        'name': name,
+        'phone': phone,
+        'address': address,
+        'barangay': barangay,
+        'bio': bio,
+        if (language != null) 'language': language,
+        if (preferences != null) 'preferences': preferences,
+      },
     );
     return Map<String, dynamic>.from(response.data['data'] as Map);
+  }
+
+  Future<String> uploadAvatar(
+      String userId, List<int> bytes, String filename) async {
+    final response = await _client.post(
+      ApiEndpoints.uploadAvatar(userId),
+      data: FormData.fromMap({
+        'avatar': MultipartFile.fromBytes(bytes, filename: filename),
+      }),
+    );
+    return response.data['data']['avatar_url']?.toString() ?? '';
   }
 }
 

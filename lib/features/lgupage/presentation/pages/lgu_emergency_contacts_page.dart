@@ -145,8 +145,8 @@ class _LguEmergencyContactsPageState
               .contains(_query);
       final matchesCategory =
           _category == 'all' || contact.category == _category;
-      final matchesVerification = _verification == 'all' ||
-          (_verification == 'verified') == contact.isVerified;
+      final matchesVerification =
+          _verification == 'all' || contact.verificationStatus == _verification;
       return matchesQuery && matchesCategory && matchesVerification;
     }).toList();
     return Scaffold(
@@ -215,8 +215,12 @@ class _LguEmergencyContactsPageState
                     DropdownMenuItem(value: 'all', child: Text('All')),
                     DropdownMenuItem(
                         value: 'verified', child: Text('Verified')),
+                    DropdownMenuItem(value: 'draft', child: Text('Draft')),
                     DropdownMenuItem(
-                        value: 'unverified', child: Text('Unverified')),
+                        value: 'needs_reverification',
+                        child: Text('Needs reverification')),
+                    DropdownMenuItem(
+                        value: 'inactive', child: Text('Inactive')),
                   ],
                   onChanged: (value) =>
                       setState(() => _verification = value ?? 'all'),
@@ -253,6 +257,17 @@ class _LguEmergencyContactsPageState
                                   .verifyEmergencyContact(contact.uuid),
                               'Contact verified.',
                             ),
+                    onReverify: contact.verificationStatus == 'verified'
+                        ? () => _runAction(
+                              () => ref
+                                  .read(lguRepositoryProvider)
+                                  .setEmergencyContactVerification(
+                                    contact.uuid,
+                                    'needs_reverification',
+                                  ),
+                              'Contact marked for reverification and removed from the public directory.',
+                            )
+                        : null,
                     onStatus: () => _runAction(
                       () => ref
                           .read(lguRepositoryProvider)
@@ -281,6 +296,7 @@ class _ContactCard extends StatelessWidget {
     required this.onEdit,
     required this.onLocation,
     required this.onVerify,
+    required this.onReverify,
     required this.onStatus,
     required this.onArchive,
   });
@@ -290,6 +306,7 @@ class _ContactCard extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onLocation;
   final VoidCallback? onVerify;
+  final VoidCallback? onReverify;
   final VoidCallback onStatus;
   final VoidCallback onArchive;
 
@@ -346,8 +363,14 @@ class _ContactCard extends StatelessWidget {
         const SizedBox(height: 10),
         Wrap(spacing: 8, runSpacing: 8, children: [
           _Badge(
-            label: contact.isVerified ? 'Verified' : 'Needs Verification',
-            color: contact.isVerified ? AppColors.success : AppColors.warning,
+            label: contact.verificationStatus.replaceAll('_', ' '),
+            color: contact.verificationStatus == 'verified'
+                ? AppColors.success
+                : AppColors.warning,
+          ),
+          _Badge(
+            label: contact.isPublic ? 'Public' : 'Private',
+            color: contact.isPublic ? AppColors.success : AppColors.grey400,
           ),
           _Badge(
             label: contact.classification == 'emergency'
@@ -365,6 +388,9 @@ class _ContactCard extends StatelessWidget {
             style: const TextStyle(color: AppColors.grey400, fontSize: 12)),
         Text('Verified By: ${contact.verifiedByName ?? 'Not verified'}',
             style: const TextStyle(color: AppColors.grey400, fontSize: 12)),
+        if (contact.sourceName?.isNotEmpty == true)
+          Text('Source: ${contact.sourceName}',
+              style: const TextStyle(color: AppColors.grey400, fontSize: 12)),
         const SizedBox(height: 12),
         Wrap(spacing: 8, runSpacing: 8, children: [
           _ActionButton(
@@ -380,6 +406,11 @@ class _ContactCard extends StatelessWidget {
                 icon: Icons.verified_rounded,
                 label: 'Verify',
                 onPressed: disabled ? null : onVerify),
+          if (onReverify != null)
+            _ActionButton(
+                icon: Icons.fact_check_outlined,
+                label: 'Require Reverification',
+                onPressed: disabled ? null : onReverify),
           _ActionButton(
             icon: contact.isActive
                 ? Icons.block_rounded
@@ -410,6 +441,18 @@ class _ContactFormDialogState extends State<_ContactFormDialog> {
   late final Map<String, TextEditingController> _fields;
   late String _classification;
   late bool _isActive;
+  late bool _isPublic;
+  late String _category;
+
+  static const _categories = <String>[
+    'Police',
+    'Fire',
+    'Medical',
+    'Disaster Risk',
+    'Coast Guard',
+    'Government',
+    'Red Cross',
+  ];
 
   @override
   void initState() {
@@ -417,19 +460,25 @@ class _ContactFormDialogState extends State<_ContactFormDialog> {
     final c = widget.contact;
     _fields = {
       'name': TextEditingController(text: c?.name),
-      'category': TextEditingController(text: c?.category),
       'phone': TextEditingController(text: c?.phone),
       'alternative_phone': TextEditingController(text: c?.alternativePhone),
       'address': TextEditingController(text: c?.address),
+      'barangay': TextEditingController(text: c?.barangay),
       'description': TextEditingController(text: c?.description),
       'operating_hours': TextEditingController(text: c?.operatingHours),
+      'availability_notes': TextEditingController(text: c?.availabilityNotes),
+      'emergency_instructions':
+          TextEditingController(text: c?.emergencyInstructions),
       'latitude': TextEditingController(text: c?.latitude?.toString()),
       'longitude': TextEditingController(text: c?.longitude?.toString()),
       'source': TextEditingController(text: c?.source),
+      'source_name': TextEditingController(text: c?.sourceName),
       'source_url': TextEditingController(text: c?.sourceUrl),
     };
     _classification = c?.classification ?? 'emergency';
     _isActive = c?.isActive ?? true;
+    _isPublic = c?.isPublic ?? true;
+    _category = _categories.contains(c?.category) ? c!.category : 'Government';
   }
 
   @override
@@ -452,17 +501,22 @@ class _ContactFormDialogState extends State<_ContactFormDialog> {
 
     Navigator.pop(context, <String, dynamic>{
       'name': _fields['name']!.text.trim(),
-      'category': _fields['category']!.text.trim(),
+      'category': _category,
       'phone': _fields['phone']!.text.trim(),
       'alternative_phone': optional('alternative_phone'),
       'address': optional('address'),
+      'barangay': optional('barangay'),
       'description': optional('description'),
       'operating_hours': optional('operating_hours'),
+      'availability_notes': optional('availability_notes'),
+      'emergency_instructions': optional('emergency_instructions'),
       'classification': _classification,
       'is_active': _isActive,
+      'is_public': _isPublic,
       'latitude': double.tryParse(_fields['latitude']!.text.trim()),
       'longitude': double.tryParse(_fields['longitude']!.text.trim()),
       'source': optional('source'),
+      'source_name': optional('source_name'),
       'source_url': optional('source_url'),
     });
   }
@@ -494,12 +548,30 @@ class _ContactFormDialogState extends State<_ContactFormDialog> {
             child: SingleChildScrollView(
               child: Column(children: [
                 _field('name', 'Contact / agency name', required: true),
-                _field('category', 'Category', required: true),
+                DropdownButtonFormField<String>(
+                  initialValue: _category,
+                  dropdownColor: const Color(0xFF1C2541),
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(labelText: 'Category'),
+                  items: _categories
+                      .map((value) => DropdownMenuItem(
+                            value: value,
+                            child: Text(value),
+                          ))
+                      .toList(growable: false),
+                  onChanged: (value) =>
+                      setState(() => _category = value ?? 'Government'),
+                ),
+                const SizedBox(height: 10),
                 _field('phone', 'Primary phone', required: true),
                 _field('alternative_phone', 'Alternative phone'),
                 _field('address', 'Address', lines: 2),
+                _field('barangay', 'Barangay'),
                 _field('description', 'Description / instructions', lines: 3),
                 _field('operating_hours', 'Operating hours'),
+                _field('availability_notes', 'Availability notes', lines: 2),
+                _field('emergency_instructions', 'Emergency instructions',
+                    lines: 3),
                 Row(children: [
                   Expanded(
                     child: _field('latitude', 'Latitude', numeric: true),
@@ -519,6 +591,7 @@ class _ContactFormDialogState extends State<_ContactFormDialog> {
                 ),
                 const SizedBox(height: 10),
                 _field('source', 'Verification source'),
+                _field('source_name', 'Exact source / office name'),
                 _field('source_url', 'Source URL'),
                 DropdownButtonFormField<String>(
                   initialValue: _classification,
@@ -544,6 +617,16 @@ class _ContactFormDialogState extends State<_ContactFormDialog> {
                       style: TextStyle(color: AppColors.grey400)),
                   value: _isActive,
                   onChanged: (value) => setState(() => _isActive = value),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Public directory',
+                      style: TextStyle(color: Colors.white)),
+                  subtitle: const Text(
+                      'Publication still requires active and verified status.',
+                      style: TextStyle(color: AppColors.grey400)),
+                  value: _isPublic,
+                  onChanged: (value) => setState(() => _isPublic = value),
                 ),
               ]),
             ),

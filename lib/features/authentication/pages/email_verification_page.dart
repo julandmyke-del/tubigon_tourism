@@ -13,9 +13,14 @@ import '../../../core/widgets/gradient_button.dart';
 import '../auth_provider.dart';
 
 class EmailVerificationPage extends ConsumerStatefulWidget {
-  const EmailVerificationPage({super.key, required this.email});
+  const EmailVerificationPage({
+    super.key,
+    required this.email,
+    this.returnTo,
+  });
 
   final String email;
+  final String? returnTo;
 
   @override
   ConsumerState<EmailVerificationPage> createState() =>
@@ -132,7 +137,9 @@ class _EmailVerificationPageState extends ConsumerState<EmailVerificationPage> {
       await ref
           .read(authProvider.notifier)
           .completeVerifiedEmailSession(pendingSession);
-      if (mounted) context.go(ref.read(authProvider).homeRoute);
+      if (mounted) {
+        context.go(widget.returnTo ?? ref.read(authProvider).homeRoute);
+      }
     } on VerificationCodeException catch (error) {
       if (!mounted) return;
       _applyVerificationContext(error.context);

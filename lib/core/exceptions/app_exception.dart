@@ -1,4 +1,4 @@
-/// Typed exception hierarchy for the Tubigon Smart Tourism App.
+/// Typed exception hierarchy for Tour Tubigon.
 /// All exceptions extend [AppException] for consistent catch blocks.
 sealed class AppException implements Exception {
   const AppException({

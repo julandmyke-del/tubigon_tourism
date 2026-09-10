@@ -6,12 +6,18 @@ import 'package:intl/intl.dart';
 import '../models/itinerary.dart';
 import '../repositories/itinerary_repository.dart';
 import '../../offline_maps/offline_map_provider.dart';
+import '../../authentication/auth_provider.dart';
+import '../../../core/utils/auth_action_guard.dart';
 
 class ItineraryListPage extends ConsumerWidget {
   const ItineraryListPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authProvider);
+    if (!auth.isLoggedIn || auth.userId == null) {
+      return signedInRequiredPage(context, ref, title: 'My Itineraries');
+    }
     final trips = ref.watch(itinerariesProvider);
     return Scaffold(
       backgroundColor: const Color(0xFF080F1A),

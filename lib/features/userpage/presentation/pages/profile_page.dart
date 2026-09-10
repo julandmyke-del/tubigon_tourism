@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/routes/route_names.dart';
 import '../../../authentication/auth_provider.dart';
+import '../../../../core/localization/app_localization.dart';
+import '../../../../core/utils/auth_action_guard.dart';
 
 class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key});
@@ -12,10 +14,12 @@ class ProfilePage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authProvider);
-    final displayName =
-        authState.isGuest ? 'Guest Explorer' : (authState.name ?? 'Explorer');
-    final displayEmail =
-        authState.isGuest ? 'Browsing as guest' : (authState.email ?? '');
+    if (!authState.isLoggedIn || authState.userId == null) {
+      return signedInRequiredPage(context, ref, title: 'Profile');
+    }
+    final locale = ref.watch(localeProvider);
+    final displayName = authState.name ?? 'Explorer';
+    final displayEmail = authState.email ?? '';
 
     return Scaffold(
       backgroundColor: const Color(0xFF080F1A),
@@ -152,7 +156,7 @@ class ProfilePage extends ConsumerWidget {
                     ),
                     _MenuItem(
                       icon: Icons.offline_pin_outlined,
-                      label: 'Offline Maps',
+                      label: context.tr('offline_maps'),
                       onTap: () => context.push('/offline-maps'),
                     ),
                     _MenuItem(
@@ -173,9 +177,13 @@ class ProfilePage extends ConsumerWidget {
                     ),
                     _MenuItem(
                       icon: Icons.language_rounded,
-                      label: 'Language',
-                      value: 'English',
-                      onTap: () => _showLanguageDialog(context),
+                      label: context.tr('language'),
+                      value: switch (locale.languageCode) {
+                        'fil' => context.tr('filipino'),
+                        'ceb' => context.tr('cebuano'),
+                        _ => context.tr('english'),
+                      },
+                      onTap: () => _showLanguageDialog(context, ref),
                     ),
                   ],
                 ).animate().fadeIn(duration: 350.ms, delay: 200.ms),
@@ -183,6 +191,11 @@ class ProfilePage extends ConsumerWidget {
                 _MenuSection(
                   title: 'Support & Information',
                   items: [
+                    _MenuItem(
+                      icon: Icons.support_agent_rounded,
+                      label: context.tr('concerns_support'),
+                      onTap: () => context.go('/concerns'),
+                    ),
                     _MenuItem(
                       icon: Icons.info_outline_rounded,
                       label: 'About Tubigon',
@@ -210,7 +223,7 @@ class ProfilePage extends ConsumerWidget {
                 const SizedBox(height: 32),
                 const Center(
                   child: Text(
-                    'Tubigon Smart Tourism v1.0.0',
+                    'Tour Tubigon v1.0.0',
                     style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
                   ),
                 ),
@@ -370,46 +383,49 @@ class ProfilePage extends ConsumerWidget {
     confirmationController.dispose();
   }
 
-  void _showLanguageDialog(BuildContext context) {
+  void _showLanguageDialog(BuildContext context, WidgetRef ref) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF0F172A),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Select Language',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: Text(context.tr('select_language'),
+            style: const TextStyle(
+                color: Colors.white, fontWeight: FontWeight.bold)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              title:
-                  const Text('English', style: TextStyle(color: Colors.white)),
-              trailing:
-                  const Icon(Icons.check_rounded, color: Color(0xFFF59E0B)),
-              onTap: () => Navigator.pop(context),
-            ),
-            ListTile(
-              title: const Text('Cebuano (Bisaya)',
-                  style: TextStyle(color: Color(0xFF94A3B8))),
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text(
-                          'Cebuano localization is not available in this version.')),
-                );
+              title: Text(context.tr('english'),
+                  style: const TextStyle(color: Colors.white)),
+              trailing: ref.read(localeProvider).languageCode == 'en'
+                  ? const Icon(Icons.check_rounded, color: Color(0xFFF59E0B))
+                  : null,
+              onTap: () async {
+                await ref.read(localeProvider.notifier).select('en');
+                if (context.mounted) Navigator.pop(context);
               },
             ),
             ListTile(
-              title: const Text('Filipino (Tagalog)',
-                  style: TextStyle(color: Color(0xFF94A3B8))),
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text(
-                          'Filipino localization is not available in this version.')),
-                );
+              title: Text(context.tr('filipino'),
+                  style: const TextStyle(color: Colors.white)),
+              trailing: ref.read(localeProvider).languageCode == 'fil'
+                  ? const Icon(Icons.check_rounded, color: Color(0xFFF59E0B))
+                  : null,
+              onTap: () async {
+                await ref.read(localeProvider.notifier).select('fil');
+                if (context.mounted) Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              title: Text(context.tr('cebuano'),
+                  style: const TextStyle(color: Colors.white)),
+              trailing: ref.read(localeProvider).languageCode == 'ceb'
+                  ? const Icon(Icons.check_rounded, color: Color(0xFFF59E0B))
+                  : null,
+              onTap: () async {
+                await ref.read(localeProvider.notifier).select('ceb');
+                if (context.mounted) Navigator.pop(context);
               },
             ),
           ],
@@ -424,12 +440,12 @@ class ProfilePage extends ConsumerWidget {
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF0F172A),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('About Tubigon Smart Tourism',
+        title: const Text('About Tour Tubigon',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         content: const SingleChildScrollView(
           child: Text(
             'Tubigon is a major seaport town and gateway to Bohol, Philippines. Known for its rich loomweaving heritage, coastal ecosystems, and eco-tourism destinations.\n\n'
-            'The Tubigon Smart Tourism System connects tourists with verified destinations, local MSME businesses, ferry schedules, eco guidelines, and emergency services.\n\n'
+            'Tour Tubigon connects tourists with verified destinations, local MSME businesses, ferry schedules, eco guidelines, and emergency services.\n\n'
             'Version 1.0.0 (Official Tourist Module)',
             style:
                 TextStyle(color: Color(0xFFCBD5E1), height: 1.5, fontSize: 13),

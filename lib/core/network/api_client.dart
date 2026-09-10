@@ -33,6 +33,7 @@ class ApiClient {
     );
 
     dio.interceptors.addAll([
+      OfflineWriteInterceptor(),
       AuthInterceptor(),
       LoggingInterceptor(),
       RetryInterceptor(),
@@ -148,8 +149,10 @@ class ApiClient {
         );
 
       case DioExceptionType.connectionError:
-        return const NetworkException(
-          message: 'No internet connection. Please check your network.',
+        return NetworkException(
+          message: (e.message ?? '').contains('Offline mode is read-only')
+              ? 'Offline mode is read-only. Reconnect to complete this action.'
+              : 'No internet connection. Please check your network.',
         );
 
       case DioExceptionType.badResponse:

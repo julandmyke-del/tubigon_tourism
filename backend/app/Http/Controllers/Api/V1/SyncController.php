@@ -254,9 +254,13 @@ class SyncController extends Controller
             : ($record['images'] ?? []);
         $data = Validator::make($record, [
             'id' => 'required|uuid',
-            'category' => 'required|in:garbage,water_pollution,beach_coastal,environmental_damage,road_infrastructure,public_facility,safety,tourism_site,marine_wildlife,other,Plastic Waste,Coastal Pollution,Illegal Dumping,Overflowing Bin,Hazardous Material,Other',
+            'category' => 'required|in:garbage,water_pollution,beach_coastal,environmental_damage,road_infrastructure,public_facility,safety,tourism_site,marine_wildlife,other,Plastic Waste,Coastal Pollution,Illegal Dumping,Overflowing Bin,Hazardous Material,Other,illegal-dumping,overflowing-bin,uncollected-garbage,plastic-waste,coastal-marine-waste,roadside-waste,burning-waste,hazardous-looking-waste',
+            'severity' => 'nullable|in:low,moderate,high,urgent',
             'description' => 'required|string|min:10|max:2000',
             'location_description' => 'nullable|string|max:500',
+            'resolved_address' => 'nullable|string|max:1000',
+            'geocoding_source' => 'nullable|string|max:255',
+            'barangay' => 'nullable|string|max:255',
             'latitude' => 'required|numeric|between:-90,90',
             'longitude' => 'required|numeric|between:-180,180',
             'images' => 'nullable|array|max:5',
@@ -264,13 +268,35 @@ class SyncController extends Controller
         ])->validate();
         $this->validateTubigonCoordinates($data);
 
-        return array_merge($data, [
+        $created = array_merge($data, [
             'user_id' => $userId,
             'images' => json_encode($data['images'] ?? []),
             'status' => 'submitted',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+        if (Schema::hasColumn('waste_reports', 'severity')) $created['severity'] = $data['severity'] ?? 'moderate';
+        if (Schema::hasColumn('waste_reports', 'client_submission_id')) $created['client_submission_id'] = $data['id'];
+        if (Schema::hasColumn('waste_reports', 'submitted_at')) $created['submitted_at'] = now();
+        if (Schema::hasTable('waste_categories') && Schema::hasColumn('waste_reports', 'category_id')) {
+            $categoryAliases = [
+                'garbage' => 'uncollected-garbage', 'Illegal Dumping' => 'illegal-dumping',
+                'Overflowing Bin' => 'overflowing-bin', 'Plastic Waste' => 'plastic-waste',
+                'Coastal Pollution' => 'coastal-marine-waste', 'beach_coastal' => 'coastal-marine-waste',
+                'water_pollution' => 'coastal-marine-waste', 'road_infrastructure' => 'roadside-waste',
+                'Hazardous Material' => 'hazardous-looking-waste', 'Other' => 'other', 'other' => 'other',
+            ];
+            $categorySlug = $categoryAliases[$data['category']] ?? $data['category'];
+            $categoryId = DB::table('waste_categories')->where('slug', $categorySlug)->where('is_active', true)->value('id');
+            abort_if($categoryId === null, 422, 'The selected waste category is no longer active.');
+            $created['category'] = $categorySlug;
+            $created['category_id'] = $categoryId;
+        }
+        foreach (['resolved_address', 'geocoding_source'] as $field) {
+            if (! Schema::hasColumn('waste_reports', $field)) unset($created[$field]);
+        }
+
+        return $created;
     }
 
     /**
@@ -439,6 +465,21 @@ class SyncController extends Controller
         }
 
         if ($table === 'waste_reports') {
+            if (Schema::hasTable('waste_report_history')) {
+                $history = [
+                    'id' => (string) \Illuminate\Support\Str::uuid(),
+                    'waste_report_id' => $record['id'],
+                    'changed_by' => $record['user_id'],
+                    'from_status' => null,
+                    'to_status' => 'submitted',
+                    'notes' => 'Report synchronized from an offline device.',
+                    'metadata' => null,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+                if (Schema::hasColumn('waste_report_history', 'is_public')) $history['is_public'] = true;
+                DB::table('waste_report_history')->insert($history);
+            }
             ActivityLog::create([
                 'user_id' => $record['user_id'],
                 'action' => 'Waste report submitted',

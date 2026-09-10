@@ -9,12 +9,18 @@ class EmergencyContact {
   final String phone;
   final String? alternativePhone;
   final String? address;
+  final String? barangay;
   final String? description;
   final String? operatingHours;
+  final String? availabilityNotes;
+  final String? emergencyInstructions;
   final String classification;
   final bool isActive;
   final bool isVerified;
+  final bool isPublic;
+  final String verificationStatus;
   final String? source;
+  final String? sourceName;
   final String? sourceUrl;
   final DateTime? verifiedAt;
   final DateTime? lastVerifiedAt;
@@ -36,12 +42,18 @@ class EmergencyContact {
     required this.phone,
     this.alternativePhone,
     this.address,
+    this.barangay,
     this.description,
     this.operatingHours,
+    this.availabilityNotes,
+    this.emergencyInstructions,
     this.classification = 'emergency',
     this.isActive = true,
     this.isVerified = false,
+    this.isPublic = false,
+    this.verificationStatus = 'draft',
     this.source,
+    this.sourceName,
     this.sourceUrl,
     this.verifiedAt,
     this.lastVerifiedAt,
@@ -61,32 +73,32 @@ class EmergencyContact {
     Color c = AppColors.error;
     IconData ic = Icons.emergency_rounded;
 
-    switch (cat) {
-      case 'Police':
+    switch (cat.toLowerCase()) {
+      case 'police':
         c = AppColors.secondary;
         ic = Icons.local_police_rounded;
         break;
-      case 'Fire':
+      case 'fire':
         c = AppColors.error;
         ic = Icons.local_fire_department_rounded;
         break;
-      case 'Medical':
+      case 'medical':
         c = AppColors.accentDark;
         ic = Icons.local_hospital_rounded;
         break;
-      case 'Government':
+      case 'government':
         c = AppColors.categoryCultural;
         ic = Icons.account_balance_rounded;
         break;
-      case 'Coast Guard':
+      case 'coast guard':
         c = AppColors.categoryBeach;
         ic = Icons.anchor_rounded;
         break;
-      case 'Red Cross':
+      case 'red cross':
         c = AppColors.error;
         ic = Icons.medical_services_rounded;
         break;
-      case 'Disaster Risk':
+      case 'disaster risk':
         c = AppColors.warning;
         ic = Icons.warning_rounded;
         break;
@@ -101,12 +113,18 @@ class EmergencyContact {
       phone: json['phone'] as String? ?? '',
       alternativePhone: json['alternative_phone'] as String?,
       address: json['address'] as String?,
+      barangay: json['barangay'] as String?,
       description: json['description'] as String?,
       operatingHours: json['operating_hours'] as String?,
+      availabilityNotes: json['availability_notes'] as String?,
+      emergencyInstructions: json['emergency_instructions'] as String?,
       classification: json['classification']?.toString() ?? 'emergency',
       isActive: _asBool(json['is_active'], fallback: true),
       isVerified: _asBool(json['is_verified']),
+      isPublic: _asBool(json['is_public']),
+      verificationStatus: json['verification_status']?.toString() ?? 'draft',
       source: json['source'] as String?,
+      sourceName: json['source_name'] as String?,
       sourceUrl: json['source_url'] as String?,
       verifiedAt: _asDateTime(json['verified_at']),
       lastVerifiedAt: _asDateTime(json['last_verified_at']),
@@ -151,12 +169,18 @@ class EmergencyContact {
       'phone': phone,
       'alternative_phone': alternativePhone,
       'address': address,
+      'barangay': barangay,
       'description': description,
       'operating_hours': operatingHours,
+      'availability_notes': availabilityNotes,
+      'emergency_instructions': emergencyInstructions,
       'classification': classification,
       'is_active': isActive ? 1 : 0,
       'is_verified': isVerified ? 1 : 0,
+      'is_public': isPublic ? 1 : 0,
+      'verification_status': verificationStatus,
       'source': source,
+      'source_name': sourceName,
       'source_url': sourceUrl,
       'verified_at': verifiedAt?.toIso8601String(),
       'last_verified_at': lastVerifiedAt?.toIso8601String(),

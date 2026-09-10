@@ -25,6 +25,11 @@ class PartnerNotification extends Model
         'is_read' => 'boolean',
     ];
 
+    protected static function booted(): void
+    {
+        static::creating(fn (PartnerNotification $notification) => UserPreference::allowsNotification($notification->user_id, (string) $notification->type));
+    }
+
     public function user()
     {
         return $this->belongsTo(Profile::class, 'user_id');

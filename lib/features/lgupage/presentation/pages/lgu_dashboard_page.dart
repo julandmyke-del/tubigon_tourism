@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../connected_operations/presentation/announcement_placement.dart';
 import '../../providers/lgu_providers.dart';
 
 class LguDashboardPage extends ConsumerWidget {
@@ -101,6 +102,7 @@ class LguDashboardPage extends ConsumerWidget {
               ]),
             ],
           ),
+          const AnnouncementPlacement(),
           const SizedBox(height: 20),
           LayoutBuilder(builder: (context, constraints) {
             final width = constraints.maxWidth;

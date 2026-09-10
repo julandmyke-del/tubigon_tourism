@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../connected_operations/presentation/announcement_placement.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/routes/route_names.dart';
+import '../../../../core/localization/app_localization.dart';
 import '../../../authentication/auth_provider.dart';
 import '../../../tourist_spots/models/tourist_spot.dart';
 import '../../../tourist_spots/repositories/tourist_spot_repository.dart';
@@ -16,25 +18,31 @@ class TouristDashboardPage extends ConsumerWidget {
   static const _quickActions = [
     (
       icon: Icons.directions_boat_rounded,
-      label: 'Ferry',
+      label: 'ferry_schedules',
       routeName: RouteNames.ferrySchedule,
       color: Color(0xFF38BDF8)
     ),
     (
       icon: Icons.eco_rounded,
-      label: 'Eco Tips',
+      label: 'eco_tips',
       routeName: RouteNames.ecoTips,
       color: Color(0xFF34D399)
     ),
     (
       icon: Icons.warning_amber_rounded,
-      label: 'Emergency',
+      label: 'emergency_contacts',
       routeName: RouteNames.emergencyContacts,
       color: Color(0xFFF87171)
     ),
     (
+      icon: Icons.co2_rounded,
+      label: 'carbon_estimator',
+      routeName: RouteNames.carbonEstimator,
+      color: Color(0xFF2DD4BF)
+    ),
+    (
       icon: Icons.report_rounded,
-      label: 'Report Issue',
+      label: 'report_issue',
       routeName: RouteNames.wasteReport,
       color: Color(0xFFF59E0B)
     ),
@@ -172,6 +180,10 @@ class TouristDashboardPage extends ConsumerWidget {
                 const SizedBox(height: 14),
               ]),
             ),
+          ),
+
+          SliverToBoxAdapter(
+            child: AnnouncementPlacement(guest: authState.isGuest),
           ),
 
           // Featured spots carousel
@@ -346,7 +358,7 @@ class _QuickActionsRow extends StatelessWidget {
         return Expanded(
           child: Semantics(
             button: true,
-            label: 'Open ${action.label}',
+            label: 'Open ${context.tr(action.label)}',
             child: InkWell(
               borderRadius: BorderRadius.circular(16),
               onTap: () => context.pushNamed(action.routeName),
@@ -372,7 +384,7 @@ class _QuickActionsRow extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    action.label,
+                    context.tr(action.label),
                     maxLines: 2,
                     textAlign: TextAlign.center,
                     style: const TextStyle(

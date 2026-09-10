@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Email Verified — Tubigon Smart Tourism</title>
+    <title>Email Verified — Tour Tubigon</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #0B132B; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
@@ -25,27 +25,27 @@
             <div class="icon">✅</div>
             <h1>Email Verified!</h1>
             <p class="success-text">Your account has been successfully verified.</p>
-            <p>You can now log in to the <span class="brand">Tubigon Smart Tourism</span> application using your registered email and password.</p>
+            <p>You can now log in to the <span class="brand">Tour Tubigon</span> application using your registered email and password.</p>
             <hr class="divider">
             <p class="note">You may close this browser tab and return to the application to log in.</p>
         @elseif($status === 'already_verified')
             <div class="icon">ℹ️</div>
             <h1>Already Verified</h1>
             <p class="success-text">Your email address has already been verified.</p>
-            <p>Your <span class="brand">Tubigon Smart Tourism</span> account is fully active. You can log in to the application.</p>
+            <p>Your <span class="brand">Tour Tubigon</span> account is fully active. You can log in to the application.</p>
             <hr class="divider">
             <p class="note">You may close this browser tab.</p>
         @else
             <div class="icon">❌</div>
             <h1>Verification Failed</h1>
             <p class="error-text">This verification link is invalid or has expired.</p>
-            <p>Please request a new verification email from the <span class="brand">Tubigon Smart Tourism</span> application.</p>
+            <p>Please request a new verification email from the <span class="brand">Tour Tubigon</span> application.</p>
             <hr class="divider">
             <p class="note">Verification links expire after 60 minutes for security purposes.</p>
         @endif
 
         <div class="footer">
-            &copy; {{ date('Y') }} Tubigon Smart Tourism — Municipality of Tubigon, Bohol, Philippines
+            &copy; {{ date('Y') }} Tour Tubigon — Municipality of Tubigon, Bohol, Philippines
         </div>
     </div>
 </body>

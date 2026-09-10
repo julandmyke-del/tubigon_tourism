@@ -5,8 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 class Reservation extends Model
 {
@@ -16,6 +16,11 @@ class Reservation extends Model
         'user_id',
         'public_reference',
         'partner_id',
+        'customer_name_snapshot',
+        'customer_email_snapshot',
+        'customer_phone_snapshot',
+        'tourist_spot_id',
+        'client_submission_id',
         'reservable_type',
         'reservable_id',
         'reservation_date',
@@ -51,6 +56,16 @@ class Reservation extends Model
     public function statusHistory()
     {
         return $this->hasMany(ReservationStatusHistory::class)->with('status')->oldest();
+    }
+
+    public function items()
+    {
+        return $this->hasMany(ReservationItem::class);
+    }
+
+    public function messages()
+    {
+        return $this->hasMany(ReservationMessage::class)->oldest();
     }
 
     protected static function booted(): void

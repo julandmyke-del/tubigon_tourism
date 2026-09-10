@@ -21,6 +21,7 @@ enum OfflinePackagePhase {
   idle,
   downloadingData,
   downloadingMap,
+  validating,
   paused,
   ready,
   failed,
@@ -34,6 +35,8 @@ class OfflineMapState {
     this.baseMapReady = false,
     this.mapProgress,
     this.regionId,
+    this.pendingRegionId,
+    this.mapResourceVersion,
     this.downloadedAt,
     this.lastSyncedAt,
     this.placeCount = 0,
@@ -47,6 +50,8 @@ class OfflineMapState {
   final bool baseMapReady;
   final double? mapProgress;
   final int? regionId;
+  final int? pendingRegionId;
+  final String? mapResourceVersion;
   final DateTime? downloadedAt;
   final DateTime? lastSyncedAt;
   final int placeCount;
@@ -57,8 +62,10 @@ class OfflineMapState {
   bool get isBusy =>
       phase == OfflinePackagePhase.downloadingData ||
       phase == OfflinePackagePhase.downloadingMap ||
+      phase == OfflinePackagePhase.validating ||
       phase == OfflinePackagePhase.deleting;
-  bool get canOpen => dataReady;
+  bool get canOpen => dataReady && baseMapReady;
+  bool get hasDataSnapshot => dataReady;
   int get totalBytes => placeDataBytes + mapResourceBytes;
 
   OfflineMapState copyWith({
@@ -69,6 +76,10 @@ class OfflineMapState {
     bool clearProgress = false,
     int? regionId,
     bool clearRegion = false,
+    int? pendingRegionId,
+    bool clearPendingRegion = false,
+    String? mapResourceVersion,
+    bool clearMapResourceVersion = false,
     DateTime? downloadedAt,
     DateTime? lastSyncedAt,
     int? placeCount,
@@ -83,6 +94,11 @@ class OfflineMapState {
         baseMapReady: baseMapReady ?? this.baseMapReady,
         mapProgress: clearProgress ? null : mapProgress ?? this.mapProgress,
         regionId: clearRegion ? null : regionId ?? this.regionId,
+        pendingRegionId:
+            clearPendingRegion ? null : pendingRegionId ?? this.pendingRegionId,
+        mapResourceVersion: clearMapResourceVersion
+            ? null
+            : mapResourceVersion ?? this.mapResourceVersion,
         downloadedAt: downloadedAt ?? this.downloadedAt,
         lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
         placeCount: placeCount ?? this.placeCount,
@@ -92,16 +108,17 @@ class OfflineMapState {
       );
 
   Map<String, dynamic> toJson() => {
-        'package_version': 1,
+        'package_version': 2,
         'data_ready': dataReady,
         'base_map_ready': baseMapReady,
         'region_id': regionId,
+        'pending_region_id': pendingRegionId,
         'downloaded_at': downloadedAt?.toIso8601String(),
         'last_synced_at': lastSyncedAt?.toIso8601String(),
         'place_count': placeCount,
         'place_data_bytes': placeDataBytes,
         'map_resource_bytes': mapResourceBytes,
-        'map_resource_version': baseMapReady ? AppConstants.mapStyleUrl : null,
+        'map_resource_version': mapResourceVersion,
       };
 
   factory OfflineMapState.fromJson(Map<String, dynamic> json) {
@@ -112,6 +129,8 @@ class OfflineMapState {
       dataReady: dataReady,
       baseMapReady: baseMapReady,
       regionId: (json['region_id'] as num?)?.toInt(),
+      pendingRegionId: (json['pending_region_id'] as num?)?.toInt(),
+      mapResourceVersion: json['map_resource_version']?.toString(),
       downloadedAt: DateTime.tryParse(json['downloaded_at']?.toString() ?? ''),
       lastSyncedAt: DateTime.tryParse(json['last_synced_at']?.toString() ?? ''),
       placeCount: (json['place_count'] as num?)?.toInt() ?? 0,
@@ -127,7 +146,10 @@ class OfflineMapNotifier extends StateNotifier<OfflineMapState> {
   }
 
   static const _metadataKey = 'tubigon_offline_package_metadata_v1';
+  static const packageVersion = 2;
   final Ref _ref;
+  int? _monitoredRegionId;
+  int _retainedMapResourceBytes = 0;
 
   static bool get supportsNativeMapResources =>
       !kIsWeb &&
@@ -141,16 +163,41 @@ class OfflineMapNotifier extends StateNotifier<OfflineMapState> {
       state = OfflineMapState.fromJson(
         Map<String, dynamic>.from(jsonDecode(raw) as Map),
       );
-      if (supportsNativeMapResources && state.regionId != null) {
-        final status = await getOfflineRegionStatus(state.regionId!);
-        state = state.copyWith(
-          baseMapReady: status.isComplete,
-          mapProgress: status.downloadProgress,
-          mapResourceBytes: status.completedResourceSize,
-        );
+      if (supportsNativeMapResources) {
+        if (state.regionId != null) {
+          final status = await getOfflineRegionStatus(state.regionId!);
+          state = state.copyWith(
+            baseMapReady: _isValid(status),
+            mapProgress: status.downloadProgress,
+            mapResourceBytes: status.completedResourceSize,
+          );
+        }
+        if (state.pendingRegionId != null) {
+          final pending = await getOfflineRegionStatus(state.pendingRegionId!);
+          if (_isValid(pending)) {
+            await _promoteRegion(state.pendingRegionId!, pending);
+          } else {
+            state = state.copyWith(
+              phase: OfflinePackagePhase.paused,
+              mapProgress: pending.downloadProgress,
+            );
+          }
+        }
       }
+      await _persist();
     } catch (error) {
       debugPrint('[OFFLINE MAP] Unable to restore package metadata: $error');
+      if (supportsNativeMapResources) {
+        state = state.copyWith(
+          phase: OfflinePackagePhase.failed,
+          baseMapReady: false,
+          clearRegion: true,
+          clearPendingRegion: true,
+          clearMapResourceVersion: true,
+          error: 'offline_error_restore',
+        );
+        await _persist();
+      }
     }
   }
 
@@ -159,7 +206,7 @@ class OfflineMapNotifier extends StateNotifier<OfflineMapState> {
     if (!await checkConnectivity()) {
       state = state.copyWith(
         phase: OfflinePackagePhase.failed,
-        error: 'Connect to the internet to download the Tubigon offline map.',
+        error: 'offline_error_connection_required',
       );
       return;
     }
@@ -218,7 +265,9 @@ class OfflineMapNotifier extends StateNotifier<OfflineMapState> {
         return;
       }
 
-      if (state.regionId != null && state.baseMapReady) {
+      if (state.regionId != null &&
+          state.baseMapReady &&
+          state.mapResourceVersion == AppConstants.mapStyleUrl) {
         // Public and personal snapshots were refreshed. MapLibre owns its
         // persistent region and can reuse unchanged resources.
         state = state.copyWith(phase: OfflinePackagePhase.ready);
@@ -226,10 +275,15 @@ class OfflineMapNotifier extends StateNotifier<OfflineMapState> {
         return;
       }
 
+      _retainedMapResourceBytes =
+          state.baseMapReady ? state.mapResourceBytes : 0;
       state = state.copyWith(
         phase: OfflinePackagePhase.downloadingMap,
         mapProgress: 0,
+        mapResourceBytes: _retainedMapResourceBytes,
       );
+      int? candidateRegionId;
+      DownloadRegionStatus? pendingTerminalEvent;
       final region = await downloadOfflineRegion(
         OfflineRegionDefinition(
           bounds: LatLngBounds(
@@ -248,25 +302,37 @@ class OfflineMapNotifier extends StateNotifier<OfflineMapState> {
         ),
         metadata: const {
           'package': 'tubigon',
-          'package_version': 1,
+          'package_version': packageVersion,
+          'map_resource_version': AppConstants.mapStyleUrl,
         },
-        onEvent: _onMapDownloadEvent,
+        onEvent: (event) {
+          if (candidateRegionId == null &&
+              (event is Success || event is Error)) {
+            pendingTerminalEvent = event;
+            return;
+          }
+          _onMapDownloadEvent(event, candidateRegionId);
+        },
       );
-      state = state.copyWith(regionId: region.id);
+      candidateRegionId = region.id;
+      state = state.copyWith(pendingRegionId: region.id);
       await _persist();
+      if (pendingTerminalEvent != null) {
+        _onMapDownloadEvent(pendingTerminalEvent!, region.id);
+      }
     } catch (error) {
       debugPrint('[OFFLINE MAP] Download failed: $error');
       state = state.copyWith(
         phase: OfflinePackagePhase.failed,
         error: state.dataReady
-            ? 'Place data is saved, but map resources could not be downloaded.'
-            : 'Unable to download the offline map.',
+            ? 'offline_error_map_resources'
+            : 'offline_error_download',
       );
       await _persist();
     }
   }
 
-  void _onMapDownloadEvent(DownloadRegionStatus event) {
+  void _onMapDownloadEvent(DownloadRegionStatus event, int? candidateId) {
     if (event is InProgress) {
       state = state.copyWith(
         phase: OfflinePackagePhase.downloadingMap,
@@ -276,31 +342,97 @@ class OfflineMapNotifier extends StateNotifier<OfflineMapState> {
       );
     } else if (event is Success) {
       state = state.copyWith(
-        phase: OfflinePackagePhase.ready,
-        baseMapReady: true,
+        phase: OfflinePackagePhase.validating,
         mapProgress: 100,
-        lastSyncedAt: DateTime.now(),
         clearError: true,
       );
-      _persist();
+      if (candidateId != null) {
+        _validateAndPromote(candidateId);
+      }
     } else if (event is Error) {
-      state = state.copyWith(
-        phase: OfflinePackagePhase.failed,
-        error: 'Map resource download was interrupted. You can retry.',
-      );
-      _persist();
+      _failPendingDownload(candidateId, 'offline_error_interrupted');
     }
   }
 
+  Future<void> _validateAndPromote(int candidateId) async {
+    try {
+      final status = await getOfflineRegionStatus(candidateId);
+      if (!_isValid(status)) {
+        await _failPendingDownload(
+          candidateId,
+          'offline_error_validation',
+        );
+        return;
+      }
+      await _promoteRegion(candidateId, status);
+    } catch (error) {
+      debugPrint('[OFFLINE MAP] Validation failed: $error');
+      await _failPendingDownload(
+        candidateId,
+        'offline_error_validation',
+      );
+    }
+  }
+
+  bool _isValid(OfflineRegionStatus status) =>
+      status.isComplete &&
+      status.completedResourceCount > 0 &&
+      status.completedResourceSize > 0;
+
+  Future<void> _promoteRegion(
+    int candidateId,
+    OfflineRegionStatus status,
+  ) async {
+    final previousId = state.regionId;
+    state = state.copyWith(
+      phase: OfflinePackagePhase.ready,
+      regionId: candidateId,
+      clearPendingRegion: true,
+      baseMapReady: true,
+      mapProgress: 100,
+      mapResourceBytes: status.completedResourceSize,
+      mapResourceVersion: AppConstants.mapStyleUrl,
+      downloadedAt: state.downloadedAt ?? DateTime.now(),
+      lastSyncedAt: DateTime.now(),
+      clearError: true,
+    );
+    _retainedMapResourceBytes = status.completedResourceSize;
+    await _persist();
+    if (previousId != null && previousId != candidateId) {
+      try {
+        await deleteOfflineRegion(previousId);
+      } catch (error) {
+        debugPrint('[OFFLINE MAP] Old region cleanup deferred: $error');
+      }
+    }
+  }
+
+  Future<void> _failPendingDownload(int? candidateId, String message) async {
+    if (candidateId != null && candidateId != state.regionId) {
+      try {
+        await deleteOfflineRegion(candidateId);
+      } catch (error) {
+        debugPrint('[OFFLINE MAP] Invalid candidate cleanup deferred: $error');
+      }
+    }
+    state = state.copyWith(
+      phase: OfflinePackagePhase.failed,
+      clearPendingRegion: true,
+      mapResourceBytes: _retainedMapResourceBytes,
+      error: message,
+    );
+    await _persist();
+  }
+
   Future<void> pause() async {
-    final id = state.regionId;
+    final id = state.pendingRegionId ?? state.regionId;
     if (!supportsNativeMapResources || id == null) return;
     await pauseOfflineRegionDownload(id);
     state = state.copyWith(phase: OfflinePackagePhase.paused);
   }
 
   Future<void> resume() async {
-    final id = state.regionId;
+    final id = state.pendingRegionId ?? state.regionId;
     if (!supportsNativeMapResources || id == null) {
       await downloadOrUpdate();
       return;
@@ -310,6 +442,37 @@ class OfflineMapNotifier extends StateNotifier<OfflineMapState> {
       phase: OfflinePackagePhase.downloadingMap,
       clearError: true,
     );
+    _monitorRegion(id);
+  }
+
+  Future<void> _monitorRegion(int id) async {
+    if (_monitoredRegionId == id) return;
+    _monitoredRegionId = id;
+    try {
+      while (mounted &&
+          _monitoredRegionId == id &&
+          state.phase == OfflinePackagePhase.downloadingMap) {
+        await Future<void>.delayed(const Duration(seconds: 1));
+        if (!mounted || state.phase != OfflinePackagePhase.downloadingMap) {
+          break;
+        }
+        final status = await getOfflineRegionStatus(id);
+        state = state.copyWith(
+          mapProgress: status.downloadProgress,
+          mapResourceBytes: status.completedResourceSize,
+        );
+        if (status.isComplete) {
+          state = state.copyWith(phase: OfflinePackagePhase.validating);
+          await _validateAndPromote(id);
+          break;
+        }
+      }
+    } catch (error) {
+      debugPrint('[OFFLINE MAP] Resume monitor failed: $error');
+      await _failPendingDownload(id, 'offline_error_interrupted');
+    } finally {
+      if (_monitoredRegionId == id) _monitoredRegionId = null;
+    }
   }
 
   Future<void> deletePackage() async {
@@ -318,8 +481,13 @@ class OfflineMapNotifier extends StateNotifier<OfflineMapState> {
     try {
       if (supportsNativeMapResources && state.regionId != null) {
         await deleteOfflineRegion(state.regionId!);
-        await clearAmbientCache();
       }
+      if (supportsNativeMapResources &&
+          state.pendingRegionId != null &&
+          state.pendingRegionId != state.regionId) {
+        await deleteOfflineRegion(state.pendingRegionId!);
+      }
+      if (supportsNativeMapResources) await clearAmbientCache();
       final storage = LocalStorageService.instance;
       await storage.remove(_metadataKey);
       final auth = _ref.read(authProvider);
@@ -337,7 +505,7 @@ class OfflineMapNotifier extends StateNotifier<OfflineMapState> {
     } catch (error) {
       state = state.copyWith(
         phase: OfflinePackagePhase.failed,
-        error: 'Unable to delete the offline map right now.',
+        error: 'offline_error_delete',
       );
     }
   }

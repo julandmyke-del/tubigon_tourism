@@ -10,18 +10,27 @@ class RoleApplication extends Model
     use HasUuids;
 
     public const TYPE_MSME = 'msme_owner';
+
     public const TYPE_PARTNER = 'tourism_partner';
 
     public const STATUS_DRAFT = 'draft';
+
     public const STATUS_SUBMITTED = 'submitted';
+
     public const STATUS_UNDER_REVIEW = 'under_review';
+
     public const STATUS_NEEDS_CHANGES = 'needs_changes';
+
     public const STATUS_RECOMMENDED = 'recommended_for_approval';
+
     public const STATUS_APPROVED = 'approved';
+
     public const STATUS_REJECTED = 'rejected';
+
     public const STATUS_WITHDRAWN = 'withdrawn';
 
     public const TYPES = [self::TYPE_MSME, self::TYPE_PARTNER];
+
     public const STATUSES = [
         self::STATUS_DRAFT,
         self::STATUS_SUBMITTED,
@@ -35,7 +44,9 @@ class RoleApplication extends Model
 
     protected $fillable = [
         'applicant_user_id', 'application_type', 'status', 'active_slot', 'payload',
-        'requested_tourist_spot_id', 'linked_msme_id', 'lgu_checklist',
+        'requested_tourist_spot_id', 'requested_msme_category_id',
+        'recommended_msme_category_id', 'final_msme_category_id',
+        'linked_msme_id', 'lgu_checklist',
         'reviewed_by_lgu_id', 'lgu_reviewed_at', 'lgu_notes',
         'admin_reviewed_by_id', 'admin_reviewed_at', 'admin_notes',
         'submitted_at', 'approved_at', 'rejected_at', 'withdrawn_at',
@@ -66,6 +77,21 @@ class RoleApplication extends Model
     public function linkedMsme()
     {
         return $this->belongsTo(Msme::class, 'linked_msme_id');
+    }
+
+    public function requestedMsmeCategory()
+    {
+        return $this->belongsTo(MsmeCategory::class, 'requested_msme_category_id');
+    }
+
+    public function recommendedMsmeCategory()
+    {
+        return $this->belongsTo(MsmeCategory::class, 'recommended_msme_category_id');
+    }
+
+    public function finalMsmeCategory()
+    {
+        return $this->belongsTo(MsmeCategory::class, 'final_msme_category_id');
     }
 
     public function lguReviewer()

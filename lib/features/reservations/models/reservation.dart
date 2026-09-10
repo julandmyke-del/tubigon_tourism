@@ -24,6 +24,7 @@ class Reservation {
   final double? latitude;
   final double? longitude;
   final List<ReservationStatusEntry> statusHistory;
+  final List<Map<String, dynamic>> items;
 
   // Joined fields for UI convenience
   final String spotName;
@@ -57,6 +58,7 @@ class Reservation {
     this.latitude,
     this.longitude,
     this.statusHistory = const [],
+    this.items = const [],
     this.spotName = 'Reservation Item',
     this.spotColor = Colors.teal,
     this.spotIcon = Icons.calendar_today_rounded,
@@ -106,6 +108,10 @@ class Reservation {
                   Map<String, dynamic>.from(item)))
               .toList(growable: false)
           : const [],
+      items: (json['items'] as List? ?? const [])
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList(growable: false),
       spotName: name ??
           json['reservable_name'] as String? ??
           json['spot_name'] as String? ??

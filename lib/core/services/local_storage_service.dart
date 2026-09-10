@@ -8,6 +8,8 @@ class LocalStorageService {
 
   static LocalStorageService? _instance;
 
+  static bool get isInitialized => _instance != null;
+
   static Future<LocalStorageService> init() async {
     final prefs = await SharedPreferences.getInstance();
     _instance = LocalStorageService._(prefs);

@@ -4,27 +4,30 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
-use App\Models\Profile;
-use App\Models\Role;
 use App\Models\Msme;
 use App\Models\Notification;
 use App\Models\PartnerNotification;
+use App\Models\Profile;
+use App\Models\Role;
 use App\Models\Setting;
 use App\Models\TouristSpot;
 use App\Models\TouristSpotPartnerAssignment;
 use App\Models\User;
+use App\Models\UserPreference;
 use App\Services\EmailNotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Validation\Rules\Password;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 
 class UserController extends Controller
 {
     private const MANAGEABLE_ROLES = ['tourist', 'msme_owner', 'tourism_partner', 'lgu_staff', 'admin'];
+
     /**
      * GET /api/v1/users
      */
@@ -33,7 +36,9 @@ class UserController extends Controller
         // Use the authentication source of truth so registration method and
         // suspended accounts are visible without exposing auth credentials.
         $relations = ['role', 'profile'];
-        if (Schema::hasTable('msmes')) $relations[] = 'msmes:id,profile_id,name';
+        if (Schema::hasTable('msmes')) {
+            $relations[] = 'msmes:id,profile_id,name';
+        }
         if (Schema::hasTable('tourist_spot_partner_assignments') && Schema::hasTable('tourist_spots')) {
             $relations[] = 'managedTouristSpots:id,name';
         }
@@ -50,8 +55,12 @@ class UserController extends Controller
         if ($request->has('verified')) {
             $query->where('is_verified', $request->boolean('verified'));
         }
-        if ($request->string('status')->toString() === 'active') $query->whereNull('deleted_at');
-        if ($request->string('status')->toString() === 'disabled') $query->onlyTrashed();
+        if ($request->string('status')->toString() === 'active') {
+            $query->whereNull('deleted_at');
+        }
+        if ($request->string('status')->toString() === 'disabled') {
+            $query->onlyTrashed();
+        }
 
         $users = $query
             ->orderBy('created_at', 'desc')
@@ -113,8 +122,13 @@ class UserController extends Controller
     public function show(Request $request, string $id): JsonResponse
     {
         $this->authorizeProfileAccess($request, $id);
-        $user = User::withTrashed()->with(['role', 'profile', 'managedTouristSpots'])->findOrFail($id);
-        return response()->json(['status' => 'success', 'data' => $this->userPayload($user, true)]);
+        $user = User::withTrashed()->with($this->profileRelations())->findOrFail($id);
+        $payload = $this->userPayload($user, true);
+        if ((string) $request->user()->id === (string) $id && Schema::hasTable('user_preferences')) {
+            $payload['preferences'] = $user->preferences?->toArray() ?? $this->defaultPreferences();
+        }
+
+        return response()->json(['status' => 'success', 'data' => $payload]);
     }
 
     /**
@@ -124,25 +138,78 @@ class UserController extends Controller
     {
         $this->authorizeProfileAccess($request, $id);
         $profile = Profile::findOrFail($id);
+        $editingSelf = (string) $request->user()->id === (string) $id;
+        if (! $editingSelf && $request->has('preferences')) {
+            abort(403, 'Private preferences may only be changed by their owner.');
+        }
 
         $validated = $request->validate([
-            'name' => 'sometimes|string|max:255',
-            'phone' => 'nullable|string|max:255',
-            'bio' => 'nullable|string',
-            'avatar_url' => 'nullable|string',
-            'language' => 'sometimes|string|max:50',
+            'name' => 'sometimes|required|string|min:2|max:255',
+            'phone' => ['nullable', 'string', 'max:30', 'regex:/^[0-9+()\-\s]*$/'],
+            'address' => 'nullable|string|max:1000',
+            'barangay' => 'nullable|string|max:120',
+            'bio' => 'nullable|string|max:2000',
+            'language' => ['sometimes', Rule::in(['en', 'ceb'])],
+            'preferences' => 'sometimes|array',
+            'preferences.personalization_enabled' => 'sometimes|boolean',
+            'preferences.preferred_destination_category_ids' => 'sometimes|array|max:20',
+            'preferences.preferred_destination_category_ids.*' => 'uuid|distinct|exists:spot_categories,id',
+            'preferences.travel_interests' => 'sometimes|array|max:12',
+            'preferences.travel_interests.*' => ['string', 'distinct', Rule::in(['beaches', 'heritage', 'nature', 'food', 'adventure', 'culture', 'shopping', 'wellness'])],
+            'preferences.travel_pace' => ['nullable', Rule::in(['relaxed', 'balanced', 'packed'])],
+            'preferences.group_type' => ['nullable', Rule::in(['solo', 'couple', 'family', 'friends', 'business'])],
+            'preferences.preferred_transport_mode' => ['nullable', Rule::in(['walking', 'bicycle', 'motorcycle', 'car', 'public_transport', 'boat', 'mixed'])],
+            'preferences.eco_tourism_interest' => 'sometimes|boolean',
+            'preferences.nearby_suggestions' => 'sometimes|boolean',
+            'preferences.wheelchair_friendly' => 'sometimes|boolean',
+            'preferences.limited_walking' => 'sometimes|boolean',
+            'preferences.senior_friendly' => 'sometimes|boolean',
+            'preferences.child_friendly' => 'sometimes|boolean',
+            'preferences.accessibility_notes' => 'nullable|string|max:500',
+            'preferences.reservation_updates' => 'sometimes|boolean',
+            'preferences.tourism_announcements' => 'sometimes|boolean',
+            'preferences.eco_tips' => 'sometimes|boolean',
+            'preferences.ferry_alerts' => 'sometimes|boolean',
+            'preferences.waste_report_updates' => 'sometimes|boolean',
+            'preferences.application_updates' => 'sometimes|boolean',
+            'preferences.location_recommendations' => 'sometimes|boolean',
+            'preferences.remember_last_map_location' => 'sometimes|boolean',
         ]);
 
-        $profile->update($validated);
+        $user = User::with($this->profileRelations())->findOrFail($id);
+        DB::transaction(function () use ($request, $id, $profile, $user, $validated, $editingSelf): void {
+            $profileChanges = collect($validated)->only(['name', 'phone', 'address', 'barangay', 'bio', 'language'])->all();
+            if (isset($profileChanges['name'])) {
+                $profileChanges['name'] = trim($profileChanges['name']);
+            }
+            $profile->update($profileChanges);
 
-        if (isset($validated['name'])) {
-            User::where('id', $id)->update(['name' => $validated['name']]);
-        }
+            $userChanges = collect($validated)->only(['name', 'phone', 'bio', 'language'])->all();
+            if (isset($userChanges['name'])) {
+                $userChanges['name'] = trim($userChanges['name']);
+            }
+            if ($userChanges !== []) {
+                $user->update($userChanges);
+            }
+
+            if ($editingSelf && isset($validated['preferences']) && Schema::hasTable('user_preferences')) {
+                UserPreference::updateOrCreate(['user_id' => $id], $validated['preferences']);
+            }
+
+            ActivityLog::create([
+                'user_id' => $request->user()->id,
+                'action' => 'Profile updated',
+                'details' => json_encode(['target_type' => 'user', 'target_id' => $id]),
+            ]);
+        }, 3);
 
         return response()->json([
             'status' => 'success',
             'message' => 'Profile updated successfully',
-            'data' => $profile->fresh()->load('role'),
+            'data' => $this->userPayload($user->fresh()->load($this->profileRelations()), true)
+                + ($editingSelf && Schema::hasTable('user_preferences')
+                    ? ['preferences' => UserPreference::where('user_id', $id)->first()?->toArray() ?? $this->defaultPreferences()]
+                    : []),
         ]);
     }
 
@@ -249,7 +316,9 @@ class UserController extends Controller
                 abort_if($conflict, 422, 'This Tourist Spot is already assigned to another Partner.');
             }
             $previousSpotId = $current?->tourist_spot_id;
-            if ($current && (string) $current->tourist_spot_id !== (string) $spotId) $current->delete();
+            if ($current && (string) $current->tourist_spot_id !== (string) $spotId) {
+                $current->delete();
+            }
             $newAssignment = $spotId
                 ? TouristSpotPartnerAssignment::updateOrCreate(
                     ['partner_profile_id' => $target->id],
@@ -293,7 +362,7 @@ class UserController extends Controller
             $emailDelivery->partnerAssignment(
                 $target->fresh(),
                 $assignment?->touristSpot,
-                (string) \Illuminate\Support\Str::uuid(),
+                (string) Str::uuid(),
             );
         }
 
@@ -355,6 +424,7 @@ class UserController extends Controller
     public function roles(): JsonResponse
     {
         $roles = Role::select('id', 'name')->whereIn('name', self::MANAGEABLE_ROLES)->get();
+
         return response()->json(['status' => 'success', 'data' => $roles]);
     }
 
@@ -371,6 +441,11 @@ class UserController extends Controller
 
         Profile::where('id', $id)->update(['avatar_url' => $url]);
         User::where('id', $id)->update(['avatar_url' => $url]);
+        ActivityLog::create([
+            'user_id' => $request->user()->id,
+            'action' => 'Profile avatar updated',
+            'details' => json_encode(['target_type' => 'user', 'target_id' => $id]),
+        ]);
 
         return response()->json([
             'status' => 'success',
@@ -408,7 +483,9 @@ class UserController extends Controller
         if ((string) $request->user()->id === $id && ! $validated['active']) {
             throw ValidationException::withMessages(['active' => ['You cannot disable your own Admin account.']]);
         }
-        if (! $validated['active']) $this->guardLastAdmin($target, null);
+        if (! $validated['active']) {
+            $this->guardLastAdmin($target, null);
+        }
 
         DB::transaction(function () use ($request, $target, $validated): void {
             if ($validated['active']) {
@@ -424,6 +501,7 @@ class UserController extends Controller
                 'details' => json_encode(['target_type' => 'user', 'target_id' => $target->id]),
             ]);
         });
+
         return response()->json(['status' => 'success', 'message' => $validated['active'] ? 'User activated.' : 'User deactivated.']);
     }
 
@@ -436,6 +514,7 @@ class UserController extends Controller
             'action' => 'User sessions revoked',
             'details' => json_encode(['target_type' => 'user', 'target_id' => $target->id]),
         ]);
+
         return response()->json(['status' => 'success', 'message' => 'User sessions revoked.']);
     }
 
@@ -476,6 +555,8 @@ class UserController extends Controller
             'created_at' => $user->created_at?->toIso8601String(),
             'avatar_url' => $user->avatar_url,
             'phone' => $user->phone ?? $user->profile?->phone,
+            'address' => $user->profile?->address,
+            'barangay' => $user->profile?->barangay,
             'linked_msmes' => $user->relationLoaded('msmes')
                 ? $user->msmes->map->only(['id', 'name'])
                 : [],
@@ -483,14 +564,48 @@ class UserController extends Controller
                 ? $user->managedTouristSpots->map->only(['id', 'name'])
                 : [],
         ];
-        if (! $detail) return $payload;
+        if (! $detail) {
+            return $payload;
+        }
 
         $payload['bio'] = $user->bio ?? $user->profile?->bio;
         $payload['language'] = $user->language ?? $user->profile?->language;
-        $payload['linked_msmes'] = Msme::where('profile_id', $user->id)->get(['id', 'name', 'verification_status']);
-        $payload['linked_tourist_spots'] = $user->managedTouristSpots->map->only(['id', 'name']);
+        $payload['linked_msmes'] = Schema::hasTable('msmes')
+            ? Msme::where('profile_id', $user->id)->get(['id', 'name', 'verification_status'])
+            : [];
+        $payload['linked_tourist_spots'] = $user->relationLoaded('managedTouristSpots')
+            ? $user->managedTouristSpots->map->only(['id', 'name'])
+            : [];
         $payload['recent_activity'] = ActivityLog::where('user_id', $user->id)
             ->latest()->limit(10)->get(['id', 'action', 'details', 'created_at']);
+
         return $payload;
+    }
+
+    private function defaultPreferences(): array
+    {
+        return [
+            'personalization_enabled' => false,
+            'preferred_destination_category_ids' => [], 'travel_interests' => [],
+            'travel_pace' => null, 'group_type' => null, 'preferred_transport_mode' => null,
+            'eco_tourism_interest' => false, 'nearby_suggestions' => false,
+            'wheelchair_friendly' => false, 'limited_walking' => false,
+            'senior_friendly' => false, 'child_friendly' => false, 'accessibility_notes' => null,
+            'reservation_updates' => true, 'tourism_announcements' => true,
+            'eco_tips' => true, 'ferry_alerts' => true, 'waste_report_updates' => true,
+            'application_updates' => true, 'location_recommendations' => false,
+            'remember_last_map_location' => false,
+        ];
+    }
+
+    /** @return array<int, string> */
+    private function profileRelations(): array
+    {
+        $relations = ['role', 'profile'];
+        if (Schema::hasTable('tourist_spot_partner_assignments') && Schema::hasTable('tourist_spots')) {
+            $relations[] = 'managedTouristSpots';
+        }
+
+        return $relations;
     }
 }

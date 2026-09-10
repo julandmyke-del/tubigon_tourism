@@ -11,7 +11,7 @@
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border:1px solid #dbe3ee;border-radius:14px;overflow:hidden;">
             <tr><td style="background:#0b1930;padding:24px 30px;border-bottom:4px solid #f59e0b;">
                 <div style="font-size:23px;font-weight:700;color:#ffffff;">Tour Tubigon</div>
-                <div style="font-size:12px;color:#cbd5e1;margin-top:5px;">Tubigon Smart Tourism Information and Management System</div>
+                <div style="font-size:12px;color:#cbd5e1;margin-top:5px;">Tour Tubigon Information and Management System</div>
             </td></tr>
             <tr><td style="padding:30px;">
                 <h1 style="font-size:22px;line-height:1.3;color:#10213f;margin:0 0 18px;">{{ $heading }}</h1>
@@ -42,7 +42,7 @@
             <tr><td style="background:#f8fafc;padding:20px 30px;border-top:1px solid #e2e8f0;color:#64748b;font-size:12px;line-height:1.6;">
                 This is an automated message from Tour Tubigon.<br>
                 Please do not share verification codes or password-reset information.<br><br>
-                Tubigon Smart Tourism Information and Management System
+                Tour Tubigon Information and Management System
             </td></tr>
         </table>
     </td></tr>

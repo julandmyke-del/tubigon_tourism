@@ -171,6 +171,8 @@ class MapController extends Controller
                 'type' => 'tourist_spot',
                 'name' => $spot->name,
                 'category' => $spot->category?->name ?? 'Attraction',
+                'source_category_id' => $spot->category?->id,
+                'source_category_slug' => $spot->category?->slug ?? $specific,
                 'category_keys' => array_values(array_unique(array_filter(['tourist-spots', $specific]))),
                 'description' => $spot->short_description ?: $spot->description,
                 'full_description' => $spot->description,
@@ -201,7 +203,11 @@ class MapController extends Controller
 
     private function publicMsmes(array $excludedIds = []): Collection
     {
-        $query = Msme::where('is_verified', true)
+        $query = Msme::query();
+        if (Schema::hasTable('msme_categories') && Schema::hasColumn('msmes', 'category_id')) {
+            $query->with('categoryRecord');
+        }
+        $query->where('is_verified', true)
             ->where('verification_status', 'verified')
             ->when(
                 Schema::hasColumn('msmes', 'operational_status'),
@@ -218,7 +224,11 @@ class MapController extends Controller
 
     private function ownedMsmes(string $userId, array $excludedIds = []): Collection
     {
-        $query = Msme::where('profile_id', $userId)
+        $query = Msme::query();
+        if (Schema::hasTable('msme_categories') && Schema::hasColumn('msmes', 'category_id')) {
+            $query->with('categoryRecord');
+        }
+        $query->where('profile_id', $userId)
             ->whereNotNull('latitude')->whereNotNull('longitude');
         if ($excludedIds) {
             $query->whereNotIn('id', $excludedIds);
@@ -229,7 +239,11 @@ class MapController extends Controller
 
     private function allMsmes(array $excludedIds = []): Collection
     {
-        $query = Msme::whereNotNull('latitude')->whereNotNull('longitude');
+        $query = Msme::query();
+        if (Schema::hasTable('msme_categories') && Schema::hasColumn('msmes', 'category_id')) {
+            $query->with('categoryRecord');
+        }
+        $query->whereNotNull('latitude')->whereNotNull('longitude');
         if ($excludedIds) {
             $query->whereNotIn('id', $excludedIds);
         }
@@ -239,7 +253,12 @@ class MapController extends Controller
 
     private function msmeLocation(Msme $msme, bool $owned): array
     {
-        $specific = Str::slug($msme->category ?? '');
+        $categoryName = $msme->relationLoaded('categoryRecord')
+            ? ($msme->categoryRecord?->name ?? $msme->category)
+            : $msme->category;
+        $specific = $msme->relationLoaded('categoryRecord')
+            ? ($msme->categoryRecord?->slug ?? Str::slug($categoryName ?? ''))
+            : Str::slug($categoryName ?? '');
         $meta = $this->categoryMeta($specific, 'msmes', 'MSMEs', 'storefront', '#0284C7', 20);
 
         return array_merge([
@@ -248,7 +267,9 @@ class MapController extends Controller
             'source_integer_id' => $msme->integer_id,
             'type' => 'msme',
             'name' => $msme->name,
-            'category' => $msme->category,
+            'category' => $categoryName,
+            'source_category_id' => $msme->relationLoaded('categoryRecord') ? $msme->categoryRecord?->id : null,
+            'source_category_slug' => $specific,
             'category_keys' => array_values(array_unique(array_filter(['msmes', $specific]))),
             'description' => $msme->description,
             'address' => $msme->address,
@@ -363,11 +384,14 @@ class MapController extends Controller
                 'name' => $report->category,
                 'category' => $report->category,
                 'description' => $report->description,
-                'address' => $report->location_description,
+                'address' => $report->resolved_address ?? $report->location_description,
                 'latitude' => $report->latitude,
                 'longitude' => $report->longitude,
-                'images' => $report->images ?? [],
+                // Evidence is participant-authorized and is intentionally not
+                // embedded into a reusable map cache.
+                'images' => [],
                 'status' => $report->status,
+                'severity' => $report->severity ?? $report->priority,
                 'is_verified' => false,
                 'is_owned' => false,
                 'category_slug' => 'waste-reports',

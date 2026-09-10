@@ -15,6 +15,7 @@ use App\Models\Reservation;
 use App\Models\TouristSpot;
 use App\Models\User;
 use App\Models\WasteReport;
+use App\Models\WasteReportHistory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -161,11 +162,15 @@ class LguController extends Controller
     public function updateWasteStatus(Request $request, string $id): JsonResponse
     {
         $validated = $request->validate([
-            'status' => ['required', Rule::in(['submitted', 'under_review', 'assigned', 'in_progress', 'resolved', 'closed', 'rejected'])],
+            'status' => ['required', Rule::in(['submitted', 'under_review', 'assigned', 'in_progress', 'resolved', 'closed', 'rejected', 'reopened'])],
             'priority' => ['nullable', Rule::in(['low', 'normal', 'high', 'urgent'])],
+            'severity' => ['nullable', Rule::in(['low', 'moderate', 'high', 'urgent'])],
             'assigned_to' => 'nullable|uuid|exists:users,id',
             'assigned_personnel' => 'nullable|string|max:255',
             'notes' => 'nullable|string|max:2000',
+            'internal_note' => 'nullable|string|max:2000',
+            'public_note' => 'nullable|string|max:2000',
+            'resolution_summary' => 'nullable|string|max:2000',
             'resolution_evidence' => 'nullable|array|max:10',
             'resolution_evidence.*' => 'string|max:2048',
         ]);
@@ -176,20 +181,27 @@ class LguController extends Controller
             'under_review' => ['assigned', 'in_progress', 'rejected'],
             'assigned' => ['in_progress', 'rejected'],
             'in_progress' => ['resolved'],
-            'resolved' => ['closed'],
+            'resolved' => ['closed', 'reopened'],
+            'reopened' => ['under_review'],
             'closed' => [],
             'rejected' => [],
         ];
         abort_unless($validated['status'] === $current || in_array($validated['status'], $allowed[$current] ?? [], true), 422, "A {$current} report cannot transition to {$validated['status']}.");
         abort_if($validated['status'] === 'assigned' && empty($validated['assigned_to']) && empty($validated['assigned_personnel']), 422, 'Choose a staff member or responsible team before assigning this report.');
-        abort_if(in_array($validated['status'], ['resolved', 'rejected'], true) && blank($validated['notes'] ?? null), 422, 'A resolution or rejection note is required.');
+        $publicNote = $validated['resolution_summary'] ?? $validated['public_note'] ?? $validated['notes'] ?? null;
+        $internalNote = $validated['internal_note'] ?? $validated['notes'] ?? null;
+        abort_if(in_array($validated['status'], ['resolved', 'rejected'], true) && blank($publicNote), 422, 'A public resolution or rejection note is required.');
         $before = $report->toArray();
         $changes = [
             'status' => $validated['status'],
             'priority' => $validated['priority'] ?? $report->priority,
-            'lgu_notes' => $validated['notes'] ?? $report->lgu_notes,
+            'lgu_notes' => $internalNote ?? $report->lgu_notes,
             'resolution_evidence' => $validated['resolution_evidence'] ?? $report->resolution_evidence,
         ];
+        if (Schema::hasColumn('waste_reports', 'severity') && isset($validated['severity'])) $changes['severity'] = $validated['severity'];
+        if (Schema::hasColumn('waste_reports', 'resolution_summary') && in_array($validated['status'], ['resolved', 'rejected'], true)) {
+            $changes['resolution_summary'] = $publicNote;
+        }
         if (array_key_exists('assigned_to', $validated) || array_key_exists('assigned_personnel', $validated)) {
             $changes['assigned_to'] = $validated['assigned_to'] ?? null;
             $changes['assigned_personnel'] = isset($validated['assigned_to'])
@@ -198,10 +210,34 @@ class LguController extends Controller
             $changes['assigned_at'] = now();
         }
         if ($validated['status'] === 'under_review') $changes['reviewed_at'] = now();
-        if ($validated['status'] === 'resolved') $changes['resolved_at'] = now();
+        if ($validated['status'] === 'resolved') {
+            $changes['resolved_at'] = now();
+            if (Schema::hasColumn('waste_reports', 'resolved_by')) $changes['resolved_by'] = $request->user()->id;
+        }
+        if ($validated['status'] === 'reopened') {
+            if (Schema::hasColumn('waste_reports', 'reopened_at')) $changes['reopened_at'] = now();
+            $changes['resolved_at'] = null;
+            if (Schema::hasColumn('waste_reports', 'resolved_by')) $changes['resolved_by'] = null;
+        }
 
-        DB::transaction(function () use ($request, $report, $before, $changes, $validated): void {
+        DB::transaction(function () use ($request, $report, $before, $changes, $validated, $publicNote, $internalNote): void {
             $report->update($changes);
+            if (Schema::hasTable('waste_report_history')) {
+                WasteReportHistory::create([
+                    'waste_report_id' => $report->id,
+                    'changed_by' => $request->user()->id,
+                    'from_status' => $before['status'] ?? null,
+                    'to_status' => $validated['status'],
+                    'notes' => $publicNote,
+                    'metadata' => [
+                        'priority' => $report->priority,
+                        'severity' => $report->severity ?? null,
+                        'assigned_personnel' => $report->assigned_personnel,
+                        'internal_note' => $internalNote,
+                    ],
+                    ...(Schema::hasColumn('waste_report_history', 'is_public') ? ['is_public' => true] : []),
+                ]);
+            }
             $this->log($request->user()->id, 'Waste report '.$validated['status'], 'waste_report', $report->id, $before, $report->fresh()->toArray());
             if ($report->user_id) {
                 Notification::create([
@@ -209,12 +245,16 @@ class LguController extends Controller
                     'type' => 'waste_report_'.$validated['status'],
                     'title' => 'Waste Report '.str_replace('_', ' ', ucfirst($validated['status'])),
                     'body' => 'Your waste report is now '.str_replace('_', ' ', $validated['status']).'.',
-                    'data' => ['waste_report_id' => $report->id, 'status' => $validated['status'], 'route' => '/waste-report'],
+                    'data' => ['waste_report_id' => $report->id, 'status' => $validated['status'], 'route' => '/waste-reports'],
                 ]);
             }
         });
 
-        return response()->json(['status' => 'success', 'message' => 'Waste report updated.', 'data' => $report->fresh()]);
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Waste report updated.',
+            'data' => $report->fresh(Schema::hasTable('waste_report_history') ? ['history.actor:id,name'] : []),
+        ]);
     }
 
     public function analytics(Request $request): JsonResponse

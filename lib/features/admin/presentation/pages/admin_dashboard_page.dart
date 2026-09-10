@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/admin_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../../connected_operations/presentation/announcement_placement.dart';
 import '../../providers/admin_providers.dart';
 
 class AdminDashboardPage extends ConsumerWidget {
@@ -70,6 +71,7 @@ class AdminDashboardPage extends ConsumerWidget {
                       ),
                     ],
                   ),
+                  const AnnouncementPlacement(),
                   const SizedBox(height: AppSpacing.lg),
 
                   // 4 Top Stat Cards Grid
@@ -231,6 +233,23 @@ class AdminDashboardPage extends ConsumerWidget {
                               final time = item['created_at'] ??
                                   item['time'] ??
                                   'Just now';
+                              final actor = item['user'] is Map
+                                  ? Map<String, dynamic>.from(item['user'])
+                                  : const <String, dynamic>{};
+                              final actorRole =
+                                  item['actor_role']?.toString() ??
+                                      (actor['role'] is Map
+                                          ? actor['role']['name']?.toString()
+                                          : null) ??
+                                      'role unavailable';
+                              final target = [
+                                item['target_type'],
+                                item['target_id']
+                              ]
+                                  .where((value) =>
+                                      value != null &&
+                                      value.toString().isNotEmpty)
+                                  .join(' · ');
 
                               return ListTile(
                                 contentPadding: EdgeInsets.zero,
@@ -251,7 +270,8 @@ class AdminDashboardPage extends ConsumerWidget {
                                       fontWeight: FontWeight.w600),
                                 ),
                                 subtitle: Text(
-                                  time,
+                                  '${actor['name'] ?? 'Removed user'} · ${actorRole.replaceAll('_', ' ')}'
+                                  '${target.isEmpty ? '' : ' · $target'}\n$time',
                                   style: AppTypography.labelSmall.copyWith(
                                       color: AdminColors.textSecondary),
                                 ),

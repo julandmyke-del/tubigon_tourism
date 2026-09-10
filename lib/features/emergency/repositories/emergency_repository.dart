@@ -17,6 +17,16 @@ class EmergencyRepository {
   final ApiClient apiClient;
   final dbHelper = DatabaseHelper.instance;
   static const _webCacheKey = 'emergency_contacts_public_cache_v1';
+  static const _cacheUpdatedKey = 'emergency_contacts_cache_updated_at_v1';
+
+  static DateTime? get cacheUpdatedAt => DateTime.tryParse(
+        LocalStorageService.instance.getString(_cacheUpdatedKey) ?? '',
+      );
+
+  Future<void> _recordCacheRefresh() => LocalStorageService.instance.setString(
+        _cacheUpdatedKey,
+        DateTime.now().toUtc().toIso8601String(),
+      );
 
   /// Fetches the current active directory and replaces the local safety cache.
   Future<List<EmergencyContact>> getEmergencyContacts() async {
@@ -28,6 +38,7 @@ class EmergencyRepository {
             _webCacheKey,
             jsonEncode(remote.map((item) => item.toJson()).toList()),
           );
+          await _recordCacheRefresh();
           return remote;
         } catch (_) {}
       }
@@ -56,6 +67,7 @@ class EmergencyRepository {
           final itemJson = item.toJson();
           await dbHelper.insert('emergency_contacts', itemJson);
         }
+        await _recordCacheRefresh();
         return parsed;
       } catch (error) {
         debugPrint('Error refreshing emergency contacts from API: $error');

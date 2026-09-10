@@ -110,4 +110,14 @@ class TouristSpot extends Model
     {
         return $this->hasMany(TouristSpotBookingAvailabilityHistory::class)->latest('changed_at');
     }
+
+    public function bookingOfferings()
+    {
+        return $this->hasMany(BookingOffering::class);
+    }
+
+    public function media()
+    {
+        return $this->hasMany(TouristSpotMedia::class)->orderBy('sort_order');
+    }
 }

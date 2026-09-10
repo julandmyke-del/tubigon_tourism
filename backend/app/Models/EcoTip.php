@@ -13,9 +13,25 @@ class EcoTip extends Model
     protected $fillable = [
         'title',
         'content',
+        'short_message',
         'category',
         'spot_id',
         'language',
+        'is_active',
+        'is_published',
+        'starts_at',
+        'ends_at',
+        'priority',
+        'created_by',
+        'updated_by',
+    ];
+
+    protected $casts = [
+        'is_active' => 'boolean',
+        'is_published' => 'boolean',
+        'starts_at' => 'datetime',
+        'ends_at' => 'datetime',
+        'priority' => 'integer',
     ];
 
     public function spot()

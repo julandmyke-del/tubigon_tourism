@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Verify Your Email — Tubigon Smart Tourism</title>
+    <title>Verify Your Email — Tour Tubigon</title>
     <style>
         body { margin: 0; padding: 0; background-color: #0B132B; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         .container { max-width: 600px; margin: 0 auto; padding: 40px 20px; }
@@ -23,13 +23,13 @@
     <div class="container">
         <div class="card">
             <div class="logo">
-                <div class="logo-text">🏝️ Tubigon Smart Tourism</div>
+                <div class="logo-text">🏝️ Tour Tubigon</div>
                 <div class="logo-sub">Information & Management System</div>
             </div>
 
             <h1>Verify Your Email Address</h1>
             <p>Hello <strong style="color:#FFFFFF;">{{ $userName }}</strong>,</p>
-            <p>Thank you for registering with Tubigon Smart Tourism! Enter this code in the app to verify your email address and activate your account.</p>
+            <p>Thank you for registering with Tour Tubigon! Enter this code in the app to verify your email address and activate your account.</p>
 
             <div class="code">{{ $verificationCode }}</div>
 
@@ -42,7 +42,7 @@
         </div>
 
         <div class="footer">
-            &copy; {{ date('Y') }} Tubigon Smart Tourism — Municipality of Tubigon, Bohol, Philippines
+            &copy; {{ date('Y') }} Tour Tubigon — Municipality of Tubigon, Bohol, Philippines
         </div>
     </div>
 </body>

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -140,6 +141,16 @@ class SyncService {
             ..remove('dirty')
             ..remove('pending_delete')
             ..remove('last_synced');
+          if (tableName == 'waste_reports') {
+            // Device-local paths are uploaded separately after the report UUID
+            // is accepted; they must never be stored as public evidence URLs.
+            cleanPayload['images'] = <String>[];
+            cleanPayload.remove('video_path');
+            cleanPayload.remove('media');
+            cleanPayload.remove('category_id');
+            cleanPayload.remove('resolution_summary');
+            cleanPayload.remove('submitted_at');
+          }
           return cleanPayload;
         }).toList();
 
@@ -162,12 +173,19 @@ class SyncService {
           for (final row in dirtyRows) {
             final id = row['id'] as String;
             if (!syncedIds.contains(id)) continue;
+            if (tableName == 'waste_reports') {
+              final uploaded =
+                  await _uploadWasteMedia(id, row['images'], row['video_path']);
+              if (!uploaded) continue;
+            }
             await dbHelper.update(
               tableName,
               {
                 'sync_status': 'synced',
                 'dirty': 0,
                 'last_synced': DateTime.now().toIso8601String(),
+                if (tableName == 'waste_reports') 'images': jsonEncode([]),
+                if (tableName == 'waste_reports') 'video_path': null,
               },
               where: 'id = ?',
               whereArgs: [id],
@@ -177,6 +195,48 @@ class SyncService {
       }
     } catch (e) {
       debugPrint('[SyncService] Error uploading $tableName: $e');
+    }
+  }
+
+  Future<bool> _uploadWasteMedia(
+      String reportId, Object? rawImages, Object? rawVideoPath) async {
+    try {
+      final values = rawImages is String
+          ? (jsonDecode(rawImages) as List<dynamic>)
+          : (rawImages as List<dynamic>? ?? const []);
+      final paths = values
+          .map((value) => value.toString())
+          .where((value) => value.isNotEmpty && !value.startsWith('http'))
+          .toList(growable: false);
+      final videoPath = rawVideoPath?.toString();
+      if (paths.isEmpty && (videoPath == null || videoPath.isEmpty)) {
+        return true;
+      }
+      final files = <MultipartFile>[];
+      for (final path in paths) {
+        files.add(await MultipartFile.fromFile(
+          path,
+          filename: path.split(RegExp(r'[/\\]')).last,
+        ));
+      }
+      final response = await _apiDio.post(
+        ApiEndpoints.wasteReportMedia(reportId),
+        data: FormData.fromMap({
+          if (files.isNotEmpty) 'photos': files,
+          if (videoPath != null && videoPath.isNotEmpty)
+            'video': await MultipartFile.fromFile(
+              videoPath,
+              filename: videoPath.split(RegExp(r'[/\\]')).last,
+            ),
+        }),
+      );
+      return response.statusCode != null &&
+          response.statusCode! >= 200 &&
+          response.statusCode! < 300;
+    } catch (error) {
+      debugPrint(
+          '[SyncService] Waste evidence upload retained for retry: $error');
+      return false;
     }
   }
 

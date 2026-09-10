@@ -4,7 +4,7 @@ import 'app_colors.dart';
 import 'app_typography.dart';
 import 'app_spacing.dart';
 
-/// Central Material Design 3 theme configuration for Tubigon Smart Tourism App.
+/// Central Material Design 3 theme configuration for Tour Tubigon.
 abstract final class AppTheme {
   static ThemeData get light => _buildTheme(Brightness.light);
   static ThemeData get dark => _buildTheme(Brightness.dark);
@@ -99,7 +99,9 @@ abstract final class AppTheme {
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
           foregroundColor: AppColors.white,
-          minimumSize: const Size.fromHeight(AppSpacing.buttonHeight),
+          // A global infinite width crashes buttons placed in a Row/Wrap.
+          // Full-width buttons should be constrained by their parent instead.
+          minimumSize: const Size(0, AppSpacing.buttonHeight),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           elevation: 2,
@@ -120,7 +122,7 @@ abstract final class AppTheme {
         style: OutlinedButton.styleFrom(
           backgroundColor: AppColors.darkSurface,
           foregroundColor: AppColors.white,
-          minimumSize: const Size.fromHeight(AppSpacing.buttonHeight),
+          minimumSize: const Size(0, AppSpacing.buttonHeight),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           side: const BorderSide(color: AppColors.accent, width: 1.5),

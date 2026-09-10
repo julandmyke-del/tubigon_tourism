@@ -16,13 +16,12 @@ class VerifyEmail extends Mailable
         public readonly string $userName,
         public readonly string $verificationCode,
         public readonly int $expiresInMinutes,
-    ) {
-    }
+    ) {}
 
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Tubigon Smart Tourism Verification Code',
+            subject: 'Tour Tubigon Verification Code',
         );
     }
 

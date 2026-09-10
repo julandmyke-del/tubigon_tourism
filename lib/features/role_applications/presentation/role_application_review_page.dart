@@ -230,11 +230,16 @@ class _ReviewDialogState extends ConsumerState<_ReviewDialog> {
   final _notes = TextEditingController();
   bool _busy = false;
   late final Map<String, bool> _checklist;
+  String? _reviewCategoryId;
 
   @override
   void initState() {
     super.initState();
     final partner = widget.application.type == 'tourism_partner';
+    _reviewCategoryId = widget.admin
+        ? (widget.application.recommendedMsmeCategory?['id']?.toString() ??
+            widget.application.requestedMsmeCategory?['id']?.toString())
+        : widget.application.requestedMsmeCategory?['id']?.toString();
     _checklist = partner
         ? {
             'applicant_identity_complete': false,
@@ -263,6 +268,12 @@ class _ReviewDialogState extends ConsumerState<_ReviewDialog> {
   @override
   Widget build(BuildContext context) {
     final app = widget.application;
+    final options =
+        ref.watch(roleApplicationOptionsProvider).valueOrNull ?? const {};
+    final categories = (options['msme_categories'] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
     return Dialog.fullscreen(
         child: Scaffold(
       backgroundColor: const Color(0xFF0B132B),
@@ -297,7 +308,55 @@ class _ReviewDialogState extends ConsumerState<_ReviewDialog> {
               child: _Value(
                   label: 'Tourist Spot',
                   value:
-                      '${app.requestedSpot?['name']}\n${app.requestedSpot?['address'] ?? ''}')),
+                      '${app.requestedSpot?['name']}\nCategory: ${app.requestedSpot?['category']?['name'] ?? 'Uncategorized'}\n${app.requestedSpot?['address'] ?? ''}')),
+        if (app.type == 'msme_owner')
+          _Section(
+              title: 'Authoritative business category',
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _Value(
+                        label: 'Applicant requested',
+                        value: app.requestedMsmeCategory?['name']?.toString() ??
+                            app.payload['business_category']?.toString() ??
+                            'Not selected'),
+                    if (app.recommendedMsmeCategory != null)
+                      _Value(
+                          label: 'LGU recommended',
+                          value: app.recommendedMsmeCategory?['name']
+                                  ?.toString() ??
+                              ''),
+                    if (app.finalMsmeCategory != null)
+                      _Value(
+                          label: 'Admin final',
+                          value:
+                              app.finalMsmeCategory?['name']?.toString() ?? ''),
+                    if ((!widget.admin && app.status == 'under_review') ||
+                        (widget.admin &&
+                            app.status == 'recommended_for_approval'))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: DropdownButtonFormField<String>(
+                          initialValue: _reviewCategoryId,
+                          decoration: InputDecoration(
+                              labelText: widget.admin
+                                  ? 'Final category'
+                                  : 'Recommended category',
+                              helperText:
+                                  'The applicant’s original selection remains in history.'),
+                          items: categories
+                              .map((category) => DropdownMenuItem<String>(
+                                  value: category['id']?.toString(),
+                                  child: Text(category['name']?.toString() ??
+                                      'Category')))
+                              .toList(),
+                          onChanged: _busy
+                              ? null
+                              : (value) =>
+                                  setState(() => _reviewCategoryId = value),
+                        ),
+                      ),
+                  ])),
         if (app.type == 'msme_owner' && app.payload['latitude'] != null)
           _Section(
               title: 'Map preview',
@@ -451,11 +510,19 @@ class _ReviewDialogState extends ConsumerState<_ReviewDialog> {
     try {
       if (widget.admin) {
         await repository.adminAction(widget.application.id, action,
-            notes: _notes.text.trim().isEmpty ? null : _notes.text.trim());
+            notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+            finalMsmeCategoryId:
+                action == 'approve' && widget.application.type == 'msme_owner'
+                    ? _reviewCategoryId
+                    : null);
       } else {
         await repository.lguAction(widget.application.id, action,
             notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
-            checklist: action == 'start-review' ? null : _checklist);
+            checklist: action == 'start-review' ? null : _checklist,
+            recommendedMsmeCategoryId:
+                action == 'recommend' && widget.application.type == 'msme_owner'
+                    ? _reviewCategoryId
+                    : null);
       }
       if (!mounted) return;
       if (widget.admin) {

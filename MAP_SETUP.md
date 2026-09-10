@@ -26,6 +26,57 @@ flutter run -d chrome --dart-define=MAP_STYLE_URL=https://example.com/style.json
 
 Any replacement provider must permit the application's usage and include the required OpenStreetMap attribution. Do not point production builds at `tile.openstreetmap.org` or bulk-download public tiles.
 
+### Contextual layer audit and runtime enhancement
+
+The configured OpenFreeMap Liberty style and vector TileJSON were inspected on
+2026-09-06. The style declares and uses `boundary`, `place`, `transportation`,
+`transportation_name`, `building`, `water`, `water_name`, `waterway`, `landuse`,
+`landcover`, `park`, and `poi` source layers. Its existing text layers use only
+the published `Noto Sans Regular`, `Noto Sans Italic`, and `Noto Sans Bold`
+glyph stacks.
+
+The Smart Map inspects the loaded style at runtime before installing any
+optional contextual layer. It enhances local/minor roads from zoom 13, service
+roads from zoom 15, waterways and buildings at close zoom, and OSM `village`
+locality labels from zoom 10.5. If a deployment supplies a different style and
+a required vector source layer or glyph stack is absent, that enhancement is
+logged and skipped without affecting the base map or tourism markers.
+
+An audit of the current OpenFreeMap z14 tiles covering Tubigon found locality
+points, roads, buildings, facilities, waterways, and land-use data, but no
+local features in the vector `boundary` layer. The OSM `village` points provide
+useful locality/barangay-name context, but they are not treated as authoritative
+barangay polygons.
+
+### Optional verified barangay boundaries
+
+No verified barangay boundary dataset is currently bundled. The map therefore
+does not invent or draw barangay polygons. Infrastructure is ready for a future
+verified GIS export at:
+
+```text
+assets/data/tubigon_barangay_boundaries.geojson
+```
+
+The asset must be a GeoJSON `FeatureCollection` whose features have unique
+`properties.name` values and `Polygon` or `MultiPolygon` geometry. It must also
+include this top-level provenance contract:
+
+```json
+{
+  "metadata": {
+    "municipality_psgc": "0701245000",
+    "source": "Authoritative dataset name",
+    "source_url": "https://authoritative.example/dataset"
+  }
+}
+```
+
+Missing, malformed, unattributed, or wrong-municipality data is rejected. A
+valid asset is loaded once per style lifecycle and rendered as subtle fill,
+line, and name layers. Because `assets/data/` is already a Flutter asset
+directory, adding the verified file requires no tourism database or API change.
+
 ## Flutter Web
 
 `web/index.html` loads the MapLibre GL JS runtime and stylesheet required by `maplibre_gl_web`. No token is required. Keep the JavaScript version aligned with the resolved `maplibre_gl_web` package when upgrading.

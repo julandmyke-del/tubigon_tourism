@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\ValidatesTubigonCoordinates;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\Msme;
+use App\Models\MsmeCategory;
 use App\Models\Notification;
 use App\Models\Profile;
 use App\Models\Role;
@@ -20,7 +21,9 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -48,7 +51,7 @@ class RoleApplicationController extends Controller
         return response()->json(['status' => 'success', 'data' => [
             'application_types' => RoleApplication::TYPES,
             'statuses' => RoleApplication::STATUSES,
-            'msme_categories' => self::MSME_CATEGORIES,
+            'msme_categories' => $this->msmeCategories(),
             'msme_applications_enabled' => SystemSetting::enabled('msme_applications_enabled'),
             'partner_applications_enabled' => SystemSetting::enabled('partner_applications_enabled'),
             'eligible' => [
@@ -130,11 +133,15 @@ class RoleApplicationController extends Controller
         );
 
         $data = $this->validatePayload($request, $application->application_type, false);
-        $application->update([
+        $changes = [
             'payload' => array_merge($application->payload ?? [], $data['payload']),
             'requested_tourist_spot_id' => $data['requested_tourist_spot_id']
                 ?? $application->requested_tourist_spot_id,
-        ]);
+        ];
+        if (Schema::hasColumn('role_applications', 'requested_msme_category_id') && array_key_exists('requested_msme_category_id', $data)) {
+            $changes['requested_msme_category_id'] = $data['requested_msme_category_id'];
+        }
+        $application->update($changes);
         $this->recordTransition($application, $request->user()->id, 'draft_updated', $application->status, $application->status);
         $this->audit($request->user()->id, 'Role application draft updated', $application);
 
@@ -154,15 +161,18 @@ class RoleApplicationController extends Controller
             abort_unless($locked->canTransitionTo(RoleApplication::STATUS_SUBMITTED), 422, 'This application was already processed.');
             $from = $locked->status;
             $payload = array_merge($locked->payload ?? [], $data['payload']);
-            $locked->fill([
+            $changes = [
                 'payload' => $payload,
                 'requested_tourist_spot_id' => $data['requested_tourist_spot_id'] ?? $locked->requested_tourist_spot_id,
                 'status' => RoleApplication::STATUS_SUBMITTED,
                 'submitted_at' => now(),
                 'lgu_checklist' => null,
-                'reviewed_by_lgu_id' => null,
-                'lgu_reviewed_at' => null,
-            ]);
+                'reviewed_by_lgu_id' => null, 'lgu_reviewed_at' => null,
+            ];
+            if (Schema::hasColumn('role_applications', 'requested_msme_category_id') && array_key_exists('requested_msme_category_id', $data)) {
+                $changes['requested_msme_category_id'] = $data['requested_msme_category_id'];
+            }
+            $locked->fill($changes);
             if ($locked->application_type === RoleApplication::TYPE_MSME) {
                 $locked->linked_msme_id = $this->syncPendingMsme($locked, $payload)->id;
             }
@@ -229,6 +239,10 @@ class RoleApplicationController extends Controller
             'notes' => 'nullable|string|max:3000',
             'checklist' => 'required|array',
             'checklist.*' => 'boolean',
+            'recommended_msme_category_id' => [
+                'nullable', 'uuid',
+                Rule::exists('msme_categories', 'id')->where(fn ($query) => $query->where('is_active', true)->whereNull('deleted_at')),
+            ],
         ]);
         $this->validateChecklist($validated['checklist']);
         if (in_array(false, array_values($validated['checklist']), true)) {
@@ -267,7 +281,14 @@ class RoleApplicationController extends Controller
 
     public function approve(Request $request, string $id, EmailNotificationService $emailDelivery): JsonResponse
     {
-        $validated = $request->validate(['notes' => 'nullable|string|max:3000']);
+        $rules = ['notes' => 'nullable|string|max:3000'];
+        if (Schema::hasTable('msme_categories')) {
+            $rules['final_msme_category_id'] = [
+                'nullable', 'uuid',
+                Rule::exists('msme_categories', 'id')->where(fn ($query) => $query->where('is_active', true)->whereNull('deleted_at')),
+            ];
+        }
+        $validated = $request->validate($rules);
 
         $application = DB::transaction(function () use ($request, $id, $validated): RoleApplication {
             $application = RoleApplication::whereKey($id)->lockForUpdate()->firstOrFail();
@@ -277,6 +298,12 @@ class RoleApplicationController extends Controller
 
             $targetRole = Role::where('name', $application->application_type)->firstOrFail();
             if ($application->application_type === RoleApplication::TYPE_MSME) {
+                if (Schema::hasColumn('role_applications', 'final_msme_category_id')) {
+                    $application->final_msme_category_id = $validated['final_msme_category_id']
+                        ?? $application->recommended_msme_category_id
+                        ?? $application->requested_msme_category_id;
+                    $application->save();
+                }
                 $this->provisionMsmeOwner($application, $applicant);
             } else {
                 $this->provisionTourismPartner($application, $applicant, $request->user()->id);
@@ -285,14 +312,15 @@ class RoleApplicationController extends Controller
             $applicant->update(['role_id' => $targetRole->id]);
             Profile::whereKey($applicant->id)->update(['role_id' => $targetRole->id]);
             $from = $application->status;
-            $application->update([
+            $reviewChanges = [
                 'status' => RoleApplication::STATUS_APPROVED,
                 'active_slot' => null,
                 'admin_reviewed_by_id' => $request->user()->id,
                 'admin_reviewed_at' => now(),
                 'admin_notes' => $validated['notes'] ?? null,
                 'approved_at' => now(),
-            ]);
+            ];
+            $application->update($reviewChanges);
             RoleApplication::query()
                 ->where('applicant_user_id', $applicant->id)
                 ->where('id', '!=', $application->id)
@@ -381,7 +409,7 @@ class RoleApplicationController extends Controller
             }
             $from = $application->status;
             $terminal = in_array($target, [RoleApplication::STATUS_REJECTED, RoleApplication::STATUS_WITHDRAWN], true);
-            $application->update([
+            $changes = [
                 'status' => $target,
                 'active_slot' => $terminal ? null : true,
                 'reviewed_by_lgu_id' => $request->user()->id,
@@ -389,8 +417,18 @@ class RoleApplicationController extends Controller
                 'lgu_notes' => $input['notes'] ?? $application->lgu_notes,
                 'lgu_checklist' => $input['checklist'] ?? $application->lgu_checklist,
                 'rejected_at' => $target === RoleApplication::STATUS_REJECTED ? now() : null,
+            ];
+            if ($target === RoleApplication::STATUS_RECOMMENDED
+                && Schema::hasColumn('role_applications', 'recommended_msme_category_id')
+                && $application->application_type === RoleApplication::TYPE_MSME) {
+                $changes['recommended_msme_category_id'] = $input['recommended_msme_category_id'] ?? null;
+            }
+            $application->update($changes);
+            $this->recordTransition($application, $request->user()->id, $action, $from, $target, $input['notes'] ?? null, [
+                'checklist' => $input['checklist'] ?? null,
+                'requested_msme_category_id' => $application->requested_msme_category_id ?? null,
+                'recommended_msme_category_id' => $application->recommended_msme_category_id ?? null,
             ]);
-            $this->recordTransition($application, $request->user()->id, $action, $from, $target, $input['notes'] ?? null, ['checklist' => $input['checklist'] ?? null]);
 
             if ($target === RoleApplication::STATUS_RECOMMENDED) {
                 $this->notifyRole('admin', 'Application recommended by LGU', $this->applicationLabel($application).' is ready for final review.', $application, '/admin/access-requests/'.$application->id);
@@ -423,7 +461,7 @@ class RoleApplicationController extends Controller
         ]);
     }
 
-    /** @return array{payload: array<string, mixed>, requested_tourist_spot_id?: string|null} */
+    /** @return array<string, mixed> */
     private function validatePayload(Request $request, string $type, bool $complete, ?RoleApplication $application = null): array
     {
         $request->validate([
@@ -433,17 +471,36 @@ class RoleApplicationController extends Controller
         ]);
 
         $safeKeys = $type === RoleApplication::TYPE_MSME
-            ? ['applicant_contact', 'business_name', 'business_category', 'business_address', 'business_phone', 'business_description', 'latitude', 'longitude', 'reason', 'supporting_evidence', 'declaration']
+            ? ['applicant_contact', 'business_name', 'business_category', 'business_category_id', 'business_address', 'business_phone', 'business_description', 'latitude', 'longitude', 'reason', 'supporting_evidence', 'declaration']
             : ['applicant_contact', 'organization', 'contact_phone', 'relationship', 'reason', 'supporting_evidence', 'declaration'];
         $incoming = $request->only($safeKeys);
         $payload = $complete ? array_merge($application?->payload ?? [], $incoming) : $incoming;
 
         if ($type === RoleApplication::TYPE_MSME) {
             $required = $complete ? 'required' : 'sometimes';
+            $category = null;
+            if (Schema::hasTable('msme_categories')) {
+                if (! empty($payload['business_category_id'])) {
+                    $category = MsmeCategory::whereKey($payload['business_category_id'])->where('is_active', true)->first();
+                } elseif (! empty($payload['business_category'])) {
+                    $category = MsmeCategory::whereRaw('LOWER(name) = ?', [strtolower(trim((string) $payload['business_category']))])
+                        ->where('is_active', true)->first();
+                } elseif ($application?->requested_msme_category_id) {
+                    $category = MsmeCategory::whereKey($application->requested_msme_category_id)->where('is_active', true)->first();
+                }
+                if ($complete && ! $category) {
+                    throw ValidationException::withMessages(['business_category_id' => ['Select an active business category.']]);
+                }
+                if ($category) {
+                    $payload['business_category_id'] = $category->id;
+                    $payload['business_category'] = $category->name;
+                }
+            }
             $rules = [
                 'applicant_contact' => [$required, 'string', 'max:255'],
                 'business_name' => [$required, 'string', 'max:255'],
-                'business_category' => [$required, Rule::in(self::MSME_CATEGORIES)],
+                'business_category' => [$required, 'string', 'max:255'],
+                'business_category_id' => ['sometimes', 'uuid'],
                 'business_address' => [$required, 'string', 'max:1000'],
                 'business_phone' => [$required, 'string', 'max:80'],
                 'business_description' => [$required, 'string', 'max:3000'],
@@ -456,7 +513,10 @@ class RoleApplicationController extends Controller
             $validated = Validator::make($payload, $rules)->validate();
             $this->validateTubigonCoordinates($validated);
 
-            return ['payload' => $validated];
+            return [
+                'payload' => $validated,
+                'requested_msme_category_id' => $category?->id,
+            ];
         }
 
         $requestedSpot = $request->input('requested_tourist_spot_id', $application?->requested_tourist_spot_id);
@@ -500,8 +560,13 @@ class RoleApplicationController extends Controller
             'submitted_at' => now(),
             'booking_enabled' => false,
         ];
+        if (Schema::hasColumn('msmes', 'category_id')) {
+            $values['category_id'] = $application->requested_msme_category_id
+                ?? ($payload['business_category_id'] ?? null);
+        }
         if ($msme) {
             $msme->update($values);
+
             return $msme->fresh();
         }
 
@@ -516,7 +581,18 @@ class RoleApplicationController extends Controller
         abort_if(Msme::where('profile_id', $applicant->id)->where('id', '!=', $msme->id)->exists(), 422, 'This applicant already owns another MSME.');
         // Role approval does not publish the business. Existing LGU MSME
         // verification remains the independent public visibility gate.
-        $msme->update(['is_verified' => false, 'booking_enabled' => false]);
+        $values = ['is_verified' => false, 'booking_enabled' => false];
+        if (Schema::hasColumn('msmes', 'category_id')) {
+            $categoryId = $application->final_msme_category_id
+                ?? $application->recommended_msme_category_id
+                ?? $application->requested_msme_category_id;
+            if ($categoryId) {
+                $category = MsmeCategory::whereKey($categoryId)->where('is_active', true)->firstOrFail();
+                $values['category_id'] = $category->id;
+                $values['category'] = $category->name;
+            }
+        }
+        $msme->update($values);
     }
 
     private function provisionTourismPartner(RoleApplication $application, User $applicant, string $adminId): void
@@ -617,15 +693,34 @@ class RoleApplicationController extends Controller
     /** @return array<int, string> */
     private function relations(): array
     {
-        return [
+        $relations = [
             'applicant:id,name,email,phone,role_id',
             'applicant.role:id,name',
-            'requestedTouristSpot:id,name,address,is_active',
+            'requestedTouristSpot:id,name,address,is_active,category_id',
+            'requestedTouristSpot.category:id,name,slug',
             'linkedMsme:id,profile_id,name,category,address,latitude,longitude,is_verified,verification_status',
             'lguReviewer:id,name,email',
             'adminReviewer:id,name,email',
             'history.actor:id,name,email',
         ];
+        if (Schema::hasTable('msme_categories') && Schema::hasColumn('role_applications', 'requested_msme_category_id')) {
+            array_push($relations, 'requestedMsmeCategory:id,name,slug', 'recommendedMsmeCategory:id,name,slug', 'finalMsmeCategory:id,name,slug');
+        }
+
+        return $relations;
+    }
+
+    /** @return array<int, array{id: string|null, name: string, slug: string}> */
+    private function msmeCategories(): array
+    {
+        if (! Schema::hasTable('msme_categories')) {
+            return collect(self::MSME_CATEGORIES)->map(fn (string $name) => [
+                'id' => null, 'name' => $name, 'slug' => Str::slug($name),
+            ])->all();
+        }
+
+        return MsmeCategory::where('is_active', true)->orderBy('display_order')->orderBy('name')
+            ->get(['id', 'name', 'slug'])->toArray();
     }
 
     private function recordTransition(

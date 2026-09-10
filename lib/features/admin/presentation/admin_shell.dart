@@ -51,6 +51,10 @@ class AdminShell extends ConsumerWidget {
         label: 'Announcements',
         route: '/admin/announcements'),
     _AdminMenuItem(
+        icon: Icons.support_agent_rounded,
+        label: 'Concerns & Support',
+        route: '/admin/concerns'),
+    _AdminMenuItem(
         icon: Icons.analytics_rounded,
         label: 'Analytics',
         route: '/admin/analytics'),

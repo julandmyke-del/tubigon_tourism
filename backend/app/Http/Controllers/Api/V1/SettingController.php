@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Models\SystemSetting;
-use App\Models\Setting;
 use App\Models\ActivityLog;
+use App\Models\Setting;
+use App\Models\SystemSetting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +21,7 @@ class SettingController extends Controller
             ['user_id' => $request->user()->id],
             ['notifications_enabled' => true, 'location_enabled' => true, 'offline_mode' => false, 'language' => 'en']
         );
+
         return response()->json(['status' => 'success', 'data' => $settings]);
     }
 
@@ -49,7 +50,8 @@ class SettingController extends Controller
      */
     public function systemSettings(): JsonResponse
     {
-        $settings = SystemSetting::firstOrCreate([], ['app_name' => 'Tubigon Smart Tourism']);
+        $settings = SystemSetting::firstOrCreate([], ['app_name' => 'Tour Tubigon']);
+
         return response()->json(['status' => 'success', 'data' => $settings->only([
             'id', 'app_name', 'municipality_name', 'contact_email', 'contact_phone',
             'tourism_office_address', 'support_contact',

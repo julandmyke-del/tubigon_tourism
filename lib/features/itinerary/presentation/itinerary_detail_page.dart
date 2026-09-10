@@ -125,18 +125,41 @@ class _ItineraryDetailPageState extends ConsumerState<ItineraryDetailPage> {
             icon: const Icon(Icons.play_arrow_rounded),
             label: const Text('Start Trip'),
           );
+          final carbon = OutlinedButton.icon(
+            onPressed: _route == null
+                ? null
+                : () => context.push(Uri(
+                      path: '/carbon-estimator',
+                      queryParameters: {
+                        'distance': _route!.distanceKm.toStringAsFixed(3),
+                        'source': 'itinerary',
+                        'itinerary': trip.id,
+                        'legs': _route!.legs
+                            .map((leg) => leg.distanceKm.toStringAsFixed(3))
+                            .join(','),
+                      },
+                    ).toString()),
+            icon: const Icon(Icons.co2_rounded),
+            label: const Text('Estimate carbon'),
+          );
           if (constraints.maxWidth < 480) {
             return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   toggle,
                   const SizedBox(height: 8),
-                  Align(alignment: Alignment.centerRight, child: start),
+                  Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: 8,
+                    children: [carbon, start],
+                  ),
                 ]);
           }
           return Row(children: [
             Expanded(child: toggle),
             const SizedBox(width: 10),
+            carbon,
+            const SizedBox(width: 8),
             start,
           ]);
         }),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../connected_operations/presentation/announcement_placement.dart';
 import '../../providers/tourism_partner_providers.dart';
 import '../partner_theme.dart';
 
@@ -52,6 +53,7 @@ class PartnerDashboardPage extends ConsumerWidget {
                         ]),
                   ],
                 ),
+                const AnnouncementPlacement(),
                 const SizedBox(height: 20),
                 if (managed.isEmpty)
                   const _PartnerState(

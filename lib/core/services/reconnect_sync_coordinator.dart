@@ -23,8 +23,22 @@ final reconnectSyncStatusProvider =
 /// Initializes one app-wide reconnect listener. Network-interface availability
 /// is followed by a real Laravel request before any queued writes are flushed.
 final reconnectSyncCoordinatorProvider = Provider<void>((ref) {
+  var disposed = false;
+  Future<void>? activeSync;
+  ref.onDispose(() => disposed = true);
+
+  void startSync() {
+    if (disposed || activeSync != null) return;
+    final operation = _syncAfterReconnect(ref, () => !disposed);
+    activeSync = operation;
+    unawaited(operation.whenComplete(() {
+      if (identical(activeSync, operation)) activeSync = null;
+    }));
+  }
+
   ref.listen<AsyncValue<ConnectivityStatus>>(connectivityProvider,
       (previous, next) {
+    if (disposed) return;
     final status = next.valueOrNull;
     if (status == ConnectivityStatus.offline) {
       ref.read(reconnectSyncStatusProvider.notifier).state =
@@ -33,33 +47,52 @@ final reconnectSyncCoordinatorProvider = Provider<void>((ref) {
     }
     if (status == ConnectivityStatus.online &&
         previous?.valueOrNull != ConnectivityStatus.online) {
-      unawaited(_syncAfterReconnect(ref));
+      startSync();
     }
   }, fireImmediately: true);
 });
 
-Future<void> _syncAfterReconnect(Ref ref) async {
+Future<void> _syncAfterReconnect(Ref ref, bool Function() isActive) async {
+  if (!isActive()) return;
   ref.read(reconnectSyncStatusProvider.notifier).state =
       ReconnectSyncStatus.checking;
-  final auth = ref.read(authProvider);
+  var auth = ref.read(authProvider);
   try {
-    await ref.read(apiClientProvider).get(
-          auth.isLoggedIn ? ApiEndpoints.syncStatus : ApiEndpoints.mapLocations,
-        );
+    if (auth.isLoggedIn) {
+      // Revalidate the token and refresh the authoritative role before any
+      // locally queued Tourist mutation is considered for upload.
+      await ref.read(authProvider.notifier).reloadProfile();
+      if (!isActive()) return;
+      auth = ref.read(authProvider);
+      if (!auth.isLoggedIn || auth.isOfflineSession) {
+        ref.read(reconnectSyncStatusProvider.notifier).state =
+            ReconnectSyncStatus.failed;
+        return;
+      }
+    } else {
+      await ref.read(apiClientProvider).get(ApiEndpoints.mapLocations);
+      if (!isActive()) return;
+    }
   } catch (_) {
+    if (!isActive()) return;
     ref.read(reconnectSyncStatusProvider.notifier).state =
         ReconnectSyncStatus.failed;
     return;
   }
 
+  if (!isActive()) return;
   ref.read(reconnectSyncStatusProvider.notifier).state =
       ReconnectSyncStatus.syncing;
   if (auth.isLoggedIn) {
     await SyncService.instance.triggerSyncAll();
+    if (!isActive()) return;
     await ref.read(itineraryRepositoryProvider).flushPendingMutations();
+    if (!isActive()) return;
     await ref.read(favoriteKeysProvider.notifier).reload();
+    if (!isActive()) return;
   }
 
+  if (!isActive()) return;
   ref.invalidate(mapMarkersProvider);
   ref.invalidate(mapPlaceCategoriesProvider);
   ref.invalidate(emergencyContactsListProvider);

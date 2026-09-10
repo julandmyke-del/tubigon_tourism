@@ -230,7 +230,7 @@ class _MsmeShellState extends ConsumerState<MsmeShell> {
                   Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Tubigon Tourism',
+                        Text('Tour Tubigon',
                             style: GoogleFonts.plusJakartaSans(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,

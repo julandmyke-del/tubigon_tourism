@@ -46,11 +46,15 @@ class RoleApplicationRepository {
       }));
 
   Future<RoleApplication> lguAction(String id, String action,
-          {String? notes, Map<String, bool>? checklist}) async =>
+          {String? notes,
+          Map<String, bool>? checklist,
+          String? recommendedMsmeCategoryId}) async =>
       _item(await _client
           .post(ApiEndpoints.lguRoleApplicationAction(id, action), data: {
         if (notes != null) 'notes': notes,
         if (checklist != null) 'checklist': checklist,
+        if (recommendedMsmeCategoryId != null)
+          'recommended_msme_category_id': recommendedMsmeCategoryId,
       }));
 
   Future<List<RoleApplication>> adminList(
@@ -69,10 +73,13 @@ class RoleApplicationRepository {
       }));
 
   Future<RoleApplication> adminAction(String id, String action,
-          {String? notes}) async =>
-      _item(await _client.post(
-          ApiEndpoints.adminAccessRequestAction(id, action),
-          data: {if (notes != null) 'notes': notes}));
+          {String? notes, String? finalMsmeCategoryId}) async =>
+      _item(await _client
+          .post(ApiEndpoints.adminAccessRequestAction(id, action), data: {
+        if (notes != null) 'notes': notes,
+        if (finalMsmeCategoryId != null)
+          'final_msme_category_id': finalMsmeCategoryId,
+      }));
 
   Map<String, dynamic> _map(dynamic response) =>
       Map<String, dynamic>.from(response.data['data'] as Map);

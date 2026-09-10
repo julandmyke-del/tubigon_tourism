@@ -107,8 +107,44 @@ final adminSettingsProvider =
   return repo.getSystemSettings();
 });
 
-final adminActivityLogsProvider =
-    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+class AdminActivityLogQuery {
+  const AdminActivityLogQuery({
+    this.page = 1,
+    this.role,
+    this.action,
+    this.dateFrom,
+    this.dateTo,
+    this.search,
+  });
+  final int page;
+  final String? role;
+  final String? action;
+  final String? dateFrom;
+  final String? dateTo;
+  final String? search;
+
+  @override
+  bool operator ==(Object other) =>
+      other is AdminActivityLogQuery &&
+      other.page == page &&
+      other.role == role &&
+      other.action == action &&
+      other.dateFrom == dateFrom &&
+      other.dateTo == dateTo &&
+      other.search == search;
+  @override
+  int get hashCode => Object.hash(page, role, action, dateFrom, dateTo, search);
+}
+
+final adminActivityLogsProvider = FutureProvider.autoDispose
+    .family<Map<String, dynamic>, AdminActivityLogQuery>((ref, query) async {
   final repo = ref.watch(adminRepositoryProvider);
-  return repo.getActivityLogs();
+  return repo.getActivityLogs(
+    page: query.page,
+    role: query.role,
+    action: query.action,
+    dateFrom: query.dateFrom,
+    dateTo: query.dateTo,
+    search: query.search,
+  );
 });

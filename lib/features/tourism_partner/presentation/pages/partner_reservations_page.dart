@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../connected_operations/presentation/reservation_conversation.dart';
 
 import '../../providers/tourism_partner_providers.dart';
 import '../partner_theme.dart';
@@ -170,9 +171,14 @@ class _PartnerReservationsState extends ConsumerState<PartnerReservationsPage> {
                   children: [
                     _detail('Tourist', item['guest_name']),
                     _detail(
-                        'Contact',
-                        item['user'] is Map
-                            ? (item['user'] as Map)['phone']
+                        'Phone',
+                        item['customer'] is Map
+                            ? (item['customer'] as Map)['phone']
+                            : null),
+                    _detail(
+                        'Email',
+                        item['customer'] is Map
+                            ? (item['customer'] as Map)['email']
                             : null),
                     _detail('Destination', item['listing_name']),
                     _detail('Visit date', item['date']),
@@ -180,6 +186,20 @@ class _PartnerReservationsState extends ConsumerState<PartnerReservationsPage> {
                     _detail('Guests', item['guests']),
                     _detail('Status', item['status']),
                     _detail('Special request', item['notes']),
+                    if (item['items'] is List) ...[
+                      const Divider(height: 28),
+                      Text('Booking Items', style: PartnerTheme.headingSmall()),
+                      for (final line
+                          in (item['items'] as List).whereType<Map>())
+                        ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(
+                                line['offering_name_snapshot']?.toString() ??
+                                    'Offering'),
+                            subtitle: Text(
+                                '${line['quantity']} × ₱${line['unit_price_snapshot']}'),
+                            trailing: Text('₱${line['subtotal']}')),
+                    ],
                     const Divider(height: 28),
                     Text('Status History', style: PartnerTheme.headingSmall()),
                     const SizedBox(height: 8),
@@ -194,6 +214,8 @@ class _PartnerReservationsState extends ConsumerState<PartnerReservationsPage> {
                         subtitle: Text(
                             '${event['notes'] ?? ''}\n${event['created_at'] ?? ''}'),
                       ),
+                    const Divider(height: 28),
+                    ReservationConversation(reservationId: id, partner: true),
                   ]),
             ),
           ),

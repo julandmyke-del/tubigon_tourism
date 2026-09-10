@@ -9,6 +9,9 @@ import '../../providers/admin_providers.dart';
 import '../../../map/providers/map_provider.dart';
 import '../../../tourist_spots/repositories/tourist_spot_repository.dart';
 import '../../../ferry/repositories/ferry_repository.dart';
+import '../../../lgupage/presentation/pages/lgu_eco_tips_page.dart';
+import '../../../lgupage/presentation/pages/lgu_ferry_management_page.dart';
+import '../../../lgupage/providers/lgu_providers.dart';
 import '../../../../core/widgets/tourist_spot_booking_dialog.dart';
 
 class AdminTourismManagementPage extends ConsumerStatefulWidget {
@@ -41,9 +44,7 @@ class _AdminTourismManagementPageState
   Widget build(BuildContext context) {
     final spotsAsync = ref.watch(adminSpotsProvider);
     final catsAsync = ref.watch(adminCategoriesProvider);
-    final ferryAsync = ref.watch(adminFerryProvider);
     final emergencyAsync = ref.watch(adminEmergencyProvider);
-    final ecoTipsAsync = ref.watch(adminEcoTipsProvider);
 
     return Scaffold(
       backgroundColor: AdminColors.navy950,
@@ -76,6 +77,7 @@ class _AdminTourismManagementPageState
                   ],
                 ),
                 IconButton(
+                  tooltip: 'Refresh tourism records',
                   style: IconButton.styleFrom(
                     backgroundColor: AdminColors.cardBg,
                     side: const BorderSide(color: AdminColors.cardBorder),
@@ -84,8 +86,10 @@ class _AdminTourismManagementPageState
                     ref.invalidate(adminSpotsProvider);
                     ref.invalidate(adminCategoriesProvider);
                     ref.invalidate(adminFerryProvider);
+                    ref.invalidate(lguFerrySchedulesProvider);
                     ref.invalidate(adminEmergencyProvider);
                     ref.invalidate(adminEcoTipsProvider);
+                    ref.invalidate(lguEcoTipsProvider);
                   },
                   icon: const Icon(Icons.refresh_rounded,
                       color: AdminColors.orange),
@@ -131,11 +135,11 @@ class _AdminTourismManagementPageState
                   // Tab 2: Categories
                   _buildCategoriesTab(catsAsync),
                   // Tab 3: Ferry Schedules
-                  _buildFerryTab(ferryAsync),
+                  const LguFerryManagementPage(),
                   // Tab 4: Emergency Contacts
                   _buildEmergencyTab(emergencyAsync),
                   // Tab 5: Eco Guidelines
-                  _buildEcoTab(ecoTipsAsync),
+                  const LguEcoTipsPage(),
                 ],
               ),
             ),
@@ -179,7 +183,8 @@ class _AdminTourismManagementPageState
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
                   backgroundColor: AdminColors.orange,
-                  foregroundColor: Colors.white),
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(0, 48)),
               onPressed: () => _showSpotDialog(context),
               icon: const Icon(Icons.add_location_alt_rounded, size: 18),
               label: const Text('Add Tourist Spot',
@@ -388,35 +393,257 @@ class _AdminTourismManagementPageState
   }
 
   Widget _buildCategoriesTab(AsyncValue<List<Map<String, dynamic>>> catsAsync) {
-    return Container(
-      decoration: AdminColors.glassDecoration(),
-      padding: const EdgeInsets.all(AppSpacing.md),
-      child: catsAsync.when(
-        data: (cats) => ListView.separated(
-          itemCount: cats.length,
-          separatorBuilder: (_, __) =>
-              const Divider(color: AdminColors.cardBorder),
-          itemBuilder: (ctx, i) {
-            final cat = cats[i];
-            return ListTile(
-              title: Text(cat['name'] ?? 'Category',
-                  style: const TextStyle(
-                      color: AdminColors.textPrimary,
-                      fontWeight: FontWeight.bold)),
-              subtitle: Text(cat['description'] ?? cat['slug'] ?? '',
-                  style: const TextStyle(color: AdminColors.textSecondary)),
-            );
-          },
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Organize tourist spots with reusable categories.',
+                style: AppTypography.bodyMedium
+                    .copyWith(color: AdminColors.textSecondary),
+              ),
+            ),
+            ElevatedButton.icon(
+              key: const ValueKey('add-spot-category'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AdminColors.orange,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(0, 48),
+              ),
+              onPressed: () => _showCategoryDialog(),
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: const Text('Add Category'),
+            ),
+          ],
         ),
-        loading: () => const Center(
-            child: CircularProgressIndicator(color: AdminColors.orange)),
-        error: (e, _) => const Center(
-            child: Text('Unable to load categories. Use Refresh to retry.',
-                style: TextStyle(color: AdminColors.danger))),
+        const SizedBox(height: AppSpacing.md),
+        Expanded(
+          child: Container(
+            decoration: AdminColors.glassDecoration(),
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: catsAsync.when(
+              data: (cats) {
+                if (cats.isEmpty) {
+                  return const Center(
+                    child: Text(
+                      'No spot categories yet. Add one to organize listings.',
+                      style: TextStyle(color: AdminColors.textSecondary),
+                    ),
+                  );
+                }
+                return ListView.separated(
+                  itemCount: cats.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(color: AdminColors.cardBorder),
+                  itemBuilder: (ctx, i) {
+                    final cat = cats[i];
+                    final name = (cat['name'] ?? 'Category').toString();
+                    final slug = (cat['slug'] ?? '').toString();
+                    return ListTile(
+                      leading: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: AdminColors.infoBg,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.category_outlined,
+                            color: AdminColors.info),
+                      ),
+                      title: Text(name,
+                          style: const TextStyle(
+                              color: AdminColors.textPrimary,
+                              fontWeight: FontWeight.bold)),
+                      subtitle: Text(slug.isEmpty ? 'No slug' : slug,
+                          style: const TextStyle(
+                              color: AdminColors.textSecondary)),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: 'Edit category',
+                            onPressed: () => _showCategoryDialog(existing: cat),
+                            icon: const Icon(Icons.edit_outlined,
+                                color: AdminColors.info),
+                          ),
+                          IconButton(
+                            tooltip: 'Delete category',
+                            onPressed: () => _deleteCategory(cat),
+                            icon: const Icon(Icons.delete_outline_rounded,
+                                color: AdminColors.danger),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+              },
+              loading: () => const Center(
+                  child: CircularProgressIndicator(color: AdminColors.orange)),
+              error: (e, _) => Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('Unable to load spot categories.',
+                        style: TextStyle(color: AdminColors.danger)),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(0, 44)),
+                      onPressed: () => ref.invalidate(adminCategoriesProvider),
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _showCategoryDialog({Map<String, dynamic>? existing}) async {
+    final formKey = GlobalKey<FormState>();
+    final name =
+        TextEditingController(text: existing?['name']?.toString() ?? '');
+    var saving = false;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          backgroundColor: AdminColors.navy900,
+          title: Text(
+            existing == null ? 'Add Spot Category' : 'Edit Spot Category',
+            style: const TextStyle(
+              color: AdminColors.textPrimary,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: SizedBox(
+            width: 440,
+            child: Form(
+              key: formKey,
+              child: TextFormField(
+                controller: name,
+                autofocus: true,
+                enabled: !saving,
+                style: const TextStyle(color: AdminColors.textPrimary),
+                decoration: const InputDecoration(
+                  labelText: 'Category name',
+                  hintText: 'e.g. Natural Attraction',
+                ),
+                validator: (value) => (value?.trim().isEmpty ?? true)
+                    ? 'Category name is required.'
+                    : null,
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(minimumSize: const Size(0, 44)),
+              onPressed: saving
+                  ? null
+                  : () async {
+                      if (!(formKey.currentState?.validate() ?? false)) return;
+                      setDialogState(() => saving = true);
+                      try {
+                        await ref.read(adminRepositoryProvider).manageCategory(
+                          {'name': name.text.trim()},
+                          id: existing?['id']?.toString(),
+                        );
+                        _invalidateCategorySurfaces();
+                        if (dialogContext.mounted) {
+                          Navigator.pop(dialogContext);
+                        }
+                        _message(existing == null
+                            ? 'Spot category created.'
+                            : 'Spot category updated.');
+                      } catch (_) {
+                        if (dialogContext.mounted) {
+                          setDialogState(() => saving = false);
+                        }
+                        _message('Unable to save this spot category.',
+                            error: true);
+                      }
+                    },
+              child: saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Save Category'),
+            ),
+          ],
+        ),
       ),
     );
   }
 
+  Future<void> _deleteCategory(Map<String, dynamic> category) async {
+    final id = category['id']?.toString();
+    if (id == null || id.isEmpty) {
+      _message('This category has no valid identifier.', error: true);
+      return;
+    }
+    final name = (category['name'] ?? 'this category').toString();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AdminColors.navy900,
+        title: const Text('Delete Spot Category'),
+        content: Text(
+          'Delete "$name"? Categories currently assigned to tourist spots cannot be deleted.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size(0, 44),
+              backgroundColor: AdminColors.danger,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete Category'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(adminRepositoryProvider).deleteCategory(id);
+      _invalidateCategorySurfaces();
+      _message('Spot category deleted.');
+    } catch (_) {
+      _message(
+        'Unable to delete this category. Reassign its tourist spots first.',
+        error: true,
+      );
+    }
+  }
+
+  void _invalidateCategorySurfaces() {
+    ref.invalidate(adminCategoriesProvider);
+    ref.invalidate(adminSpotsProvider);
+    ref.invalidate(spotCategoriesProvider);
+    ref.invalidate(touristSpotsListProvider);
+    ref.invalidate(mapMarkersProvider);
+  }
+
+  // Retained temporarily for rollback compatibility with the former Admin-only
+  // form; Admin now uses the shared, stricter LGU/Admin management surface.
+  // ignore: unused_element
   Widget _buildFerryTab(AsyncValue<List<Map<String, dynamic>>> ferryAsync) {
     return Column(children: [
       Align(
@@ -491,6 +718,7 @@ class _AdminTourismManagementPageState
       Align(
         alignment: Alignment.centerRight,
         child: ElevatedButton.icon(
+          style: ElevatedButton.styleFrom(minimumSize: const Size(0, 48)),
           onPressed: () => context.push('/admin/emergency-contacts'),
           icon: const Icon(Icons.manage_accounts_rounded),
           label: const Text('Manage Emergency Contacts'),
@@ -524,13 +752,16 @@ class _AdminTourismManagementPageState
               child: CircularProgressIndicator(color: AdminColors.orange)),
           error: (e, _) => const Center(
               child: Text(
-                  'Unable to load ferry schedules. Use Refresh to retry.',
+                  'Unable to load emergency contacts. Use Refresh to retry.',
                   style: TextStyle(color: AdminColors.danger))),
         ),
       )),
     ]);
   }
 
+  // Retained temporarily for rollback compatibility with the former read-only
+  // Admin view; Admin now uses the shared publish/archive management surface.
+  // ignore: unused_element
   Widget _buildEcoTab(AsyncValue<List<Map<String, dynamic>>> ecoTipsAsync) {
     return Container(
       decoration: AdminColors.glassDecoration(),

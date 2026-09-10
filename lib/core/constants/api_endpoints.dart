@@ -95,11 +95,21 @@ abstract final class ApiEndpoints {
 
   // ─── Waste Reports ────────────────────────────────────────────────────────
   static const String wasteReports = '$_base/waste-reports';
+  static const String wasteCategories = '$_base/waste-categories';
   static String wasteReportById(String uuid) => '$_base/waste-reports/$uuid';
+  static String wasteReportImages(String uuid) =>
+      '$_base/waste-reports/$uuid/images';
+  static String wasteReportMedia(String uuid) =>
+      '$_base/waste-reports/$uuid/media';
+  static String wasteResolutionMedia(String uuid) =>
+      '$_base/waste-reports/$uuid/resolution-media';
   static const String myWasteReports = '$_base/waste-reports/mine';
 
   // ─── Emergency Contacts ───────────────────────────────────────────────────
   static const String emergencyContacts = '$_base/emergency-contacts';
+
+  static const String carbonFactors = '$_base/carbon/factors';
+  static const String carbonEstimates = '$_base/carbon/estimates';
   static const String adminEmergencyContacts =
       '$_base/admin/emergency-contacts';
   static String adminEmergencyContact(String id) =>
@@ -220,6 +230,8 @@ abstract final class ApiEndpoints {
       '$lguEmergencyContacts/$id/status';
   static String lguVerifyEmergencyContact(String id) =>
       '$lguEmergencyContacts/$id/verify';
+  static String lguEmergencyContactVerification(String id) =>
+      '$lguEmergencyContacts/$id/verification';
   static String lguUpdateSpotStatus(String id) =>
       '$_base/lgu/tourist-spots/$id/status';
   static String lguVerifyMsme(String id) => '$_base/lgu/msmes/$id/verify';
@@ -239,6 +251,14 @@ abstract final class ApiEndpoints {
   static const String lguTourismListings = '$_base/lgu/tourism-listings';
   static String lguReviewTourismListing(String id) =>
       '$lguTourismListings/$id/review';
+  static const String lguFerrySchedules = '$_base/lgu/ferry-schedules';
+  static const String lguFerryPorts = '$_base/lgu/ferry-ports';
+  static const String lguFerryRoutes = '$_base/lgu/ferry-routes';
+  static String lguFerryPort(String id) => '$lguFerryPorts/$id';
+  static String lguFerryRoute(String id) => '$lguFerryRoutes/$id';
+  static String lguFerrySchedule(String id) => '$lguFerrySchedules/$id';
+  static const String lguEcoTips = '$_base/lgu/eco-tips';
+  static String lguEcoTip(String id) => '$lguEcoTips/$id';
 
   // ─── MSME Owner Portal Endpoints ──────────────────────────────────────────
   static const String msmeDashboardStats = '$_base/msme/dashboard-stats';
@@ -287,6 +307,34 @@ abstract final class ApiEndpoints {
   static const String partnerProfile = '$partnerBase/profile';
   static const String partnerPassword = '$partnerBase/password';
   static const String partnerImageUpload = '$partnerBase/images/upload';
+  static String publicBookingOfferings(String spotId) =>
+      '$_base/tourist-spots/$spotId/booking-offerings';
+  static const String offeringReservations = '$_base/offering-reservations';
+  static String partnerOfferings(String spotId) =>
+      '$partnerBase/tourist-spots/$spotId/offerings';
+  static String partnerOffering(String spotId, String offeringId) =>
+      '${partnerOfferings(spotId)}/$offeringId';
+  static String publicSpotGallery(String spotId) =>
+      '$_base/tourist-spots/$spotId/gallery';
+  static String partnerSpotGallery(String spotId) =>
+      '$partnerBase/tourist-spots/$spotId/gallery';
+  static String partnerSpotMedia(String spotId, String mediaId) =>
+      '${partnerSpotGallery(spotId)}/$mediaId';
+  static String reservationMessages(String reservationId) =>
+      '$_base/reservations/$reservationId/messages';
+  static const String concernCategories = '$_base/concern-categories';
+  static const String concerns = '$_base/concerns';
+  static String concern(String id) => '$concerns/$id';
+  static String concernMessages(String id) => '${concern(id)}/messages';
+  static const String lguConcerns = '$_base/lgu/concerns';
+  static String lguConcern(String id) => '$lguConcerns/$id';
+  static const String adminConcerns = '$_base/admin/concerns';
+  static String adminConcern(String id) => '$adminConcerns/$id';
+  static const String publicAnnouncements = '$_base/announcements/public';
+  static String announcementRead(String id) => '$_base/announcements/$id/read';
+  static String announcementDismiss(String id) =>
+      '$_base/announcements/$id/dismiss';
+  static const String ferryCatalogs = '$_base/ferry-catalogs';
   static String lguTouristSpotBookingAvailability(String id) =>
       '$_base/lgu/tourist-spots/$id/booking-availability';
   static const String tourismListings = '$_base/tourism-listings';

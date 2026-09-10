@@ -4,9 +4,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tubigon_tourism/features/authentication/auth_provider.dart';
 import 'package:tubigon_tourism/features/userpage/presentation/pages/profile_page.dart';
 
-class _GuestAuthNotifier extends AuthNotifier {
+class _TouristAuthNotifier extends AuthNotifier {
   @override
-  AuthState build() => const AuthState(role: UserRole.guest);
+  AuthState build() => const AuthState(
+        isLoggedIn: true,
+        role: UserRole.tourist,
+        userId: 'tourist-1',
+        name: 'Tourist',
+        email: 'tourist@example.test',
+      );
 }
 
 void main() {
@@ -14,7 +20,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [authProvider.overrideWith(_GuestAuthNotifier.new)],
+        overrides: [authProvider.overrideWith(_TouristAuthNotifier.new)],
         child: const MaterialApp(home: ProfilePage()),
       ),
     );

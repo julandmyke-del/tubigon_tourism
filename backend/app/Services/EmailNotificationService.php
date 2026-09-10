@@ -221,12 +221,14 @@ class EmailNotificationService
             return 0;
         }
 
+        $audiences = $announcement->audienceRoles();
+        $roleAudiences = array_values(array_diff($audiences, ['public']));
         $query = User::query()
             ->where('is_verified', true)
             ->whereNotNull('email')
-            ->whereHas('role', function (Builder $role) use ($announcement): void {
-                if ($announcement->audience !== 'everyone') {
-                    $role->where('name', $announcement->audience);
+            ->whereHas('role', function (Builder $role) use ($roleAudiences, $audiences): void {
+                if (! in_array('public', $audiences, true) && $roleAudiences !== []) {
+                    $role->whereIn('name', $roleAudiences);
                 }
             })
             ->with('role');
@@ -247,7 +249,7 @@ class EmailNotificationService
                         messageText: $announcement->body,
                         details: [
                             'Priority' => ucfirst($announcement->priority),
-                            'Audience' => $announcement->audience === 'everyone' ? 'Everyone' : str_replace('_', ' ', ucfirst($announcement->audience)),
+                            'Audience' => collect($announcement->audienceRoles())->map(fn ($role) => str($role)->replace('_', ' ')->title())->join(', '),
                         ],
                         actionLabel: 'View Announcement',
                         actionUrl: $this->frontendUrl('/notifications'),

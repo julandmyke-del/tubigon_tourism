@@ -9,6 +9,7 @@ import '../../../itinerary/repositories/itinerary_repository.dart';
 import '../../../map/providers/map_provider.dart';
 import '../../../map/map_focus.dart';
 import '../../../notifications/repositories/notification_repository.dart';
+import '../../../connected_operations/presentation/reservation_conversation.dart';
 
 class ReservationDetailPage extends ConsumerWidget {
   const ReservationDetailPage({super.key, required this.reservationUuid});
@@ -269,6 +270,15 @@ class ReservationDetailPage extends ConsumerWidget {
 
                 _StatusTimeline(status: reservation.status),
 
+                if (reservation.items.isNotEmpty)
+                  _ReservationInfo(
+                    title: 'Booking Items',
+                    value: reservation.items
+                        .map((item) =>
+                            '${item['offering_name_snapshot'] ?? 'Offering'} · ${item['quantity']} × ₱${item['unit_price_snapshot']} = ₱${item['subtotal']}')
+                        .join('\n'),
+                  ),
+
                 if (reservation.statusHistory.isNotEmpty) ...[
                   const SizedBox(height: 16),
                   _ReservationInfo(
@@ -319,6 +329,10 @@ class ReservationDetailPage extends ConsumerWidget {
                     title: 'Cancellation Policy',
                     value: reservation.cancellationPolicy!,
                   ),
+
+                const SizedBox(height: 24),
+
+                ReservationConversation(reservationId: reservation.id),
 
                 const SizedBox(height: 24),
 

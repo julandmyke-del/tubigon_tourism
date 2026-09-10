@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/authentication/auth_provider.dart';
 
+enum _AuthPromptAction { signIn, register }
+
 /// Returns true only for a signed-in account. Guest discovery remains available,
 /// while account-owned actions are directed to the existing login experience.
 Future<bool> requireSignedIn(
@@ -14,33 +16,41 @@ Future<bool> requireSignedIn(
   final auth = ref.read(authProvider);
   if (auth.isLoggedIn && auth.userId != null) return true;
 
-  final signIn = await showDialog<bool>(
+  final action = await showDialog<_AuthPromptAction>(
     context: context,
     builder: (dialogContext) => AlertDialog(
       title: const Text('Sign in required'),
       content: const Text(
-        'Please sign in to use bookings, favorites, reviews, reports, notifications, and account settings.',
+        'Create an account or sign in to make reservations, save synced favorites, submit reports, or access personalized features.',
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(dialogContext, false),
-          child: const Text('Not now'),
+          onPressed: () => Navigator.pop(dialogContext),
+          child: const Text('Continue Browsing'),
+        ),
+        OutlinedButton(
+          onPressed: () =>
+              Navigator.pop(dialogContext, _AuthPromptAction.register),
+          child: const Text('Create Account'),
         ),
         FilledButton(
-          onPressed: () => Navigator.pop(dialogContext, true),
-          child: const Text('Sign in'),
+          onPressed: () =>
+              Navigator.pop(dialogContext, _AuthPromptAction.signIn),
+          child: const Text('Sign In'),
         ),
       ],
     ),
   );
 
-  if (signIn == true && context.mounted) {
+  if (action != null && context.mounted) {
     final target = safeTouristReturnRoute(returnTo);
     final loginUri = Uri(
-      path: '/onboarding',
+      path: action == _AuthPromptAction.register
+          ? '/auth/login/register'
+          : '/onboarding',
       queryParameters: {
-        'page': '5',
-        'login': 'true',
+        if (action == _AuthPromptAction.signIn) 'page': '5',
+        if (action == _AuthPromptAction.signIn) 'login': 'true',
         if (target != null) 'returnTo': target,
       },
     );
@@ -103,13 +113,15 @@ Widget signedInRequiredPage(BuildContext context, WidgetRef ref,
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Color(0xFF94A3B8))),
             const SizedBox(height: 20),
-            FilledButton(
-                onPressed: () => requireSignedIn(
-                      context,
-                      ref,
-                      returnTo: GoRouterState.of(context).uri.toString(),
-                    ),
-                child: const Text('Sign in')),
+            FilledButton.icon(
+              onPressed: () => requireSignedIn(
+                context,
+                ref,
+                returnTo: GoRouterState.of(context).uri.toString(),
+              ),
+              icon: const Icon(Icons.login_rounded),
+              label: const Text('Sign in or create account'),
+            ),
           ],
         ),
       ),

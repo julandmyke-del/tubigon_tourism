@@ -9,7 +9,7 @@ class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._privateConstructor();
 
   static const String _dbName = 'tubigon_tourism.db';
-  static const int _dbVersion = 9;
+  static const int _dbVersion = 11;
 
   /// Native SQLite is intentionally unavailable in browsers. Repositories
   /// use this single capability boundary to select their Laravel API path.
@@ -259,11 +259,20 @@ class DatabaseHelper {
           id TEXT PRIMARY KEY,
           user_id TEXT,
           category TEXT NOT NULL,
+          category_id TEXT,
+          severity TEXT DEFAULT 'moderate',
           description TEXT NOT NULL,
           location_description TEXT,
+          resolved_address TEXT,
+          geocoding_source TEXT,
+          barangay TEXT,
           latitude REAL,
           longitude REAL,
           images TEXT,
+          video_path TEXT,
+          media TEXT,
+          resolution_summary TEXT,
+          submitted_at TEXT,
           status TEXT DEFAULT 'pending',
           created_at TEXT,
           updated_at TEXT,
@@ -282,11 +291,19 @@ class DatabaseHelper {
           uuid TEXT UNIQUE NOT NULL,
           operator TEXT NOT NULL,
           route TEXT NOT NULL,
+          origin TEXT,
+          destination TEXT,
+          vessel_name TEXT,
+          departure_date TEXT,
           departure_time TEXT NOT NULL,
           arrival_time TEXT,
           fare REAL,
           status TEXT DEFAULT 'on_time',
           days_of_week TEXT,
+          advisory TEXT,
+          contact_information TEXT,
+          reference_url TEXT,
+          is_active INTEGER DEFAULT 1,
           updated_at TEXT
         )
       ''');
@@ -298,9 +315,15 @@ class DatabaseHelper {
           uuid TEXT UNIQUE NOT NULL,
           title TEXT NOT NULL,
           content TEXT NOT NULL,
+          short_message TEXT,
           category TEXT,
           spot_id INTEGER,
           language TEXT DEFAULT 'en',
+          is_active INTEGER DEFAULT 1,
+          is_published INTEGER DEFAULT 0,
+          starts_at TEXT,
+          ends_at TEXT,
+          priority INTEGER DEFAULT 0,
           updated_at TEXT,
           FOREIGN KEY (spot_id) REFERENCES tourist_spots(id) ON DELETE SET NULL
         )
@@ -316,12 +339,18 @@ class DatabaseHelper {
           phone TEXT NOT NULL,
           alternative_phone TEXT,
           address TEXT,
+          barangay TEXT,
           description TEXT,
           operating_hours TEXT,
+          availability_notes TEXT,
+          emergency_instructions TEXT,
           classification TEXT DEFAULT 'emergency',
           is_active INTEGER DEFAULT 1,
           is_verified INTEGER DEFAULT 0,
+          is_public INTEGER DEFAULT 0,
+          verification_status TEXT DEFAULT 'draft',
           source TEXT,
+          source_name TEXT,
           source_url TEXT,
           verified_at TEXT,
           last_verified_at TEXT,
@@ -570,6 +599,71 @@ class DatabaseHelper {
           await db.execute(
             'ALTER TABLE tourist_spots ADD COLUMN ${entry.key} ${entry.value}',
           );
+        } catch (_) {}
+      }
+    }
+    if (oldVersion < 10) {
+      const tableColumns = <String, Map<String, String>>{
+        'waste_reports': {'barangay': 'TEXT'},
+        'ferry_schedules': {
+          'origin': 'TEXT',
+          'destination': 'TEXT',
+          'vessel_name': 'TEXT',
+          'departure_date': 'TEXT',
+          'advisory': 'TEXT',
+          'contact_information': 'TEXT',
+          'reference_url': 'TEXT',
+          'is_active': 'INTEGER DEFAULT 1',
+        },
+        'eco_tips': {
+          'short_message': 'TEXT',
+          'is_active': 'INTEGER DEFAULT 1',
+          'is_published': 'INTEGER DEFAULT 0',
+          'starts_at': 'TEXT',
+          'ends_at': 'TEXT',
+          'priority': 'INTEGER DEFAULT 0',
+        },
+        'emergency_contacts': {
+          'barangay': 'TEXT',
+          'availability_notes': 'TEXT',
+          'emergency_instructions': 'TEXT',
+        },
+      };
+      for (final table in tableColumns.entries) {
+        for (final column in table.value.entries) {
+          try {
+            await db.execute(
+                'ALTER TABLE ${table.key} ADD COLUMN ${column.key} ${column.value}');
+          } catch (_) {}
+        }
+      }
+    }
+    if (oldVersion < 11) {
+      const connectedWasteColumns = <String, String>{
+        'category_id': 'TEXT',
+        'severity': "TEXT DEFAULT 'moderate'",
+        'resolved_address': 'TEXT',
+        'geocoding_source': 'TEXT',
+        'video_path': 'TEXT',
+        'media': 'TEXT',
+        'resolution_summary': 'TEXT',
+        'submitted_at': 'TEXT',
+      };
+      for (final entry in connectedWasteColumns.entries) {
+        try {
+          await db.execute(
+              'ALTER TABLE waste_reports ADD COLUMN ${entry.key} ${entry.value}');
+        } catch (_) {}
+      }
+      const connectedEmergencyColumns = <String, String>{
+        'is_public': 'INTEGER DEFAULT 0',
+        'verification_status': "TEXT DEFAULT 'draft'",
+        'source_name': 'TEXT',
+      };
+      for (final entry in connectedEmergencyColumns.entries) {
+        try {
+          await db.execute(
+              'ALTER TABLE emergency_contacts ADD COLUMN ${entry.key} ${entry.value}');
         } catch (_) {}
       }
     }

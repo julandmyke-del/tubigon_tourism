@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Schema;
 
 class Announcement extends Model
 {
@@ -23,6 +24,7 @@ class Announcement extends Model
         'published_at',
         'created_by',
         'is_active',
+        'display_type', 'cta_label', 'related_type', 'related_id', 'image_path',
     ];
 
     protected $casts = [
@@ -39,11 +41,33 @@ class Announcement extends Model
             ->whereIn('status', ['published', 'scheduled'])
             ->where(fn ($q) => $q->whereNull('starts_at')->orWhere('starts_at', '<=', now()))
             ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))
-            ->whereIn('audience', ['everyone', $role]);
+            ->where(function ($audience) use ($role): void {
+                if (Schema::hasTable('announcement_audiences')) {
+                    $audience->whereHas('audiences', fn ($q) => $q->whereIn('role', ['public', $role]))
+                        ->orWhere(fn ($legacy) => $legacy->whereDoesntHave('audiences')->whereIn('audience', ['everyone', $role]));
+                } else {
+                    $audience->whereIn('audience', ['everyone', $role]);
+                }
+            });
     }
 
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function audiences()
+    {
+        return $this->hasMany(AnnouncementAudience::class);
+    }
+
+    public function audienceRoles(): array
+    {
+        if (! Schema::hasTable('announcement_audiences')) {
+            return [$this->audience === 'everyone' ? 'public' : $this->audience];
+        }
+        $roles = $this->relationLoaded('audiences') ? $this->audiences->pluck('role')->all() : $this->audiences()->pluck('role')->all();
+
+        return $roles !== [] ? $roles : [$this->audience === 'everyone' ? 'public' : $this->audience];
     }
 }

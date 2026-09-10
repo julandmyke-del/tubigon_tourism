@@ -3,6 +3,9 @@
 use App\Http\Controllers\Api\V1\AnalyticsController;
 use App\Http\Controllers\Api\V1\AnnouncementController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\BookingOfferingController;
+use App\Http\Controllers\Api\V1\CarbonController;
+use App\Http\Controllers\Api\V1\ConcernController;
 use App\Http\Controllers\Api\V1\EcoTipController;
 use App\Http\Controllers\Api\V1\EmergencyContactController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
@@ -11,23 +14,25 @@ use App\Http\Controllers\Api\V1\FerryScheduleController;
 use App\Http\Controllers\Api\V1\ImageController;
 use App\Http\Controllers\Api\V1\ItineraryController;
 use App\Http\Controllers\Api\V1\LguController;
+use App\Http\Controllers\Api\V1\LguTouristSpotBookingAvailabilityController;
 use App\Http\Controllers\Api\V1\MapController;
 use App\Http\Controllers\Api\V1\MapLocationCategoryController;
 use App\Http\Controllers\Api\V1\MapLocationController;
 use App\Http\Controllers\Api\V1\MsmeController;
-use App\Http\Controllers\Api\V1\LguTouristSpotBookingAvailabilityController;
 use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\PartnerNotificationController;
 use App\Http\Controllers\Api\V1\PartnerReservationController;
 use App\Http\Controllers\Api\V1\PartnerTouristSpotController;
 use App\Http\Controllers\Api\V1\ReservationController;
-use App\Http\Controllers\Api\V1\RoleApplicationController;
+use App\Http\Controllers\Api\V1\ReservationMessageController;
 use App\Http\Controllers\Api\V1\ReviewController;
+use App\Http\Controllers\Api\V1\RoleApplicationController;
 use App\Http\Controllers\Api\V1\SettingController;
 use App\Http\Controllers\Api\V1\SpotCategoryController;
 use App\Http\Controllers\Api\V1\SyncController;
 use App\Http\Controllers\Api\V1\TourismListingController;
 use App\Http\Controllers\Api\V1\TouristSpotController;
+use App\Http\Controllers\Api\V1\TouristSpotGalleryController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\WasteReportController;
 use Illuminate\Support\Facades\Route;
@@ -49,6 +54,9 @@ Route::prefix('v1')->group(function () {
     Route::get('/tourist-spots', [TouristSpotController::class, 'index']);
     Route::get('/tourist-spots/{id}', [TouristSpotController::class, 'show']);
     Route::get('/tourist-spots/{id}/availability', [TouristSpotController::class, 'availability']);
+    Route::get('/tourist-spots/{spot}/booking-offerings', [BookingOfferingController::class, 'publicIndex']);
+    Route::get('/tourist-spots/{spot}/gallery', [TouristSpotGalleryController::class, 'publicIndex']);
+    Route::get('/tourist-spot-media/{media}', [TouristSpotGalleryController::class, 'content']);
     Route::get('/spot-categories', [SpotCategoryController::class, 'index']);
 
     Route::get('/establishments', [EstablishmentController::class, 'index']);
@@ -60,8 +68,13 @@ Route::prefix('v1')->group(function () {
     Route::get('/tourism-listings/{id}', [TourismListingController::class, 'publicShow']);
 
     Route::get('/ferry-schedules', [FerryScheduleController::class, 'index']);
+    Route::get('/ferry-catalogs', [FerryScheduleController::class, 'catalogs']);
+    Route::get('/announcements/public', [AnnouncementController::class, 'publicIndex']);
+    Route::get('/concern-categories', [ConcernController::class, 'categories']);
     Route::get('/eco-tips', [EcoTipController::class, 'index']);
     Route::get('/emergency-contacts', [EmergencyContactController::class, 'index']);
+    Route::get('/waste-categories', [WasteReportController::class, 'categories']);
+    Route::get('/carbon/factors', [CarbonController::class, 'factors']);
     Route::get('/reviews', [ReviewController::class, 'index']);
     Route::get('/system-settings', [SettingController::class, 'systemSettings']);
     Route::get('/map/locations', [MapController::class, 'publicIndex']);
@@ -98,8 +111,18 @@ Route::prefix('v1')->group(function () {
         Route::get('/reservations/{id}', [ReservationController::class, 'show']);
         Route::post('/reservations', [ReservationController::class, 'store'])
             ->middleware('role:tourist');
+        Route::post('/offering-reservations', [BookingOfferingController::class, 'reserve'])->middleware('role:tourist');
         Route::put('/reservations/{id}/cancel', [ReservationController::class, 'cancel'])
             ->middleware('role:tourist');
+        Route::get('/reservations/{reservation}/messages', [ReservationMessageController::class, 'index']);
+        Route::post('/reservations/{reservation}/messages', [ReservationMessageController::class, 'store']);
+        Route::put('/reservations/{reservation}/messages/read', [ReservationMessageController::class, 'read']);
+
+        Route::get('/concerns', [ConcernController::class, 'index']);
+        Route::post('/concerns', [ConcernController::class, 'store']);
+        Route::get('/concerns/{id}', [ConcernController::class, 'show']);
+        Route::post('/concerns/{id}/messages', [ConcernController::class, 'reply']);
+        Route::get('/concern-attachments/{attachment}', [ConcernController::class, 'attachment']);
 
         // Tourist itinerary planner. Ownership is enforced again in every controller action.
         Route::get('/itineraries', [ItineraryController::class, 'index']);
@@ -129,6 +152,11 @@ Route::prefix('v1')->group(function () {
         Route::post('/waste-reports', [WasteReportController::class, 'store'])
             ->middleware('role:tourist');
         Route::post('/waste-reports/{id}/images', [WasteReportController::class, 'uploadImages']);
+        Route::post('/waste-reports/{id}/media', [WasteReportController::class, 'uploadMedia']);
+        Route::get('/waste-report-media/{media}', [WasteReportController::class, 'showMedia']);
+
+        Route::get('/carbon/estimates', [CarbonController::class, 'index'])->middleware('role:tourist');
+        Route::post('/carbon/estimates', [CarbonController::class, 'store'])->middleware('role:tourist');
 
         // Notifications
         Route::get('/notifications', [NotificationController::class, 'index']);
@@ -137,6 +165,8 @@ Route::prefix('v1')->group(function () {
         Route::put('/notifications/{id}/read', [NotificationController::class, 'markRead']);
         Route::get('/announcements', [AnnouncementController::class, 'index']);
         Route::get('/announcements/{id}', [AnnouncementController::class, 'show']);
+        Route::put('/announcements/{id}/read', [AnnouncementController::class, 'markRead']);
+        Route::put('/announcements/{id}/dismiss', [AnnouncementController::class, 'dismiss']);
 
         // Settings
         Route::get('/settings', [SettingController::class, 'index']);
@@ -189,6 +219,14 @@ Route::prefix('v1')->group(function () {
                 ->middleware('role:tourism_partner');
             Route::patch('/tourist-spots/{id}/booking-availability', [PartnerTouristSpotController::class, 'updateBookingAvailability'])
                 ->middleware('role:tourism_partner');
+            Route::get('/tourist-spots/{spot}/offerings', [BookingOfferingController::class, 'partnerIndex']);
+            Route::post('/tourist-spots/{spot}/offerings', [BookingOfferingController::class, 'store']);
+            Route::put('/tourist-spots/{spot}/offerings/{offering}', [BookingOfferingController::class, 'update']);
+            Route::delete('/tourist-spots/{spot}/offerings/{offering}', [BookingOfferingController::class, 'destroy']);
+            Route::get('/tourist-spots/{spot}/gallery', [TouristSpotGalleryController::class, 'manageIndex']);
+            Route::post('/tourist-spots/{spot}/gallery', [TouristSpotGalleryController::class, 'store']);
+            Route::put('/tourist-spots/{spot}/gallery/reorder', [TouristSpotGalleryController::class, 'reorder']);
+            Route::put('/tourist-spots/{spot}/gallery/{media}', [TouristSpotGalleryController::class, 'update']);
 
             Route::get('/reservations', [PartnerReservationController::class, 'index']);
             Route::get('/reservations/{id}', [PartnerReservationController::class, 'show']);
@@ -253,6 +291,9 @@ Route::prefix('v1')->group(function () {
             Route::post('/tourist-spots', [TouristSpotController::class, 'store']);
             Route::put('/tourist-spots/{id}', [TouristSpotController::class, 'update']);
             Route::delete('/tourist-spots/{id}', [TouristSpotController::class, 'destroy']);
+            Route::get('/tourist-spots/{spot}/gallery', [TouristSpotGalleryController::class, 'manageIndex']);
+            Route::put('/tourist-spots/{spot}/gallery/reorder', [TouristSpotGalleryController::class, 'reorder']);
+            Route::put('/tourist-spots/{spot}/gallery/{media}', [TouristSpotGalleryController::class, 'update']);
 
             Route::post('/spot-categories', [SpotCategoryController::class, 'store']);
             Route::put('/spot-categories/{id}', [SpotCategoryController::class, 'update']);
@@ -264,11 +305,17 @@ Route::prefix('v1')->group(function () {
             Route::delete('/establishments/{id}', [EstablishmentController::class, 'destroy']);
 
             // Ferry Schedules Management
+            Route::get('/ferry-schedules', [FerryScheduleController::class, 'managementIndex']);
             Route::post('/ferry-schedules', [FerryScheduleController::class, 'store']);
             Route::put('/ferry-schedules/{id}', [FerryScheduleController::class, 'update']);
             Route::delete('/ferry-schedules/{id}', [FerryScheduleController::class, 'destroy']);
+            Route::post('/ferry-ports', [FerryScheduleController::class, 'storePort']);
+            Route::put('/ferry-ports/{port}', [FerryScheduleController::class, 'updatePort']);
+            Route::post('/ferry-routes', [FerryScheduleController::class, 'storeRoute']);
+            Route::put('/ferry-routes/{route}', [FerryScheduleController::class, 'updateRoute']);
 
             // Eco Tips Management
+            Route::get('/eco-tips', [EcoTipController::class, 'managementIndex']);
             Route::post('/eco-tips', [EcoTipController::class, 'store']);
             Route::put('/eco-tips/{id}', [EcoTipController::class, 'update']);
             Route::delete('/eco-tips/{id}', [EcoTipController::class, 'destroy']);
@@ -279,19 +326,24 @@ Route::prefix('v1')->group(function () {
             Route::put('/emergency-contacts/{id}', [EmergencyContactController::class, 'update']);
             Route::patch('/emergency-contacts/{id}/status', [EmergencyContactController::class, 'setStatus']);
             Route::patch('/emergency-contacts/{id}/verify', [EmergencyContactController::class, 'verify']);
+            Route::patch('/emergency-contacts/{id}/verification', [EmergencyContactController::class, 'setVerificationStatus']);
             Route::delete('/emergency-contacts/{id}', [EmergencyContactController::class, 'destroy']);
-
             // Reservations Management
             Route::put('/reservations/{id}/status', [ReservationController::class, 'updateStatus']);
 
             // Waste Reports Management
             Route::put('/waste-reports/{id}/status', [WasteReportController::class, 'updateStatus']);
+            Route::post('/waste-reports/{id}/resolution-media', [WasteReportController::class, 'uploadResolutionMedia']);
 
             // Announcements Management
             Route::get('/announcements', [AnnouncementController::class, 'managementIndex']);
             Route::post('/announcements', [AnnouncementController::class, 'store']);
             Route::put('/announcements/{id}', [AnnouncementController::class, 'update']);
             Route::delete('/announcements/{id}', [AnnouncementController::class, 'destroy']);
+            Route::get('/concerns', [ConcernController::class, 'index']);
+            Route::get('/concerns/{id}', [ConcernController::class, 'show']);
+            Route::put('/concerns/{id}', [ConcernController::class, 'manage']);
+            Route::post('/concerns/{id}/messages', [ConcernController::class, 'reply']);
 
             // System Settings Management
             Route::put('/system-settings/{id}', [SettingController::class, 'updateSystemSettings']);
@@ -325,10 +377,30 @@ Route::prefix('v1')->group(function () {
             Route::put('/emergency-contacts/{id}', [EmergencyContactController::class, 'update']);
             Route::patch('/emergency-contacts/{id}/status', [EmergencyContactController::class, 'setStatus']);
             Route::patch('/emergency-contacts/{id}/verify', [EmergencyContactController::class, 'verify']);
+            Route::patch('/emergency-contacts/{id}/verification', [EmergencyContactController::class, 'setVerificationStatus']);
             Route::delete('/emergency-contacts/{id}', [EmergencyContactController::class, 'destroy']);
+            Route::get('/ferry-schedules', [FerryScheduleController::class, 'managementIndex']);
+            Route::post('/ferry-schedules', [FerryScheduleController::class, 'store']);
+            Route::put('/ferry-schedules/{id}', [FerryScheduleController::class, 'update']);
+            Route::delete('/ferry-schedules/{id}', [FerryScheduleController::class, 'destroy']);
+            Route::post('/ferry-ports', [FerryScheduleController::class, 'storePort']);
+            Route::put('/ferry-ports/{port}', [FerryScheduleController::class, 'updatePort']);
+            Route::post('/ferry-routes', [FerryScheduleController::class, 'storeRoute']);
+            Route::put('/ferry-routes/{route}', [FerryScheduleController::class, 'updateRoute']);
+            Route::get('/concerns', [ConcernController::class, 'index']);
+            Route::get('/concerns/{id}', [ConcernController::class, 'show']);
+            Route::put('/concerns/{id}', [ConcernController::class, 'manage']);
+            Route::post('/concerns/{id}/messages', [ConcernController::class, 'reply']);
+            Route::get('/eco-tips', [EcoTipController::class, 'managementIndex']);
+            Route::post('/eco-tips', [EcoTipController::class, 'store']);
+            Route::put('/eco-tips/{id}', [EcoTipController::class, 'update']);
+            Route::delete('/eco-tips/{id}', [EcoTipController::class, 'destroy']);
             Route::put('/tourist-spots/{id}/status', [LguController::class, 'updateSpotStatus']);
             Route::get('/tourist-spots', [TouristSpotController::class, 'managementIndex']);
             Route::put('/tourist-spots/{id}', [TouristSpotController::class, 'update']);
+            Route::get('/tourist-spots/{spot}/gallery', [TouristSpotGalleryController::class, 'manageIndex']);
+            Route::put('/tourist-spots/{spot}/gallery/reorder', [TouristSpotGalleryController::class, 'reorder']);
+            Route::put('/tourist-spots/{spot}/gallery/{media}', [TouristSpotGalleryController::class, 'update']);
             Route::put('/tourist-spots/{id}/booking', [TouristSpotController::class, 'updateBooking']);
             Route::patch('/tourist-spots/{id}/booking-availability', [LguTouristSpotBookingAvailabilityController::class, 'update'])
                 ->middleware('role:lgu_staff');
@@ -341,6 +413,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/tourism-listings', [TourismListingController::class, 'managementIndex']);
             Route::put('/tourism-listings/{id}/review', [TourismListingController::class, 'review']);
             Route::put('/waste-reports/{id}/status', [LguController::class, 'updateWasteStatus']);
+            Route::post('/waste-reports/{id}/resolution-media', [WasteReportController::class, 'uploadResolutionMedia']);
             Route::get('/analytics', [LguController::class, 'analytics']);
             Route::get('/reports', [LguController::class, 'reports']);
 

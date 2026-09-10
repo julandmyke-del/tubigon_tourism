@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_spacing.dart';
+import '../../../connected_operations/presentation/announcement_placement.dart';
 import '../../providers/msme_portal_providers.dart';
 import '../msme_theme.dart';
 import '../widgets/msme_portal_states.dart';
@@ -53,6 +54,7 @@ class MsmePortalDashboardPage extends ConsumerWidget {
               onRefresh: () async =>
                   ref.refresh(msmePortalDashboardStatsProvider.future),
               child: ListView(children: [
+                const AnnouncementPlacement(),
                 Wrap(
                   alignment: WrapAlignment.spaceBetween,
                   runSpacing: 12,

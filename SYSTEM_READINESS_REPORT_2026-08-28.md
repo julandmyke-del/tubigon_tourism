@@ -1,4 +1,4 @@
-# Tubigon Smart Tourism Information and Management System
+# Tour Tubigon Information and Management System
 
 ## Final audit, repair, and readiness report
 

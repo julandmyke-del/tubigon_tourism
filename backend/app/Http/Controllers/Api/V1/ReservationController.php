@@ -54,6 +54,9 @@ class ReservationController extends Controller
     public function show(Request $request, string $id): JsonResponse
     {
         $relations = ['user', 'status', 'listing'];
+        if (Schema::hasTable('reservation_items')) {
+            $relations[] = 'items';
+        }
         if (Schema::hasTable('reservation_status_history')) {
             $relations[] = 'statusHistory.status';
         }
@@ -70,8 +73,7 @@ class ReservationController extends Controller
         Request $request,
         TouristSpotBookingService $spotBooking,
         EmailNotificationService $emailDelivery,
-    ): JsonResponse
-    {
+    ): JsonResponse {
         abort_unless(SystemSetting::enabled('global_booking_enabled'), 403, 'Booking is currently disabled.');
         $validated = $request->validate([
             'reservable_type' => 'required|in:spot,msme,tourism_listing',
@@ -357,6 +359,9 @@ class ReservationController extends Controller
             'allowed_transitions' => ReservationStatusTransitions::allowedFrom(
                 $reservation->status?->name,
             ),
+            'unread_message_count' => Schema::hasTable('reservation_messages')
+                ? $reservation->messages()->where('is_internal', false)->where('sender_user_id', '!=', $reservation->user_id)->whereDoesntHave('readers', fn ($q) => $q->where('users.id', $reservation->user_id))->count()
+                : 0,
         ]);
     }
 

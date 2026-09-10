@@ -217,7 +217,9 @@ class TourismPartnerRepository {
     return {
       ...row,
       'status': status is Map ? status['name'] : status,
-      'guest_name': user is Map ? user['name'] : null,
+      'guest_name': row['customer'] is Map
+          ? (row['customer'] as Map)['name']
+          : (user is Map ? user['name'] : null),
       'listing_name': row['reservable_name'] ??
           (listing is Map ? listing['listing_name'] : null),
       'date': row['reservation_date'],

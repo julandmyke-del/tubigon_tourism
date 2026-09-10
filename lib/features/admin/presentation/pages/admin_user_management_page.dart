@@ -72,6 +72,7 @@ class _AdminUserManagementPageState
                 Row(
                   children: [
                     IconButton(
+                      tooltip: 'Refresh users',
                       style: IconButton.styleFrom(
                         backgroundColor: AdminColors.cardBg,
                         side: const BorderSide(color: AdminColors.cardBorder),
@@ -89,6 +90,7 @@ class _AdminUserManagementPageState
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AdminColors.orange,
                         foregroundColor: Colors.white,
+                        minimumSize: const Size(0, 48),
                         padding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 12),
                         shape: RoundedRectangleBorder(
@@ -562,11 +564,57 @@ class _AdminUserManagementPageState
                     );
                   },
                   loading: () => const Center(
-                      child:
-                          CircularProgressIndicator(color: AdminColors.orange)),
-                  error: (err, _) => const Center(
-                      child: Text('Unable to load users. Use Refresh to retry.',
-                          style: TextStyle(color: AdminColors.danger))),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(color: AdminColors.orange),
+                        SizedBox(height: AppSpacing.md),
+                        Text(
+                          'Loading user registry...',
+                          style: TextStyle(color: AdminColors.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ),
+                  error: (err, _) => Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.cloud_off_rounded,
+                          color: AdminColors.danger,
+                          size: 36,
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        const Text(
+                          'Unable to load the user registry.',
+                          style: TextStyle(
+                            color: AdminColors.textPrimary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Check the API connection, then try again.',
+                          style: TextStyle(color: AdminColors.textSecondary),
+                        ),
+                        const SizedBox(height: AppSpacing.md),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AdminColors.orange,
+                            foregroundColor: Colors.white,
+                            minimumSize: const Size(0, 44),
+                          ),
+                          onPressed: () {
+                            ref.invalidate(adminUsersProvider);
+                            ref.invalidate(adminRolesProvider);
+                          },
+                          icon: const Icon(Icons.refresh_rounded, size: 18),
+                          label: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -689,7 +737,9 @@ class _AdminUserManagementPageState
                   ),
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                        backgroundColor: AdminColors.orange),
+                      backgroundColor: AdminColors.orange,
+                      minimumSize: const Size(0, 44),
+                    ),
                     onPressed: saving
                         ? null
                         : () async {
@@ -938,8 +988,10 @@ class _AdminUserManagementPageState
                 style: TextStyle(color: AdminColors.textSecondary)),
           ),
           ElevatedButton(
-            style:
-                ElevatedButton.styleFrom(backgroundColor: AdminColors.orange),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AdminColors.orange,
+              minimumSize: const Size(0, 44),
+            ),
             onPressed: () async {
               if (selectedRoleId == null) return;
               try {
@@ -980,8 +1032,10 @@ class _AdminUserManagementPageState
                 style: TextStyle(color: AdminColors.textSecondary)),
           ),
           ElevatedButton(
-            style:
-                ElevatedButton.styleFrom(backgroundColor: AdminColors.danger),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AdminColors.danger,
+              minimumSize: const Size(0, 44),
+            ),
             onPressed: () async {
               try {
                 await ref.read(adminRepositoryProvider).deleteUser(userId);

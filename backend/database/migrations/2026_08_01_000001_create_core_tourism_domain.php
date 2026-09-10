@@ -310,7 +310,7 @@ return new class extends Migration
         if (! Schema::hasTable('system_settings')) {
             Schema::create('system_settings', function (Blueprint $table): void {
                 $table->uuid('id')->primary();
-                $table->string('app_name')->default('Tubigon Smart Tourism');
+                $table->string('app_name')->default('Tour Tubigon');
                 $table->string('contact_email')->default('support@tubigontourism.gov.ph');
                 $table->string('contact_phone')->default('+63 38 508 8000');
                 $table->text('privacy_policy')->nullable();

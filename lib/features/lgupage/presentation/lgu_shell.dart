@@ -33,10 +33,15 @@ class _LguShellState extends ConsumerState<LguShell> {
     if (location.startsWith('/lgu/reservations')) return 3;
     if (location.startsWith('/lgu/reviews')) return 4;
     if (location.startsWith('/lgu/msme')) return 5;
-    if (location.startsWith('/lgu/waste-reports')) return 6;
+    if (location.startsWith('/lgu/waste-reports') ||
+        location.startsWith('/lgu/waste-map')) {
+      return 6;
+    }
     if (location.startsWith('/lgu/announcements')) return 7;
     if (location.startsWith('/lgu/eco-tips')) return 8;
     if (location.startsWith('/lgu/emergency')) return 9;
+    if (location.startsWith('/lgu/ferry')) return 18;
+    if (location.startsWith('/lgu/concerns')) return 19;
     if (location.startsWith('/lgu/analytics')) return 10;
     if (location.startsWith('/lgu/reports')) return 11;
     if (location.startsWith('/lgu/notifications')) return 12;
@@ -102,6 +107,12 @@ class _LguShellState extends ConsumerState<LguShell> {
         break;
       case 17:
         context.go('/lgu/role-applications');
+        break;
+      case 18:
+        context.goNamed(RouteNames.lguFerry);
+        break;
+      case 19:
+        context.go('/lgu/concerns');
         break;
     }
   }
@@ -323,6 +334,10 @@ class _LguShellState extends ConsumerState<LguShell> {
                       'Waste Reports', selectedIndex, isDrawer),
                   _buildNavItem(7, Icons.campaign_rounded, 'Announcements',
                       selectedIndex, isDrawer),
+                  _buildNavItem(18, Icons.directions_boat_rounded,
+                      'Ferry Schedules', selectedIndex, isDrawer),
+                  _buildNavItem(19, Icons.support_agent_rounded,
+                      'Concerns & Support', selectedIndex, isDrawer),
                   _buildNavItem(8, Icons.eco_rounded, 'Eco-Tips', selectedIndex,
                       isDrawer),
                   _buildNavItem(9, Icons.phone_in_talk_rounded,

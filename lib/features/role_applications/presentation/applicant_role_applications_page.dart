@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../../tourist_spots/repositories/tourist_spot_repository.dart';
 import '../models/role_application.dart';
 import '../providers/role_application_providers.dart';
+import '../../authentication/auth_provider.dart';
+import '../../../core/utils/auth_action_guard.dart';
 
 class ApplicantRoleApplicationsPage extends ConsumerStatefulWidget {
   const ApplicantRoleApplicationsPage({super.key, this.initialApplicationId});
@@ -21,6 +23,10 @@ class _ApplicantRoleApplicationsPageState
 
   @override
   Widget build(BuildContext context) {
+    final auth = ref.watch(authProvider);
+    if (!auth.isLoggedIn || auth.userId == null) {
+      return signedInRequiredPage(context, ref, title: 'Access Applications');
+    }
     final applications = ref.watch(myRoleApplicationsProvider);
     final options = ref.watch(roleApplicationOptionsProvider);
     final width = MediaQuery.sizeOf(context).width;
@@ -214,6 +220,7 @@ class _RoleApplicationWizardState extends ConsumerState<RoleApplicationWizard> {
   bool _busy = false;
   bool _declared = false;
   String? _category;
+  String? _categoryId;
   String? _spotId;
 
   bool get _msme => widget.application.type == 'msme_owner';
@@ -240,6 +247,8 @@ class _RoleApplicationWizardState extends ConsumerState<RoleApplicationWizard> {
         key: TextEditingController(text: p[key]?.toString() ?? ''),
     };
     _category = p['business_category']?.toString();
+    _categoryId = widget.application.requestedMsmeCategory?['id']?.toString() ??
+        p['business_category_id']?.toString();
     _spotId = widget.application.requestedSpot?['id']?.toString();
     _declared = p['declaration'] == true;
   }
@@ -336,14 +345,30 @@ class _RoleApplicationWizardState extends ConsumerState<RoleApplicationWizard> {
               _field('business_name', 'Business name', required: true),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                initialValue: _category,
+                initialValue: _selectedCategoryValue(options),
                 decoration:
                     const InputDecoration(labelText: 'Business category'),
                 items: (options['msme_categories'] as List? ?? const [])
-                    .map((value) => DropdownMenuItem(
-                        value: value.toString(), child: Text(value.toString())))
-                    .toList(),
-                onChanged: (value) => _category = value,
+                    .map((value) {
+                  final item = value is Map
+                      ? Map<String, dynamic>.from(value)
+                      : <String, dynamic>{'id': value, 'name': value};
+                  return DropdownMenuItem<String>(
+                      value: (item['id'] ?? item['name']).toString(),
+                      child: Text(item['name']?.toString() ?? 'Category'));
+                }).toList(),
+                onChanged: (value) {
+                  final categories =
+                      options['msme_categories'] as List? ?? const [];
+                  final selected = categories.whereType<Map>().where((item) =>
+                      (item['id'] ?? item['name']).toString() == value);
+                  _categoryId = selected.isEmpty
+                      ? null
+                      : selected.first['id']?.toString();
+                  _category = selected.isEmpty
+                      ? value
+                      : selected.first['name']?.toString();
+                },
                 validator: (value) =>
                     value == null ? 'Select a category.' : null,
               ),
@@ -394,7 +419,9 @@ class _RoleApplicationWizardState extends ConsumerState<RoleApplicationWizard> {
               const InputDecoration(labelText: 'Requested Tourist Spot'),
           items: spots
               .map((spot) => DropdownMenuItem<String>(
-                  value: spot.uuid as String, child: Text(spot.name as String)))
+                  value: spot.uuid as String,
+                  child: Text(
+                      '${spot.name} · ${spot.categoryName ?? 'Uncategorized'}')))
               .toList(),
           onChanged: (value) => setState(() => _spotId = value),
           validator: (value) =>
@@ -444,12 +471,25 @@ class _RoleApplicationWizardState extends ConsumerState<RoleApplicationWizard> {
     }
     if (_msme && _category != null) {
       data['business_category'] = _category;
+      if (_categoryId != null) data['business_category_id'] = _categoryId;
     }
     if (!_msme && _spotId != null) {
       data['requested_tourist_spot_id'] = _spotId;
     }
     data['declaration'] = _declared;
     return data;
+  }
+
+  String? _selectedCategoryValue(Map<String, dynamic> options) {
+    if (_categoryId != null) return _categoryId;
+    final categories = options['msme_categories'] as List? ?? const [];
+    for (final value in categories) {
+      if (value is Map && value['name']?.toString() == _category) {
+        return (value['id'] ?? value['name']).toString();
+      }
+      if (value.toString() == _category) return _category;
+    }
+    return null;
   }
 
   Future<void> _pickLocation() async {

@@ -44,6 +44,9 @@ class _TouristSpotsPageState extends ConsumerState<TouristSpotsPage> {
   @override
   Widget build(BuildContext context) {
     final places = ref.watch(mapMarkersProvider);
+    final configuredCategories =
+        ref.watch(mapPlaceCategoriesProvider).valueOrNull ??
+            const <MapPlaceCategory>[];
     final destinations = ref.watch(touristSpotsListProvider);
     final location = ref.watch(userLocationProvider);
     final favoriteKeys =
@@ -117,7 +120,7 @@ class _TouristSpotsPageState extends ConsumerState<TouristSpotsPage> {
           final publicPlaces = combined
               .where((place) => place.category != MapMarkerCategory.wasteReport)
               .toList(growable: false);
-          final categories = _categories(publicPlaces);
+          final categories = _categories(publicPlaces, configuredCategories);
           final filtered = _filtered(publicPlaces, location);
           return RefreshIndicator(
             color: const Color(0xFFF59E0B),
@@ -213,6 +216,9 @@ class _TouristSpotsPageState extends ConsumerState<TouristSpotsPage> {
                           ),
                           delegate: SliverChildBuilderDelegate(
                             (context, index) => _ExplorePlaceCard(
+                              key: ValueKey(
+                                'explore-${filtered[index].category.name}-${filtered[index].id}',
+                              ),
                               place: filtered[index],
                               distanceKm: _distance(filtered[index], location),
                               favoriteBusy:
@@ -388,6 +394,7 @@ class _TouristSpotsPageState extends ConsumerState<TouristSpotsPage> {
             final slug = category?.slug ?? 'all';
             final selected = slug == _category;
             return FilterChip(
+              key: ValueKey('explore-category-$slug'),
               selected: selected,
               showCheckmark: false,
               avatar: category == null
@@ -440,6 +447,9 @@ class _TouristSpotsPageState extends ConsumerState<TouristSpotsPage> {
               itemBuilder: (context, index) {
                 final place = places[index];
                 return _DiscoveryTile(
+                  key: ValueKey(
+                    'explore-discovery-${place.category.name}-${place.id}',
+                  ),
                   place: place,
                   distanceKm: _distance(place, location),
                   onTap: () => _openDetails(place),
@@ -453,9 +463,10 @@ class _TouristSpotsPageState extends ConsumerState<TouristSpotsPage> {
     );
   }
 
-  List<MapPlaceCategory> _categories(List<MapMarker> places) {
-    final configured = ref.watch(mapPlaceCategoriesProvider).valueOrNull ??
-        const <MapPlaceCategory>[];
+  List<MapPlaceCategory> _categories(
+    List<MapMarker> places,
+    List<MapPlaceCategory> configured,
+  ) {
     if (configured.isNotEmpty) return configured;
     final result = <String, MapPlaceCategory>{};
     for (final place in places) {
@@ -720,6 +731,7 @@ class _TouristSpotsPageState extends ConsumerState<TouristSpotsPage> {
 
 class _ExplorePlaceCard extends StatelessWidget {
   const _ExplorePlaceCard({
+    super.key,
     required this.place,
     required this.distanceKm,
     required this.favoriteBusy,
@@ -924,6 +936,7 @@ class _ExplorePlaceCard extends StatelessWidget {
 
 class _DiscoveryTile extends StatelessWidget {
   const _DiscoveryTile({
+    super.key,
     required this.place,
     required this.distanceKm,
     required this.onTap,

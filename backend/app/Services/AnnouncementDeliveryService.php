@@ -20,9 +20,13 @@ class AnnouncementDeliveryService
         $user->loadMissing('role');
         $role = $user->role?->name ?? 'tourist';
 
-        $active = Announcement::visibleTo($role)
-            ->select(['id', 'title', 'body', 'priority', 'audience', 'starts_at', 'created_at'])
-            ->get();
+        $columns = ['id', 'title', 'body', 'priority', 'audience', 'starts_at', 'created_at'];
+        foreach (['display_type', 'cta_label', 'related_type', 'related_id'] as $column) {
+            if (Schema::hasColumn('announcements', $column)) {
+                $columns[] = $column;
+            }
+        }
+        $active = Announcement::visibleTo($role)->select($columns)->get();
         $model = $role === 'tourism_partner'
             ? PartnerNotification::class
             : Notification::class;
@@ -32,24 +36,28 @@ class AnnouncementDeliveryService
             ->forceDelete();
 
         $active->each(function (Announcement $announcement) use ($user, $role, $model): void {
-                $model::withTrashed()->firstOrCreate(
-                    [
-                        'user_id' => $user->id,
+            $model::withTrashed()->firstOrCreate(
+                [
+                    'user_id' => $user->id,
+                    'announcement_id' => $announcement->id,
+                ],
+                [
+                    'type' => 'announcement',
+                    'title' => $announcement->title,
+                    'body' => $announcement->body,
+                    'data' => [
                         'announcement_id' => $announcement->id,
+                        'priority' => $announcement->priority,
+                        'audience' => $announcement->audience,
+                        'audiences' => $announcement->audienceRoles(),
+                        'display_type' => $announcement->display_type,
+                        'related_type' => $announcement->related_type,
+                        'related_id' => $announcement->related_id,
+                        'route' => $this->announcementRoute($role),
                     ],
-                    [
-                        'type' => 'announcement',
-                        'title' => $announcement->title,
-                        'body' => $announcement->body,
-                        'data' => [
-                            'announcement_id' => $announcement->id,
-                            'priority' => $announcement->priority,
-                            'audience' => $announcement->audience,
-                            'route' => $this->announcementRoute($role),
-                        ],
-                        'is_read' => false,
-                    ],
-                );
+                    'is_read' => false,
+                ],
+            );
         });
     }
 

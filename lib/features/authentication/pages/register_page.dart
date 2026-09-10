@@ -16,7 +16,9 @@ import '../widgets/google_web_button.dart';
 import '../../settings/repositories/settings_repository.dart';
 
 class RegisterPage extends ConsumerStatefulWidget {
-  const RegisterPage({super.key});
+  const RegisterPage({super.key, this.returnTo});
+
+  final String? returnTo;
 
   @override
   ConsumerState<RegisterPage> createState() => _RegisterPageState();
@@ -113,8 +115,13 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
           duration: const Duration(seconds: 3),
         ),
       );
-      context
-          .go('/auth/login/verify-email?email=${Uri.encodeComponent(email)}');
+      context.go(Uri(
+        path: '/auth/login/verify-email',
+        queryParameters: {
+          'email': email,
+          if (widget.returnTo != null) 'returnTo': widget.returnTo,
+        },
+      ).toString());
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -143,7 +150,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     try {
       await ref.read(authProvider.notifier).googleSignIn();
       if (!mounted) return;
-      context.go(ref.read(authProvider).homeRoute);
+      context.go(widget.returnTo ?? ref.read(authProvider).homeRoute);
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -167,7 +174,9 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     setState(() => _loading = true);
     try {
       await ref.read(authProvider.notifier).completeGoogleSignIn(account);
-      if (mounted) context.go(ref.read(authProvider).homeRoute);
+      if (mounted) {
+        context.go(widget.returnTo ?? ref.read(authProvider).homeRoute);
+      }
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -244,7 +253,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Join the Tubigon Smart Tourism community',
+                        'Join the Tour Tubigon community',
                         style: GoogleFonts.inter(
                           color: AppColors.grey400,
                           fontSize: 13,

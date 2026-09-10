@@ -16,6 +16,15 @@ The bypass is disabled for every other `APP_ENV` value, including `production`.
 
 ## Google Cloud configuration
 
+Before release, an authorized Google Cloud project owner must update the
+OAuth consent screen under **Google Auth Platform > Branding**. Set the app
+name to **Tour Tubigon**, use the approved Tour Tubigon logo, verify the
+support/developer contact addresses, and confirm the privacy-policy and
+terms-of-service URLs. If Google requires verification after a branding,
+domain, scope, or logo change, complete that review before production rollout.
+This is external account state and is intentionally not automated by the
+repository.
+
 1. Create a Web OAuth 2.0 client in Google Cloud Console. Add the Flutter web
    origins used in development and production (for example,
    `http://localhost:PORT` and the production HTTPS origin).
@@ -53,3 +62,9 @@ AUTH_VERIFICATION_EXPIRE_MINUTES=60
 
 Never commit production credentials. After changing Laravel environment
 values, run `php artisan config:clear` before testing.
+
+For each deployed origin, confirm that its exact scheme, hostname, and port
+are listed as an authorized JavaScript origin. Recheck Android package/SHA-1
+and iOS bundle ID/URL scheme for release signing. A client ID may be shipped
+to Flutter; a client secret must never be embedded in Web, Android, or iOS
+artifacts.

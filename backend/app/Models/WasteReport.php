@@ -12,9 +12,14 @@ class WasteReport extends Model
 
     protected $fillable = [
         'user_id',
+        'category_id',
         'category',
+        'severity',
         'description',
         'location_description',
+        'resolved_address',
+        'geocoding_source',
+        'barangay',
         'latitude',
         'longitude',
         'images',
@@ -27,6 +32,11 @@ class WasteReport extends Model
         'resolution_evidence',
         'reviewed_at',
         'resolved_at',
+        'resolved_by',
+        'resolution_summary',
+        'reopened_at',
+        'submitted_at',
+        'client_submission_id',
     ];
 
     protected $casts = [
@@ -37,10 +47,27 @@ class WasteReport extends Model
         'assigned_at' => 'datetime',
         'reviewed_at' => 'datetime',
         'resolved_at' => 'datetime',
+        'reopened_at' => 'datetime',
+        'submitted_at' => 'datetime',
     ];
 
     public function user()
     {
         return $this->belongsTo(Profile::class, 'user_id');
+    }
+
+    public function history()
+    {
+        return $this->hasMany(WasteReportHistory::class)->oldest();
+    }
+
+    public function categoryDefinition()
+    {
+        return $this->belongsTo(WasteCategory::class, 'category_id');
+    }
+
+    public function media()
+    {
+        return $this->hasMany(WasteReportMedia::class, 'waste_report_id')->oldest();
     }
 }

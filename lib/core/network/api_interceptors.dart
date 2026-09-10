@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:logger/logger.dart';
 
@@ -6,6 +7,33 @@ import '../constants/app_constants.dart';
 
 final _logger = Logger();
 const _storage = FlutterSecureStorage();
+
+/// Rejects direct server mutations when the device has no network interface.
+/// Tourist waste reporting remains safe because its repository writes the
+/// UUID-keyed local record before attempting this request and retains it for
+/// authenticated reconnect sync. Privileged actions never enter that queue.
+class OfflineWriteInterceptor extends Interceptor {
+  @override
+  Future<void> onRequest(
+    RequestOptions options,
+    RequestInterceptorHandler handler,
+  ) async {
+    final method = options.method.toUpperCase();
+    if (method == 'GET' || method == 'HEAD' || method == 'OPTIONS') {
+      return handler.next(options);
+    }
+    final connectivity = await Connectivity().checkConnectivity();
+    if (connectivity.every((result) => result == ConnectivityResult.none)) {
+      return handler.reject(DioException(
+        requestOptions: options,
+        type: DioExceptionType.connectionError,
+        message:
+            'Offline mode is read-only. This action requires a verified server connection.',
+      ));
+    }
+    return handler.next(options);
+  }
+}
 
 /// Injects the Bearer token into every request that requires authentication.
 class AuthInterceptor extends Interceptor {

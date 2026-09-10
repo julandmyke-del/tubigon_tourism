@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Tubigon Smart Tourism — Premium Dark Color Token System
+/// Tour Tubigon — Premium Dark Color Token System
 /// Never hardcode colors elsewhere; always reference AppColors.
 abstract final class AppColors {
   // ─── Brand Primary — Dark Navy Blue ──────────────────────────────────────

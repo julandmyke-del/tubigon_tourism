@@ -1,11 +1,14 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tubigon_tourism/core/services/local_storage_service.dart';
 import 'package:tubigon_tourism/core/services/private_session_data_service.dart';
+import 'package:tubigon_tourism/core/network/api_client.dart';
 import 'package:tubigon_tourism/core/utils/auth_action_guard.dart';
 import 'package:tubigon_tourism/features/favorites/repositories/favorites_repository.dart';
 import 'package:tubigon_tourism/features/authentication/auth_provider.dart';
 import 'package:tubigon_tourism/features/offline_maps/offline_map_provider.dart';
+import 'package:tubigon_tourism/features/connected_operations/data/connected_operations_repository.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -53,6 +56,9 @@ void main() {
     final state = OfflineMapState(
       phase: OfflinePackagePhase.ready,
       dataReady: true,
+      baseMapReady: true,
+      regionId: 7,
+      mapResourceVersion: 'style-v2',
       downloadedAt: downloaded,
       lastSyncedAt: downloaded,
       placeCount: 42,
@@ -63,6 +69,19 @@ void main() {
     expect(restored.placeCount, 42);
     expect(restored.totalBytes, 6144);
     expect(restored.downloadedAt, downloaded);
+    expect(restored.canOpen, isTrue);
+    expect(restored.mapResourceVersion, 'style-v2');
+  });
+
+  test('place snapshots alone are never presented as a complete offline map',
+      () {
+    const dataOnly = OfflineMapState(
+      phase: OfflinePackagePhase.ready,
+      dataReady: true,
+      baseMapReady: false,
+    );
+    expect(dataOnly.hasDataSnapshot, isTrue);
+    expect(dataOnly.canOpen, isFalse);
   });
 
   test('private map caches are isolated by role and user', () {
@@ -114,5 +133,23 @@ void main() {
         storage.containsKey('smart_map_cache_private_lguStaff_lgu-a'), isFalse);
     expect(storage.containsKey('itineraries_cache_lgu-a'), isFalse);
     expect(storage.containsKey('itinerary_pending_sync_lgu-a'), isFalse);
+  });
+
+  test('concern drafts persist locally and can be cleared after submission',
+      () async {
+    SharedPreferences.setMockInitialValues({});
+    await LocalStorageService.init();
+    final repository = ConnectedOperationsRepository(ApiClient(Dio()));
+
+    await repository.saveConcernDraft({
+      'category_id': 'category-1',
+      'subject': 'Saved support request',
+      'description': 'This remains on the device until it is submitted.',
+      'priority': 'normal',
+    });
+
+    expect(repository.loadConcernDraft()?['subject'], 'Saved support request');
+    await repository.clearConcernDraft();
+    expect(repository.loadConcernDraft(), isNull);
   });
 }

@@ -6,6 +6,16 @@ import 'package:tubigon_tourism/features/role_applications/presentation/applican
 import 'package:tubigon_tourism/features/role_applications/presentation/role_application_review_page.dart';
 import 'package:tubigon_tourism/features/role_applications/providers/role_application_providers.dart';
 import 'package:tubigon_tourism/features/tourist_spots/repositories/tourist_spot_repository.dart';
+import 'package:tubigon_tourism/features/authentication/auth_provider.dart';
+
+class _TouristAuthNotifier extends AuthNotifier {
+  @override
+  AuthState build() => const AuthState(
+        isLoggedIn: true,
+        role: UserRole.tourist,
+        userId: 'tourist-applicant',
+      );
+}
 
 void main() {
   const submitted = RoleApplication(
@@ -37,6 +47,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(ProviderScope(
       overrides: [
+        authProvider.overrideWith(_TouristAuthNotifier.new),
         roleApplicationOptionsProvider.overrideWith((ref) async => {
               'msme_applications_enabled': true,
               'partner_applications_enabled': true,

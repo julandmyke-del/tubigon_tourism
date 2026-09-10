@@ -1,5 +1,5 @@
 Tour Tubigon
-Tubigon Smart Tourism Information and Management System
+Tour Tubigon Information and Management System
 
 {{ $heading }}
 

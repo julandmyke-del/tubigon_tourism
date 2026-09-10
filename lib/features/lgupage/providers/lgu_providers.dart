@@ -107,3 +107,13 @@ final lguEcoTipsProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   return ref.watch(lguRepositoryProvider).getEcoTips();
 });
+
+final lguFerrySchedulesProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  return ref.watch(lguRepositoryProvider).getFerrySchedules();
+});
+
+final lguFerryCatalogsProvider =
+    FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+  return ref.watch(lguRepositoryProvider).getFerryCatalogs();
+});

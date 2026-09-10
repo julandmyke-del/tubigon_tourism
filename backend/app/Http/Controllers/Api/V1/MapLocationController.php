@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Concerns\ValidatesTubigonCoordinates;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
+use App\Models\EmergencyContact;
 use App\Models\MapLocation;
 use App\Models\MapLocationCategory;
 use App\Models\Msme;
 use App\Models\TouristSpot;
+use App\Support\TubigonBoundary;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -127,7 +129,11 @@ class MapLocationController extends Controller
         }
 
         $before = $location->toArray();
-        $trustFields = ['name', 'category_id', 'subcategory_id', 'entity_type', 'entity_id', 'latitude', 'longitude'];
+        $trustFields = [
+            'name', 'category_id', 'subcategory_id', 'entity_type', 'entity_id',
+            'latitude', 'longitude', 'coordinate_source_name',
+            'coordinate_source_url', 'coordinate_source_id',
+        ];
         $trustChanged = collect($trustFields)->contains(
             fn (string $field) => array_key_exists($field, $data)
                 && (string) ($data[$field] ?? '') !== (string) ($location->{$field} ?? '')
@@ -233,8 +239,16 @@ class MapLocationController extends Controller
             'entity_type' => ['nullable', Rule::in(['tourist_spot', 'msme', 'emergency_contact'])],
             'entity_id' => ['nullable', 'required_with:entity_type', 'uuid'],
             'address' => ['nullable', 'string', 'max:1000'],
+            'barangay' => ['nullable', 'string', 'max:120'],
+            'municipality' => ['nullable', 'string', 'max:120'],
+            'province' => ['nullable', 'string', 'max:120'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90', 'required_with:longitude'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180', 'required_with:latitude'],
+            'coordinate_source_name' => ['nullable', 'string', 'max:255'],
+            'coordinate_source_url' => ['nullable', 'url:http,https', 'max:2048'],
+            'coordinate_source_id' => ['nullable', 'string', 'max:120'],
+            'coordinate_source_license' => ['nullable', 'string', 'max:120'],
+            'coordinate_verified_at' => ['nullable', 'date'],
             'marker_icon' => ['nullable', 'regex:/^[a-z0-9_\-]+$/', 'max:64'],
             'image_url' => ['nullable', 'url:http,https', 'max:2048'],
             'is_featured' => ['sometimes', 'boolean'],
@@ -243,7 +257,11 @@ class MapLocationController extends Controller
         ]);
         unset($data['duplicate_override']);
 
-        foreach (['name', 'description', 'address', 'marker_icon'] as $field) {
+        foreach ([
+            'name', 'description', 'address', 'barangay', 'municipality',
+            'province', 'marker_icon', 'coordinate_source_name',
+            'coordinate_source_id', 'coordinate_source_license',
+        ] as $field) {
             if (array_key_exists($field, $data) && is_string($data[$field])) {
                 $data[$field] = trim(strip_tags($data[$field]));
             }
@@ -290,7 +308,7 @@ class MapLocationController extends Controller
         $exists = match ($type) {
             'tourist_spot' => TouristSpot::whereKey($id)->exists(),
             'msme' => Msme::whereKey($id)->exists(),
-            'emergency_contact' => \App\Models\EmergencyContact::whereKey($id)->exists(),
+            'emergency_contact' => EmergencyContact::whereKey($id)->exists(),
             default => false,
         };
         if (! $exists) {
@@ -303,11 +321,11 @@ class MapLocationController extends Controller
         $errors = [];
         if ($location->latitude === null || $location->longitude === null) {
             $errors['latitude'][] = 'Place the exact map pin before verification or publication.';
-        } elseif (! app(\App\Support\TubigonBoundary::class)->contains(
+        } elseif (! app(TubigonBoundary::class)->contains(
             (float) $location->latitude,
             (float) $location->longitude,
         ) && ! ($location->category?->slug === 'port-transport'
-            && app(\App\Support\TubigonBoundary::class)->containsPortServiceArea(
+            && app(TubigonBoundary::class)->containsPortServiceArea(
                 (float) $location->latitude,
                 (float) $location->longitude,
             ))) {

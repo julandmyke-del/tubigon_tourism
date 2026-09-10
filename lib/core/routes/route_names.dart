@@ -62,6 +62,7 @@ abstract final class RouteNames {
 
   // ─── Eco ──────────────────────────────────────────────────────────────────
   static const String ecoTips = 'eco-tips';
+  static const String carbonEstimator = 'carbon-estimator';
 
   // ─── Waste Reporting ──────────────────────────────────────────────────────
   static const String wasteReport = 'waste-report';
