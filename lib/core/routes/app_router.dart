@@ -875,6 +875,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ],
           ),
           GoRoute(
+            parentNavigatorKey: _rootNavigatorKey,
+            path: '/msme-portal/preview',
+            builder: (context, state) => const MsmeOwnerPreviewPage(),
+          ),
+          GoRoute(
             path: '/msme-portal/gallery',
             name: RouteNames.msmePortalGallery,
             builder: (context, state) => const PortalCapabilityNoticePage(

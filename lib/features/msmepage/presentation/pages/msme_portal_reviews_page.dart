@@ -23,9 +23,9 @@ class _ReviewsState extends ConsumerState<MsmePortalReviewsPage> {
     final reviews = ref.watch(msmePortalReviewsProvider);
     final stats = ref.watch(msmePortalReviewStatsProvider);
     if (current.isLoading) {
-      return const Scaffold(
+      return Scaffold(
           backgroundColor: MsmeTheme.bgDark,
-          body: Center(child: CircularProgressIndicator()));
+          body: const Center(child: CircularProgressIndicator()));
     }
     if (current.hasError) {
       return Scaffold(
@@ -38,9 +38,9 @@ class _ReviewsState extends ConsumerState<MsmePortalReviewsPage> {
       );
     }
     if (current.valueOrNull?.hasBusiness != true) {
-      return const Scaffold(
+      return Scaffold(
         backgroundColor: MsmeTheme.bgDark,
-        body: MsmeSetupRequired(
+        body: const MsmeSetupRequired(
           title: 'Create your business profile first',
           message:
               'Customer reviews will appear here after your business is published and receives feedback.',
@@ -60,7 +60,7 @@ class _ReviewsState extends ConsumerState<MsmePortalReviewsPage> {
             children: [
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('Customer Reviews', style: MsmeTheme.headingLarge()),
-                const Text(
+                Text(
                     'Tourist feedback is read-only; owners cannot alter customer reviews.',
                     style: TextStyle(color: MsmeTheme.textMuted)),
               ]),
@@ -131,7 +131,7 @@ class _ReviewsState extends ConsumerState<MsmePortalReviewsPage> {
                     return _oldestFirst ? result : -result;
                   });
                 if (filtered.isEmpty) {
-                  return const Center(
+                  return Center(
                       child: Text('No reviews match this filter.',
                           style: TextStyle(color: MsmeTheme.textMuted)));
                 }
@@ -185,7 +185,7 @@ class _SummaryCard extends StatelessWidget {
                     fontWeight: FontWeight.bold)),
             Text(label,
                 style:
-                    const TextStyle(color: MsmeTheme.textMuted, fontSize: 12)),
+                    TextStyle(color: MsmeTheme.textMuted, fontSize: 12)),
           ]),
         ]),
       );
@@ -203,7 +203,7 @@ class _ReviewCard extends StatelessWidget {
       decoration: MsmeTheme.cardDecoration(),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          const CircleAvatar(
+          CircleAvatar(
               backgroundColor: MsmeTheme.surfaceDark,
               child: Icon(Icons.person_rounded, color: MsmeTheme.textMuted)),
           const SizedBox(width: 10),
@@ -212,7 +212,7 @@ class _ReviewCard extends StatelessWidget {
                   style: MsmeTheme.headingSmall())),
           if (date != null)
             Text(DateFormat.yMMMd().format(date.toLocal()),
-                style: const TextStyle(color: MsmeTheme.textMuted)),
+                style: TextStyle(color: MsmeTheme.textMuted)),
         ]),
         const SizedBox(height: 8),
         Semantics(

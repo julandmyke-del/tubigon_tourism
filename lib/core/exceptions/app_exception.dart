@@ -14,8 +14,7 @@ sealed class AppException implements Exception {
   final Map<String, dynamic>? responseData;
 
   @override
-  String toString() =>
-      '$runtimeType(message: $message, code: $code, statusCode: $statusCode)';
+  String toString() => message;
 }
 
 /// Thrown when there is no internet connectivity or request times out.

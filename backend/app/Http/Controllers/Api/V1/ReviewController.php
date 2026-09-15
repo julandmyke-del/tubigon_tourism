@@ -12,10 +12,23 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class ReviewController extends Controller
 {
+    private const MODERATION_REASONS = [
+        'spam',
+        'offensive_content',
+        'harassment',
+        'false_information',
+        'irrelevant_content',
+        'privacy_information',
+        'duplicate',
+        'community_guidelines',
+        'other',
+    ];
+
     public function index(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -143,21 +156,98 @@ class ReviewController extends Controller
         $review = Review::findOrFail($id);
         $user = $request->user();
         $user->loadMissing('role');
-        if ($user->role?->name !== 'admin' && (string) $review->user_id !== (string) $user->id) {
+        $isAdmin = $user->role?->name === 'admin';
+        if (! $isAdmin && (string) $review->user_id !== (string) $user->id) {
             abort(403, 'You may only delete your own reviews.');
         }
-        DB::transaction(function () use ($request, $review): void {
+        $moderation = $isAdmin ? $request->validate([
+            'reason_code' => ['required', Rule::in(self::MODERATION_REASONS)],
+            'reason_detail' => 'nullable|required_if:reason_code,other|string|max:1000',
+        ]) : [];
+
+        DB::transaction(function () use ($request, $review, $isAdmin, $moderation): void {
             $type = $review->reviewable_type;
             $targetId = $review->reviewable_id;
             $review->delete();
             $this->refreshTargetRating($type, $targetId);
-            ActivityLog::create([
+            $audit = [
+                'review_id' => $review->id,
+                'owner_id' => $review->user_id,
+                'moderator_id' => $isAdmin ? $request->user()->id : null,
+                'target_type' => $type,
+                'target_id' => $targetId,
+                'reason_code' => $moderation['reason_code'] ?? 'owner_deleted',
+                'reason_detail' => $moderation['reason_detail'] ?? null,
+            ];
+            $logData = [
                 'user_id' => $request->user()->id,
-                'action' => 'Review archived',
-                'details' => "Archived review ID {$review->id}",
-            ]);
+                'action' => $isAdmin ? 'Review removed by administrator' : 'Review deleted by owner',
+                'details' => json_encode($audit, JSON_THROW_ON_ERROR),
+            ];
+            if (Schema::hasColumn('activity_logs', 'target_type')) {
+                $logData['target_type'] = 'review';
+            }
+            if (Schema::hasColumn('activity_logs', 'target_id')) {
+                $logData['target_id'] = $review->id;
+            }
+            if (Schema::hasColumn('activity_logs', 'metadata')) {
+                $logData['metadata'] = $audit;
+            }
+            ActivityLog::create($logData);
+            if ($isAdmin) {
+                $label = $this->moderationReasonLabel($moderation['reason_code']);
+                Notification::create([
+                    'user_id' => $review->user_id,
+                    'type' => 'review_removed',
+                    'title' => 'Review Removed',
+                    'body' => "Your review was removed by an administrator. Reason: {$label}",
+                    'data' => [
+                        'review_id' => $review->id,
+                        'reason_code' => $moderation['reason_code'],
+                        'reason' => $label,
+                        'reason_detail' => $moderation['reason_detail'] ?? null,
+                        'route' => '/notifications',
+                    ],
+                ]);
+            }
         });
-        return response()->json(['status' => 'success', 'message' => 'Review archived']);
+        return response()->json([
+            'status' => 'success',
+            'message' => $isAdmin ? 'Review removed' : 'Review deleted',
+        ]);
+    }
+
+    public function update(Request $request, string $id): JsonResponse
+    {
+        $request->user()->loadMissing('role');
+        abort_unless($request->user()->role?->name === 'tourist', 403, 'Only Tourist accounts may edit reviews.');
+        $review = Review::findOrFail($id);
+        abort_unless((string) $review->user_id === (string) $request->user()->id, 403, 'You may only edit your own reviews.');
+        $validated = $request->validate([
+            'rating' => 'required|integer|min:1|max:5',
+            'content' => 'required|string|min:3|max:1000',
+        ]);
+        DB::transaction(function () use ($review, $validated): void {
+            $review->update($validated);
+            $this->refreshTargetRating($review->reviewable_type, $review->reviewable_id);
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $review->fresh()->load('user:id,name'),
+        ]);
+    }
+
+    private function moderationReasonLabel(string $code): string
+    {
+        return match ($code) {
+            'offensive_content' => 'Offensive or inappropriate content',
+            'false_information' => 'False or misleading information',
+            'irrelevant_content' => 'Irrelevant content',
+            'privacy_information' => 'Privacy or personal information',
+            'community_guidelines' => 'Community-guideline violation',
+            default => str($code)->replace('_', ' ')->title()->toString(),
+        };
     }
 
     private function refreshTargetRating(string $type, string $id): object

@@ -189,7 +189,7 @@ class _AdminActivityLogsPageState extends ConsumerState<AdminActivityLogsPage> {
                 const Icon(Icons.error_outline,
                     color: AdminColors.danger, size: 42),
                 const SizedBox(height: 12),
-                const Text('Unable to load activity logs.',
+                Text('Unable to load activity logs.',
                     style: TextStyle(color: AdminColors.textSecondary)),
                 TextButton(
                     onPressed: () =>
@@ -207,7 +207,7 @@ class _AdminActivityLogsPageState extends ConsumerState<AdminActivityLogsPage> {
                 final total =
                     int.tryParse('${pageData['total']}') ?? rows.length;
                 if (rows.isEmpty) {
-                  return const Center(
+                  return Center(
                       child: Text('No activity matches these filters.',
                           style: TextStyle(color: AdminColors.textSecondary)));
                 }
@@ -277,7 +277,7 @@ class _AdminActivityLogsPageState extends ConsumerState<AdminActivityLogsPage> {
                           horizontal: 16, vertical: 8),
                       child: Row(children: [
                         Text('$total records · Page $current of $last',
-                            style: const TextStyle(
+                            style: TextStyle(
                                 color: AdminColors.textSecondary)),
                         const Spacer(),
                         IconButton(

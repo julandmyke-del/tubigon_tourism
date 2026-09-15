@@ -31,7 +31,7 @@ class AdminReservationDetailPage extends ConsumerWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Unable to load this reservation.',
+              Text('Unable to load this reservation.',
                   style: TextStyle(color: AdminColors.textSecondary)),
               const SizedBox(height: 12),
               OutlinedButton(
@@ -97,12 +97,12 @@ class AdminReservationDetailPage extends ConsumerWidget {
                                   SizedBox(
                                     width: 130,
                                     child: Text(row.key,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                             color: AdminColors.textSecondary)),
                                   ),
                                   Expanded(
                                     child: SelectableText(row.value,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                             color: AdminColors.textPrimary)),
                                   ),
                                 ],

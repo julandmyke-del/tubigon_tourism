@@ -67,7 +67,7 @@ class MsmePortalDashboardPage extends ConsumerWidget {
                           Text(
                               '${business['name'] ?? 'Business'} · ${business['category'] ?? 'Uncategorized'}',
                               style:
-                                  const TextStyle(color: MsmeTheme.textMuted)),
+                                  TextStyle(color: MsmeTheme.textMuted)),
                           const SizedBox(height: 6),
                           Wrap(spacing: 8, runSpacing: 6, children: [
                             MsmeBadge(label: status.replaceAll('_', ' ')),
@@ -183,7 +183,7 @@ class MsmePortalDashboardPage extends ConsumerWidget {
                                   style: const TextStyle(color: Colors.white)),
                               subtitle: Text(
                                   item['created_at']?.toString() ?? '',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                       color: MsmeTheme.textMuted)),
                             ),
                           )),
@@ -218,7 +218,7 @@ class _Metric extends StatelessWidget {
                         color: Colors.white,
                         fontSize: 24,
                         fontWeight: FontWeight.bold)),
-                Text(label, style: const TextStyle(color: MsmeTheme.textMuted)),
+                Text(label, style: TextStyle(color: MsmeTheme.textMuted)),
               ])),
         ]),
       );
@@ -309,7 +309,7 @@ class _StateMessage extends StatelessWidget {
         const SizedBox(height: 8),
         Text(message,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: MsmeTheme.textMuted)),
+            style: TextStyle(color: MsmeTheme.textMuted)),
         const SizedBox(height: 16),
         Center(
             child: ElevatedButton(onPressed: action, child: Text(actionLabel))),
@@ -325,6 +325,6 @@ class _EmptyCard extends StatelessWidget {
         decoration: MsmeTheme.cardDecoration(),
         child: Center(
             child:
-                Text(text, style: const TextStyle(color: MsmeTheme.textMuted))),
+                Text(text, style: TextStyle(color: MsmeTheme.textMuted))),
       );
 }

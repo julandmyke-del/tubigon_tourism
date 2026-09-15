@@ -27,9 +27,9 @@ class _State extends ConsumerState<MsmePortalAvailabilityPage> {
   Widget build(BuildContext context) {
     final current = ref.watch(currentMsmeProvider);
     if (current.isLoading) {
-      return const Scaffold(
+      return Scaffold(
           backgroundColor: MsmeTheme.bgDark,
-          body: Center(child: CircularProgressIndicator()));
+          body: const Center(child: CircularProgressIndicator()));
     }
     if (current.hasError) {
       return Scaffold(
@@ -43,9 +43,9 @@ class _State extends ConsumerState<MsmePortalAvailabilityPage> {
     }
     final business = current.valueOrNull?.business;
     if (business == null) {
-      return const Scaffold(
+      return Scaffold(
         backgroundColor: MsmeTheme.bgDark,
-        body: MsmeSetupRequired(
+        body: const MsmeSetupRequired(
           title: 'Availability setup requires a business',
           message:
               'Create your business profile before managing operating status and unavailable dates.',
@@ -75,7 +75,7 @@ class _State extends ConsumerState<MsmePortalAvailabilityPage> {
             children: [
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('Availability Calendar', style: MsmeTheme.headingLarge()),
-                const Text(
+                Text(
                     'Operating status and blocked dates are enforced by Laravel before a reservation is saved.',
                     style: TextStyle(color: MsmeTheme.textMuted)),
               ]),
@@ -116,7 +116,7 @@ class _State extends ConsumerState<MsmePortalAvailabilityPage> {
               Text('Upcoming Closures', style: MsmeTheme.headingSmall()),
               const SizedBox(height: 10),
               if (upcoming.isEmpty)
-                const Text('No blocked dates scheduled.',
+                Text('No blocked dates scheduled.',
                     style: TextStyle(color: MsmeTheme.textMuted))
               else
                 Wrap(
@@ -147,8 +147,8 @@ class _State extends ConsumerState<MsmePortalAvailabilityPage> {
             child:
                 Text('Block Specific Dates', style: MsmeTheme.headingSmall()),
           ),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             child: Text('Select a date to toggle its availability.',
                 style: TextStyle(color: MsmeTheme.textMuted)),
           ),
@@ -191,9 +191,9 @@ class _State extends ConsumerState<MsmePortalAvailabilityPage> {
           const SizedBox(height: 10),
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Accept MSME reservations'),
+            title: const Text('Accept online reservations'),
             subtitle: const Text(
-                'Only enable this when the business can operationally accept bookings.'),
+                'Turning this off blocks new requests only. Your listing and existing reservations stay available.'),
             value: _bookingEnabled,
             onChanged: (value) => setState(() => _bookingEnabled = value),
           ),
@@ -213,7 +213,7 @@ class _State extends ConsumerState<MsmePortalAvailabilityPage> {
                 child: const Text('Edit')),
           ]),
           if (openingHours.isEmpty)
-            const Text('Opening hours have not been configured.',
+            Text('Opening hours have not been configured.',
                 style: TextStyle(color: MsmeTheme.textMuted))
           else
             ...openingHours.entries.map((entry) {

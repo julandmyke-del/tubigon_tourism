@@ -352,6 +352,8 @@ final reservationRepositoryProvider = Provider<ReservationRepository>((ref) {
 });
 
 final reservationsListProvider = FutureProvider<List<Reservation>>((ref) async {
+  ref.watch(
+      authProvider.select((auth) => (auth.isLoggedIn, auth.userId, auth.role)));
   final repo = ref.watch(reservationRepositoryProvider);
   return repo.getReservations();
 });

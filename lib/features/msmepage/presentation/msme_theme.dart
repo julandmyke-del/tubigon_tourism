@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/theme/app_colors.dart';
+
 abstract final class MsmeTheme {
-  static const Color bgDark = Color(0xFF060D1F);
-  static const Color surfaceDark = Color(0xFF0A1628);
-  static const Color cardDark = Color(0xFF0F1F3D);
-  static const Color cardBorder = Color(0x1AFFFFFF);
+  static Color get bgDark => AppColors.background;
+  static Color get surfaceDark => AppColors.surface;
+  static Color get cardDark => AppColors.surfaceVariant;
+  static Color get cardBorder => AppColors.outline;
 
   static const Color primaryOrange = Color(0xFFF97316);
   static const Color orangeLight = Color(0xFFFB923C);
@@ -13,10 +15,11 @@ abstract final class MsmeTheme {
   static const Color orangeDim = Color(0x26F97316);
   static const Color orangeGlow = Color(0x40F97316);
 
-  static const Color textWhite = Color(0xFFF1F5F9);
-  static const Color textMuted = Color(0xFF94A3B8);
-  static const Color textSubtle = Color(0xFF64748B);
-  static const Color textDisabled = Color(0xFF475569);
+  static Color get textWhite => AppColors.onSurface;
+  static Color get textMuted => AppColors.onSurfaceVariant;
+  static Color get textSubtle => const Color(0xFF64748B);
+  static Color get textDisabled =>
+      AppColors.isDark ? const Color(0xFF475569) : const Color(0xFF94A3B8);
 
   static const Color green = Color(0xFF22C55E);
   static const Color greenLight = Color(0xFF4ADE80);
@@ -35,17 +38,17 @@ abstract final class MsmeTheme {
     end: Alignment.bottomRight,
   );
 
-  static const LinearGradient bgGradient = LinearGradient(
-    colors: [Color(0xFF060D1F), Color(0xFF0A1628), Color(0xFF060D1F)],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
+  static LinearGradient get bgGradient => LinearGradient(
+        colors: [AppColors.background, AppColors.surface, AppColors.background],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      );
 
-  static const LinearGradient sidebarGradient = LinearGradient(
-    colors: [Color(0xFF060D1F), Color(0xFF0A1628), Color(0xFF060D1F)],
-    begin: Alignment.topCenter,
-    end: Alignment.bottomCenter,
-  );
+  static LinearGradient get sidebarGradient => LinearGradient(
+        colors: [AppColors.background, AppColors.surface, AppColors.background],
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+      );
 
   static BoxDecoration cardDecoration({Color? border, Color? bg}) {
     return BoxDecoration(

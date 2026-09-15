@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../authentication/auth_provider.dart';
 import '../repositories/lgu_repository.dart';
 
 export '../repositories/lgu_repository.dart'
@@ -59,6 +60,8 @@ final lguActivityProvider =
 
 final lguWasteReportsProvider =
     FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  ref.watch(
+      authProvider.select((auth) => (auth.isLoggedIn, auth.userId, auth.role)));
   final repository = ref.watch(lguRepositoryProvider);
   return repository.getWasteReports();
 });

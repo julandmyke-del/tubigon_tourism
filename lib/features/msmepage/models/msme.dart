@@ -8,6 +8,7 @@ class Msme {
   final String? profileId;
   final String name;
   final String category;
+  final String? categoryId;
   final String description;
   final String? phone;
   final String? address;
@@ -24,6 +25,7 @@ class Msme {
   final String operationalStatus;
   final Map<String, dynamic> openingHours;
   final List<String> unavailableDates;
+  final List<String> images;
   final List<MsmeProduct> products;
   final List<MsmeReview> reviews;
   final DateTime? createdAt;
@@ -38,6 +40,7 @@ class Msme {
     this.profileId,
     required this.name,
     required this.category,
+    this.categoryId,
     required this.description,
     this.phone,
     this.address,
@@ -54,6 +57,7 @@ class Msme {
     this.operationalStatus = 'open',
     this.openingHours = const {},
     this.unavailableDates = const [],
+    this.images = const [],
     required this.products,
     required this.reviews,
     this.createdAt,
@@ -109,6 +113,7 @@ class Msme {
       profileId: json['profile_id'] as String?,
       name: json['name'] as String? ?? '',
       category: cat,
+      categoryId: json['category_id']?.toString(),
       description: json['description'] as String? ?? '',
       phone: json['phone'] as String?,
       address: json['address'] as String?,
@@ -126,6 +131,7 @@ class Msme {
       operationalStatus: json['operational_status']?.toString() ?? 'open',
       openingHours: _asMap(json['opening_hours']),
       unavailableDates: _asStringList(json['unavailable_dates']),
+      images: _asStringList(json['images']),
       products: parseProducts(json['products']),
       reviews: parseReviews(json['reviews']),
       createdAt: json['created_at'] != null
@@ -191,6 +197,7 @@ class Msme {
       'profile_id': profileId,
       'name': name,
       'category': category,
+      'category_id': categoryId,
       'description': description,
       'phone': phone,
       'address': address,
@@ -207,6 +214,7 @@ class Msme {
       'operational_status': operationalStatus,
       'opening_hours': jsonEncode(openingHours),
       'unavailable_dates': jsonEncode(unavailableDates),
+      'images': jsonEncode(images),
       'products': jsonEncode(products.map((p) => p.toJson()).toList()),
       'created_at': createdAt?.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),

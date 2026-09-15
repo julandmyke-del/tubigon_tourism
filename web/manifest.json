@@ -1,11 +1,11 @@
 {
-    "name": "tubigon_tourism",
-    "short_name": "tubigon_tourism",
+    "name": "Tour Tubigon",
+    "short_name": "Tour Tubigon",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#080F1A",
+    "theme_color": "#0F172A",
+    "description": "Smart tourism information and services for Tubigon, Bohol.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

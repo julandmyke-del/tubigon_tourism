@@ -16,9 +16,9 @@ class MsmePortalAnalyticsPage extends ConsumerWidget {
     final selectedPeriod = ref.watch(msmeAnalyticsPeriodProvider);
 
     if (current.isLoading) {
-      return const Scaffold(
+      return Scaffold(
           backgroundColor: MsmeTheme.bgDark,
-          body: Center(child: CircularProgressIndicator()));
+          body: const Center(child: CircularProgressIndicator()));
     }
     if (current.hasError) {
       return Scaffold(
@@ -31,9 +31,9 @@ class MsmePortalAnalyticsPage extends ConsumerWidget {
       );
     }
     if (current.valueOrNull?.hasBusiness != true) {
-      return const Scaffold(
+      return Scaffold(
         backgroundColor: MsmeTheme.bgDark,
-        body: MsmeSetupRequired(
+        body: const MsmeSetupRequired(
           title: 'No analytics available yet',
           message:
               'Complete your business setup. Reservation and review performance will appear here as customers interact with your business.',
@@ -53,7 +53,7 @@ class MsmePortalAnalyticsPage extends ConsumerWidget {
             children: [
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('Business Analytics', style: MsmeTheme.headingLarge()),
-                const Text(
+                Text(
                     'Owner-scoped reservation and review performance from Laravel/MySQL.',
                     style: TextStyle(color: MsmeTheme.textMuted)),
               ]),
@@ -205,11 +205,11 @@ class _Metric extends StatelessWidget {
                   color: Colors.white,
                   fontSize: 24,
                   fontWeight: FontWeight.bold)),
-          Text(label, style: const TextStyle(color: MsmeTheme.textMuted)),
+          Text(label, style: TextStyle(color: MsmeTheme.textMuted)),
           if (detail != null) ...[
             const SizedBox(height: 5),
             Text(detail!,
-                style: const TextStyle(
+                style: TextStyle(
                     color: MsmeTheme.textDisabled, fontSize: 11)),
           ],
         ]),
@@ -235,7 +235,7 @@ class _Breakdown extends StatelessWidget {
         Text(title, style: MsmeTheme.headingSmall()),
         const SizedBox(height: 14),
         if (values.isEmpty)
-          const Text('No records for this period.',
+          Text('No records for this period.',
               style: TextStyle(color: MsmeTheme.textMuted))
         else
           ...values.entries.map((entry) {
@@ -247,7 +247,7 @@ class _Breakdown extends StatelessWidget {
                 SizedBox(
                     width: 95,
                     child: Text(stars ? '${entry.key} Star' : _label(entry.key),
-                        style: const TextStyle(color: MsmeTheme.textMuted))),
+                        style: TextStyle(color: MsmeTheme.textMuted))),
                 Expanded(
                     child: LinearProgressIndicator(
                   value: fraction,
@@ -287,7 +287,7 @@ class _Trend extends StatelessWidget {
           Text('Reservation Trend', style: MsmeTheme.headingSmall()),
           const SizedBox(height: 14),
           if (values.isEmpty)
-            const Text('No reservation activity in this period.',
+            Text('No reservation activity in this period.',
                 style: TextStyle(color: MsmeTheme.textMuted))
           else
             SizedBox(
@@ -330,16 +330,16 @@ class _EmptyAnalytics extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(40),
         decoration: MsmeTheme.cardDecoration(),
-        child: const Column(children: [
-          Icon(Icons.insights_rounded,
+        child: Column(children: [
+          const Icon(Icons.insights_rounded,
               size: 46, color: MsmeTheme.primaryOrange),
-          SizedBox(height: 12),
-          Text('No analytics available yet',
+          const SizedBox(height: 12),
+          const Text('No analytics available yet',
               style: TextStyle(
                   color: Colors.white,
                   fontSize: 20,
                   fontWeight: FontWeight.bold)),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(
               'Reservation and review activity will appear as customers interact with your business.',
               textAlign: TextAlign.center,

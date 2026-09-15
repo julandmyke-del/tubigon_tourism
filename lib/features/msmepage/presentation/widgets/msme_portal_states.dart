@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/exceptions/app_exception.dart';
 import '../msme_theme.dart';
 
 class MsmeSetupRequired extends StatelessWidget {
@@ -32,7 +33,7 @@ class MsmeSetupRequired extends StatelessWidget {
                 const SizedBox(height: 10),
                 Text(message,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: MsmeTheme.textMuted)),
+                    style: TextStyle(color: MsmeTheme.textMuted)),
                 const SizedBox(height: 20),
                 FilledButton.icon(
                   onPressed: () => context.go('/msme-portal/profile'),
@@ -66,7 +67,7 @@ class MsmePortalErrorState extends StatelessWidget {
             const SizedBox(height: 12),
             Text(message,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: MsmeTheme.textMuted)),
+                style: TextStyle(color: MsmeTheme.textMuted)),
             const SizedBox(height: 14),
             OutlinedButton.icon(
               onPressed: onRetry,
@@ -79,6 +80,10 @@ class MsmePortalErrorState extends StatelessWidget {
 }
 
 String friendlyMsmeError(Object error, String fallback) {
+  if (error is AuthException && error.statusCode == 403) {
+    return 'You do not have permission to access this feature.';
+  }
+  if (error is AppException) return error.message;
   final value = error.toString().toLowerCase();
   if (value.contains('no query results') ||
       value.contains('app\\models') ||

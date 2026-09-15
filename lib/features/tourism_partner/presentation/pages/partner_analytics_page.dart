@@ -196,7 +196,7 @@ class _AnalyticsEmpty extends StatelessWidget {
         padding: const EdgeInsets.all(40),
         decoration: PartnerTheme.cardDecoration(),
         child: Column(children: [
-          const Icon(Icons.query_stats_rounded,
+          Icon(Icons.query_stats_rounded,
               size: 50, color: PartnerTheme.textMuted),
           const SizedBox(height: 12),
           Text('Not enough activity yet', style: PartnerTheme.headingSmall()),

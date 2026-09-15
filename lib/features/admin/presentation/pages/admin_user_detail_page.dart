@@ -116,24 +116,24 @@ class AdminUserDetailPage extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Recent Activity',
+                      Text('Recent Activity',
                           style: TextStyle(
                               color: AdminColors.textPrimary,
                               fontWeight: FontWeight.bold)),
                       const SizedBox(height: 10),
                       if (activity.isEmpty)
-                        const Text('No recent activity.',
+                        Text('No recent activity.',
                             style: TextStyle(color: AdminColors.textSecondary))
                       else
                         ...activity.map((item) => ListTile(
                               contentPadding: EdgeInsets.zero,
                               title: Text(
                                   (item['action'] ?? 'Activity').toString(),
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                       color: AdminColors.textPrimary)),
                               subtitle: Text(
                                   (item['created_at'] ?? '').toString(),
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                       color: AdminColors.textSecondary)),
                             )),
                     ],
@@ -323,7 +323,7 @@ class _AdminUserEditPageState extends ConsumerState<AdminUserEditPage> {
                             ? _roleId
                             : null,
                     dropdownColor: AdminColors.navy900,
-                    style: const TextStyle(color: AdminColors.textPrimary),
+                    style: TextStyle(color: AdminColors.textPrimary),
                     decoration: const InputDecoration(labelText: 'Role'),
                     items: items
                         .map((role) => DropdownMenuItem(
@@ -375,7 +375,7 @@ class _AdminUserEditPageState extends ConsumerState<AdminUserEditPage> {
         controller: controller,
         enabled: !_saving,
         maxLines: lines,
-        style: const TextStyle(color: AdminColors.textPrimary),
+        style: TextStyle(color: AdminColors.textPrimary),
         decoration: InputDecoration(labelText: label),
         validator: required
             ? (value) => value == null || value.trim().isEmpty
@@ -419,12 +419,12 @@ class _Header extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(name,
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: AdminColors.textPrimary,
                         fontSize: 24,
                         fontWeight: FontWeight.bold)),
                 Text('$role • ${verified ? 'Verified' : 'Unverified'}',
-                    style: const TextStyle(color: AdminColors.textSecondary)),
+                    style: TextStyle(color: AdminColors.textSecondary)),
               ],
             ),
           ),
@@ -452,12 +452,12 @@ class _DetailsCard extends StatelessWidget {
                           SizedBox(
                             width: 110,
                             child: Text(row.key,
-                                style: const TextStyle(
+                                style: TextStyle(
                                     color: AdminColors.textSecondary)),
                           ),
                           Expanded(
                             child: SelectableText(row.value,
-                                style: const TextStyle(
+                                style: TextStyle(
                                     color: AdminColors.textPrimary)),
                           ),
                         ],
@@ -481,7 +481,7 @@ class _LoadFailure extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(message,
-                style: const TextStyle(color: AdminColors.textSecondary)),
+                style: TextStyle(color: AdminColors.textSecondary)),
             const SizedBox(height: 12),
             OutlinedButton(onPressed: onRetry, child: const Text('Retry')),
           ],

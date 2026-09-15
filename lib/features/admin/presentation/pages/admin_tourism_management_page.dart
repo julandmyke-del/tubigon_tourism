@@ -80,7 +80,7 @@ class _AdminTourismManagementPageState
                   tooltip: 'Refresh tourism records',
                   style: IconButton.styleFrom(
                     backgroundColor: AdminColors.cardBg,
-                    side: const BorderSide(color: AdminColors.cardBorder),
+                    side: BorderSide(color: AdminColors.cardBorder),
                   ),
                   onPressed: () {
                     ref.invalidate(adminSpotsProvider);
@@ -156,12 +156,12 @@ class _AdminTourismManagementPageState
           children: [
             Expanded(
               child: TextField(
-                style: const TextStyle(
+                style: TextStyle(
                     color: AdminColors.textPrimary, fontSize: 14),
                 decoration: InputDecoration(
                   hintText: 'Search tourist spots by name or location...',
-                  hintStyle: const TextStyle(color: AdminColors.textMuted),
-                  prefixIcon: const Icon(Icons.search_rounded,
+                  hintStyle: TextStyle(color: AdminColors.textMuted),
+                  prefixIcon: Icon(Icons.search_rounded,
                       color: AdminColors.textSecondary, size: 20),
                   filled: true,
                   fillColor: AdminColors.navy900,
@@ -170,11 +170,11 @@ class _AdminTourismManagementPageState
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                       borderSide:
-                          const BorderSide(color: AdminColors.cardBorder)),
+                          BorderSide(color: AdminColors.cardBorder)),
                   enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                       borderSide:
-                          const BorderSide(color: AdminColors.cardBorder)),
+                          BorderSide(color: AdminColors.cardBorder)),
                 ),
                 onChanged: (v) => setState(() => _searchQuery = v),
               ),
@@ -206,7 +206,7 @@ class _AdminTourismManagementPageState
                 }).toList();
 
                 if (filtered.isEmpty) {
-                  return const Center(
+                  return Center(
                       child: Text('No tourist spots found.',
                           style: TextStyle(color: AdminColors.textSecondary)));
                 }
@@ -220,7 +220,7 @@ class _AdminTourismManagementPageState
                           WidgetStateProperty.all(AdminColors.navy900),
                       horizontalMargin: 20,
                       columnSpacing: 24,
-                      columns: const [
+                      columns: [
                         DataColumn(
                             label: Text('SPOT NAME',
                                 style: TextStyle(
@@ -284,7 +284,7 @@ class _AdminTourismManagementPageState
                                   ),
                                   const SizedBox(width: 10),
                                   Text(name,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                           color: AdminColors.textPrimary,
                                           fontWeight: FontWeight.w600,
                                           fontSize: 13)),
@@ -292,7 +292,7 @@ class _AdminTourismManagementPageState
                               ),
                             ),
                             DataCell(Text(category,
-                                style: const TextStyle(
+                                style: TextStyle(
                                     color: AdminColors.textSecondary,
                                     fontSize: 13))),
                             DataCell(
@@ -302,7 +302,7 @@ class _AdminTourismManagementPageState
                                       color: Colors.amber, size: 16),
                                   const SizedBox(width: 4),
                                   Text(rating.toStringAsFixed(1),
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                           color: AdminColors.textPrimary,
                                           fontWeight: FontWeight.bold,
                                           fontSize: 12)),
@@ -425,7 +425,7 @@ class _AdminTourismManagementPageState
             child: catsAsync.when(
               data: (cats) {
                 if (cats.isEmpty) {
-                  return const Center(
+                  return Center(
                     child: Text(
                       'No spot categories yet. Add one to organize listings.',
                       style: TextStyle(color: AdminColors.textSecondary),
@@ -435,7 +435,7 @@ class _AdminTourismManagementPageState
                 return ListView.separated(
                   itemCount: cats.length,
                   separatorBuilder: (_, __) =>
-                      const Divider(color: AdminColors.cardBorder),
+                      Divider(color: AdminColors.cardBorder),
                   itemBuilder: (ctx, i) {
                     final cat = cats[i];
                     final name = (cat['name'] ?? 'Category').toString();
@@ -452,11 +452,11 @@ class _AdminTourismManagementPageState
                             color: AdminColors.info),
                       ),
                       title: Text(name,
-                          style: const TextStyle(
+                          style: TextStyle(
                               color: AdminColors.textPrimary,
                               fontWeight: FontWeight.bold)),
                       subtitle: Text(slug.isEmpty ? 'No slug' : slug,
-                          style: const TextStyle(
+                          style: TextStyle(
                               color: AdminColors.textSecondary)),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -519,7 +519,7 @@ class _AdminTourismManagementPageState
           backgroundColor: AdminColors.navy900,
           title: Text(
             existing == null ? 'Add Spot Category' : 'Edit Spot Category',
-            style: const TextStyle(
+            style: TextStyle(
               color: AdminColors.textPrimary,
               fontWeight: FontWeight.bold,
             ),
@@ -532,7 +532,7 @@ class _AdminTourismManagementPageState
                 controller: name,
                 autofocus: true,
                 enabled: !saving,
-                style: const TextStyle(color: AdminColors.textPrimary),
+                style: TextStyle(color: AdminColors.textPrimary),
                 decoration: const InputDecoration(
                   labelText: 'Category name',
                   hintText: 'e.g. Natural Attraction',
@@ -663,14 +663,14 @@ class _AdminTourismManagementPageState
           data: (list) => ListView.separated(
             itemCount: list.length,
             separatorBuilder: (_, __) =>
-                const Divider(color: AdminColors.cardBorder),
+                Divider(color: AdminColors.cardBorder),
             itemBuilder: (ctx, i) {
               final f = list[i];
               return ListTile(
                 leading: const Icon(Icons.directions_boat_rounded,
                     color: AdminColors.info),
                 title: Text(f['vessel_name'] ?? f['route'] ?? 'Ferry Trip',
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: AdminColors.textPrimary,
                         fontWeight: FontWeight.bold)),
                 trailing: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -698,7 +698,7 @@ class _AdminTourismManagementPageState
                 ]),
                 subtitle: Text(
                     'Departure: ${f['departure_time'] ?? 'N/A'} • Fare: ₱${f['fare'] ?? '0'}',
-                    style: const TextStyle(color: AdminColors.textSecondary)),
+                    style: TextStyle(color: AdminColors.textSecondary)),
               );
             },
           ),
@@ -733,18 +733,18 @@ class _AdminTourismManagementPageState
           data: (list) => ListView.separated(
             itemCount: list.length,
             separatorBuilder: (_, __) =>
-                const Divider(color: AdminColors.cardBorder),
+                Divider(color: AdminColors.cardBorder),
             itemBuilder: (ctx, i) {
               final e = list[i];
               return ListTile(
                 leading: const Icon(Icons.phone_in_talk_rounded,
                     color: AdminColors.danger),
                 title: Text(e['agency_name'] ?? e['name'] ?? 'Emergency Line',
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: AdminColors.textPrimary,
                         fontWeight: FontWeight.bold)),
                 subtitle: Text(e['contact_number'] ?? e['phone'] ?? '',
-                    style: const TextStyle(color: AdminColors.textSecondary)),
+                    style: TextStyle(color: AdminColors.textSecondary)),
               );
             },
           ),
@@ -770,18 +770,18 @@ class _AdminTourismManagementPageState
         data: (list) => ListView.separated(
           itemCount: list.length,
           separatorBuilder: (_, __) =>
-              const Divider(color: AdminColors.cardBorder),
+              Divider(color: AdminColors.cardBorder),
           itemBuilder: (ctx, i) {
             final tip = list[i];
             return ListTile(
               leading:
                   const Icon(Icons.eco_rounded, color: AdminColors.success),
               title: Text(tip['title'] ?? 'Eco Guideline',
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: AdminColors.textPrimary,
                       fontWeight: FontWeight.bold)),
               subtitle: Text(tip['description'] ?? tip['content'] ?? '',
-                  style: const TextStyle(color: AdminColors.textSecondary)),
+                  style: TextStyle(color: AdminColors.textSecondary)),
             );
           },
         ),
@@ -973,7 +973,7 @@ class _AdminTourismManagementPageState
           backgroundColor: AdminColors.navy900,
           title: Text(
               existing == null ? 'Add Tourist Spot' : 'Edit Tourist Spot',
-              style: const TextStyle(
+              style: TextStyle(
                   color: AdminColors.textPrimary, fontWeight: FontWeight.bold)),
           content: SizedBox(
             width: 620,
@@ -1045,7 +1045,7 @@ class _AdminTourismManagementPageState
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       value: active,
-                      title: const Text('Active',
+                      title: Text('Active',
                           style: TextStyle(color: AdminColors.textPrimary)),
                       onChanged: saving
                           ? null
@@ -1054,7 +1054,7 @@ class _AdminTourismManagementPageState
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       value: featured,
-                      title: const Text('Featured',
+                      title: Text('Featured',
                           style: TextStyle(color: AdminColors.textPrimary)),
                       onChanged: saving
                           ? null
@@ -1063,9 +1063,9 @@ class _AdminTourismManagementPageState
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       value: published,
-                      title: const Text('Published',
+                      title: Text('Published',
                           style: TextStyle(color: AdminColors.textPrimary)),
-                      subtitle: const Text(
+                      subtitle: Text(
                         'Unpublished spots reject new reservations but keep booking history.',
                         style: TextStyle(color: AdminColors.textSecondary),
                       ),
@@ -1155,7 +1155,7 @@ class _AdminTourismManagementPageState
       maxLines: lines,
       keyboardType:
           numeric ? const TextInputType.numberWithOptions(decimal: true) : null,
-      style: const TextStyle(color: AdminColors.textPrimary),
+      style: TextStyle(color: AdminColors.textPrimary),
       decoration: InputDecoration(labelText: label),
       validator: (value) {
         final text = value?.trim() ?? '';

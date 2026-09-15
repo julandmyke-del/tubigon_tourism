@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../core/widgets/app_logo.dart';
 import '../authentication/auth_provider.dart';
 
 // ─── Particle Data ───────────────────────────────────────────────────────────
@@ -450,21 +451,7 @@ class _SplashPageState extends ConsumerState<SplashPage>
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       // ── Logo Mark ───────────────────────────────
-                      AnimatedBuilder(
-                        animation: _orbitController,
-                        builder: (context, child) {
-                          return SizedBox(
-                            width: 136,
-                            height: 136,
-                            child: CustomPaint(
-                              painter: _CompassLogoPainter(
-                                orbitAngle:
-                                    _orbitController.value * 2 * math.pi,
-                              ),
-                            ),
-                          );
-                        },
-                      )
+                      const AppLogo(size: 136, radius: 24)
                           .animate()
                           .fadeIn(duration: 900.ms, delay: 200.ms)
                           .scale(duration: 900.ms, curve: Curves.easeOutBack),
@@ -837,6 +824,8 @@ class _SkylinePainter extends CustomPainter {
 }
 
 // ─── Compass Logo Mark Painter ────────────────────────────────────────────────
+// Kept temporarily for backwards-compatible splash theming references.
+// ignore: unused_element
 class _CompassLogoPainter extends CustomPainter {
   final double orbitAngle;
 

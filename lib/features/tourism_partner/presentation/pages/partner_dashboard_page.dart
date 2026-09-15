@@ -170,7 +170,7 @@ class PartnerDashboardPage extends ConsumerWidget {
                                   style: const TextStyle(color: Colors.white)),
                               subtitle: Text(
                                   notification['body']?.toString() ?? '',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                       color: PartnerTheme.textMuted)),
                             )),
                   const SizedBox(height: 20),
@@ -233,7 +233,7 @@ class _ManagedDestinationSummary extends StatelessWidget {
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('${spot['name'] ?? 'Assigned Destination'}',
                 style: PartnerTheme.headingSmall()),
-            const Text('BOOKING STATUS',
+            Text('BOOKING STATUS',
                 style: TextStyle(
                     color: PartnerTheme.textMuted,
                     fontWeight: FontWeight.w800)),
@@ -282,7 +282,7 @@ class _Metric extends StatelessWidget {
                         fontSize: 24,
                         fontWeight: FontWeight.bold)),
                 Text(label,
-                    style: const TextStyle(color: PartnerTheme.textMuted)),
+                    style: TextStyle(color: PartnerTheme.textMuted)),
               ])),
         ]),
       );
@@ -353,6 +353,6 @@ class _Empty extends StatelessWidget {
         decoration: PartnerTheme.cardDecoration(),
         child: Center(
             child: Text(text,
-                style: const TextStyle(color: PartnerTheme.textMuted))),
+                style: TextStyle(color: PartnerTheme.textMuted))),
       );
 }

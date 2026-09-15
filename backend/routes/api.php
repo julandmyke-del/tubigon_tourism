@@ -62,6 +62,7 @@ Route::prefix('v1')->group(function () {
     Route::get('/establishments', [EstablishmentController::class, 'index']);
     Route::get('/establishments/{id}', [EstablishmentController::class, 'show']);
 
+    Route::get('/msme-categories', [MsmeController::class, 'categories']);
     Route::get('/msmes', [MsmeController::class, 'index']);
     Route::get('/msmes/{id}', [MsmeController::class, 'show']);
     Route::get('/tourism-listings', [TourismListingController::class, 'publicIndex']);
@@ -137,6 +138,8 @@ Route::prefix('v1')->group(function () {
 
         // Reviews
         Route::post('/reviews', [ReviewController::class, 'store'])
+            ->middleware('role:tourist');
+        Route::put('/reviews/{id}', [ReviewController::class, 'update'])
             ->middleware('role:tourist');
         Route::delete('/reviews/{id}', [ReviewController::class, 'destroy']);
 

@@ -58,7 +58,7 @@ class _AdminMsmeManagementPageState
                 IconButton(
                   style: IconButton.styleFrom(
                     backgroundColor: AdminColors.cardBg,
-                    side: const BorderSide(color: AdminColors.cardBorder),
+                    side: BorderSide(color: AdminColors.cardBorder),
                   ),
                   onPressed: () => ref.invalidate(adminMsmesProvider),
                   icon: const Icon(Icons.refresh_rounded,
@@ -76,13 +76,13 @@ class _AdminMsmeManagementPageState
                 children: [
                   Expanded(
                     child: TextField(
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: AdminColors.textPrimary, fontSize: 14),
                       decoration: InputDecoration(
                         hintText: 'Search by MSME name, category, or owner...',
                         hintStyle:
-                            const TextStyle(color: AdminColors.textMuted),
-                        prefixIcon: const Icon(Icons.search_rounded,
+                            TextStyle(color: AdminColors.textMuted),
+                        prefixIcon: Icon(Icons.search_rounded,
                             color: AdminColors.textSecondary, size: 20),
                         filled: true,
                         fillColor: AdminColors.navy900,
@@ -91,12 +91,12 @@ class _AdminMsmeManagementPageState
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                           borderSide:
-                              const BorderSide(color: AdminColors.cardBorder),
+                              BorderSide(color: AdminColors.cardBorder),
                         ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                           borderSide:
-                              const BorderSide(color: AdminColors.cardBorder),
+                              BorderSide(color: AdminColors.cardBorder),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
@@ -119,9 +119,9 @@ class _AdminMsmeManagementPageState
                       child: DropdownButton<String>(
                         dropdownColor: AdminColors.navy900,
                         value: _statusFilter,
-                        icon: const Icon(Icons.filter_list_rounded,
+                        icon: Icon(Icons.filter_list_rounded,
                             color: AdminColors.textSecondary),
-                        style: const TextStyle(
+                        style: TextStyle(
                             color: AdminColors.textPrimary, fontSize: 14),
                         items: ['All', 'Verified', 'Unverified']
                             .map((s) => DropdownMenuItem(
@@ -154,7 +154,7 @@ class _AdminMsmeManagementPageState
                           .toLowerCase();
                       final profile = m['profile'] is Map
                           ? Map<String, dynamic>.from(m['profile'])
-                          : const <String, dynamic>{};
+                          : <String, dynamic>{};
                       final owner =
                           (profile['name'] ?? '').toString().toLowerCase();
                       final status =
@@ -170,7 +170,7 @@ class _AdminMsmeManagementPageState
                     }).toList();
 
                     if (filtered.isEmpty) {
-                      return const Center(
+                      return Center(
                         child: Text(
                             'No MSMEs match the search and filter criteria.',
                             style: TextStyle(color: AdminColors.textSecondary)),
@@ -188,7 +188,7 @@ class _AdminMsmeManagementPageState
                               WidgetStateProperty.all(Colors.transparent),
                           horizontalMargin: 20,
                           columnSpacing: 24,
-                          columns: const [
+                          columns: [
                             DataColumn(
                                 label: Text('BUSINESS NAME',
                                     style: TextStyle(
@@ -267,7 +267,7 @@ class _AdminMsmeManagementPageState
                                       ),
                                       const SizedBox(width: 10),
                                       Text(name,
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                               color: AdminColors.textPrimary,
                                               fontWeight: FontWeight.w600,
                                               fontSize: 13)),
@@ -290,7 +290,7 @@ class _AdminMsmeManagementPageState
                                   ),
                                 ),
                                 DataCell(Text(owner,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                         color: AdminColors.textSecondary,
                                         fontSize: 13))),
                                 DataCell(
@@ -300,7 +300,7 @@ class _AdminMsmeManagementPageState
                                           color: Colors.amber, size: 16),
                                       const SizedBox(width: 4),
                                       Text(rating.toStringAsFixed(1),
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                               color: AdminColors.textPrimary,
                                               fontWeight: FontWeight.bold,
                                               fontSize: 12)),
@@ -377,14 +377,14 @@ class _AdminMsmeManagementPageState
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AdminColors.navy900,
-        title: const Text('Archive MSME',
+        title: Text('Archive MSME',
             style: TextStyle(color: AdminColors.textPrimary)),
         content: Text('Archive the MSME registration for "$name"?',
-            style: const TextStyle(color: AdminColors.textSecondary)),
+            style: TextStyle(color: AdminColors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel',
+            child: Text('Cancel',
                 style: TextStyle(color: AdminColors.textSecondary)),
           ),
           ElevatedButton(

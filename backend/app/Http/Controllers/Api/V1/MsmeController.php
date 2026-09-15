@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\ValidatesTubigonCoordinates;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\Msme;
+use App\Models\MsmeCategory;
 use App\Models\Notification;
 use App\Models\Reservation;
 use App\Models\ReservationStatus;
@@ -27,9 +28,22 @@ class MsmeController extends Controller
 {
     use ValidatesTubigonCoordinates;
 
+    public function categories(): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => MsmeCategory::query()
+                ->where('is_active', true)
+                ->orderBy('display_order')
+                ->orderBy('name')
+                ->get(['id', 'name', 'slug', 'description']),
+        ]);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $query = Msme::query()
+            ->when(Schema::hasTable('msme_categories'), fn ($query) => $query->with('categoryRecord'))
             ->where('is_verified', true)
             ->where('verification_status', 'verified')
             ->when(
@@ -37,7 +51,16 @@ class MsmeController extends Controller
                 fn ($query) => $query->whereIn('operational_status', ['open', 'temporarily_closed', 'fully_booked']),
             );
         if ($request->filled('category')) {
-            $query->where('category', $request->category);
+            $category = trim((string) $request->category);
+            $query->where(function ($filter) use ($category): void {
+                $filter->where('category', $category);
+                if (Schema::hasTable('msme_categories')) {
+                    $filter->orWhere('category_id', $category)
+                        ->orWhereHas('categoryRecord', fn ($record) => $record
+                            ->where('slug', $category)
+                            ->orWhere('name', $category));
+                }
+            });
         }
         if ($request->filled('search')) {
             $term = '%'.trim((string) $request->search).'%';
@@ -64,12 +87,25 @@ class MsmeController extends Controller
 
     public function managementIndex(Request $request): JsonResponse
     {
-        $query = Msme::with('profile');
+        $query = Msme::with('profile')
+            ->when(Schema::hasTable('msme_categories'), fn ($query) => $query->with('categoryRecord'));
         if ($request->filled('status')) {
-            $query->where('verification_status', $request->status);
+            $validated = $request->validate([
+                'status' => ['nullable', Rule::in(['pending', 'verified', 'needs_changes', 'suspended'])],
+            ]);
+            $query->where('verification_status', $validated['status']);
         }
         if ($request->filled('category')) {
-            $query->where('category', $request->category);
+            $category = trim((string) $request->category);
+            $query->where(function ($filter) use ($category): void {
+                $filter->where('category', $category);
+                if (Schema::hasTable('msme_categories')) {
+                    $filter->orWhere('category_id', $category)
+                        ->orWhereHas('categoryRecord', fn ($record) => $record
+                            ->where('slug', $category)
+                            ->orWhere('name', $category));
+                }
+            });
         }
         if ($request->filled('search')) {
             $term = '%'.trim((string) $request->search).'%';
@@ -285,7 +321,9 @@ class MsmeController extends Controller
                 'status' => 'success', 'data' => [], 'profile_required' => true,
             ]);
         }
-        $query = Reservation::with(['user:id,name,phone', 'status'])->where('reservable_type', 'msme')->where('reservable_id', $msme->id);
+        $query = Reservation::with(['user:id,name,phone', 'status', 'statusHistory.status'])
+            ->where('reservable_type', 'msme')
+            ->where('reservable_id', $msme->id);
         if ($request->filled('status')) {
             $query->whereHas('status', fn ($q) => $q->where('name', $request->status));
         }
@@ -495,7 +533,9 @@ class MsmeController extends Controller
 
     private function currentBusiness(Request $request): ?Msme
     {
-        return $request->user()->msmeBusiness()->first();
+        return $request->user()->msmeBusiness()
+            ->when(Schema::hasTable('msme_categories'), fn ($query) => $query->with('categoryRecord'))
+            ->first();
     }
 
     private function profileRequiredMutation(): JsonResponse
@@ -581,10 +621,23 @@ class MsmeController extends Controller
     private function validateBusiness(Request $request, bool $partial = false): array
     {
         $presence = $partial ? 'sometimes' : 'required';
+        $hasCategoryTaxonomy = Schema::hasTable('msme_categories');
+        $categoryIdRules = $hasCategoryTaxonomy
+            ? [
+                $partial ? 'sometimes' : 'required_without:category',
+                'uuid',
+                Rule::exists('msme_categories', 'id')
+                    ->where(fn ($query) => $query->where('is_active', true)),
+            ]
+            : ['nullable'];
+        $categoryRules = $hasCategoryTaxonomy
+            ? [$partial ? 'sometimes' : 'required_without:category_id', 'string', 'max:255']
+            : [$presence, 'string', 'max:255'];
 
         $validated = $request->validate([
             'name' => "$presence|string|max:255",
-            'category' => "$presence|string|max:255",
+            'category_id' => $categoryIdRules,
+            'category' => $categoryRules,
             'tagline' => 'nullable|string|max:255',
             'description' => 'nullable|string|max:5000',
             'phone' => 'nullable|string|max:255',
@@ -605,6 +658,28 @@ class MsmeController extends Controller
             'color' => 'nullable|string|max:50',
             'icon' => 'nullable|string|max:100',
         ]);
+
+        if ($hasCategoryTaxonomy && array_key_exists('category_id', $validated)) {
+            $category = MsmeCategory::query()
+                ->where('is_active', true)
+                ->findOrFail($validated['category_id']);
+            $validated['category'] = $category->name;
+        } elseif ($hasCategoryTaxonomy && array_key_exists('category', $validated)) {
+            $categoryInput = trim((string) $validated['category']);
+            $category = MsmeCategory::query()
+                ->where('is_active', true)
+                ->where(fn ($query) => $query
+                    ->whereRaw('LOWER(name) = ?', [mb_strtolower($categoryInput)])
+                    ->orWhere('slug', $categoryInput))
+                ->first();
+            if (! $category) {
+                throw ValidationException::withMessages([
+                    'category' => ['Select an active MSME category.'],
+                ]);
+            }
+            $validated['category_id'] = $category->id;
+            $validated['category'] = $category->name;
+        }
 
         if (array_key_exists('opening_hours', $validated) && $validated['opening_hours'] !== null) {
             $weekdays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];

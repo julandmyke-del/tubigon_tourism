@@ -440,8 +440,6 @@ class AuthNotifier extends Notifier<AuthState> {
         final roleStr = data['role'] as String? ?? 'tourist';
         final userMap = data['user'] as Map<String, dynamic>?;
 
-        await _secureStorage.writeAuthToken(token);
-
         final role = _parseRole(roleStr);
         final name = userMap?['name'] as String? ?? 'Explorer';
         final userId = userMap?['id'] as String?;
@@ -458,6 +456,10 @@ class AuthNotifier extends Notifier<AuthState> {
         );
 
         await _persist(newState);
+        // Persist identity metadata before publishing the credential. If a
+        // browser tab closes between these writes, restoration fails closed
+        // instead of pairing a new token with an older account profile.
+        await _secureStorage.writeAuthToken(token);
         state = newState;
       } else {
         throw Exception('Invalid email or password.');
@@ -606,9 +608,9 @@ class AuthNotifier extends Notifier<AuthState> {
 
   Future<void> completeVerifiedEmailSession(
       VerifiedEmailSession session) async {
-    await _secureStorage.writeAuthToken(session.token);
     await _clearPreviousIdentityIfNeeded(session.state.userId);
     await _persist(session.state);
+    await _secureStorage.writeAuthToken(session.token);
     state = session.state;
   }
 
@@ -634,8 +636,6 @@ class AuthNotifier extends Notifier<AuthState> {
         final roleStr = data['role'] as String? ?? 'tourist';
         final userMap = data['user'] as Map<String, dynamic>?;
 
-        await _secureStorage.writeAuthToken(token);
-
         final role = _parseRole(roleStr);
         final nameStr =
             userMap?['name'] as String? ?? account.displayName ?? 'Explorer';
@@ -654,6 +654,7 @@ class AuthNotifier extends Notifier<AuthState> {
         );
 
         await _persist(newState);
+        await _secureStorage.writeAuthToken(token);
         state = newState;
       } else {
         throw Exception('Google authentication failed.');

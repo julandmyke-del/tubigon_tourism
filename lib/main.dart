@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'core/theme/app_theme.dart';
+import 'core/theme/app_colors.dart';
 import 'core/theme/theme_provider.dart';
 import 'core/routes/app_router.dart';
 import 'core/services/local_storage_service.dart';
@@ -71,12 +72,16 @@ class TubigonApp extends ConsumerWidget {
 
       // Router
       routerConfig: router,
-      builder: (context, child) => Stack(
-        children: [
-          if (child != null) child,
-          const Positioned(top: 0, left: 0, right: 0, child: OfflineBanner()),
-        ],
-      ),
+      builder: (context, child) {
+        AppColors.configure(Theme.of(context).brightness);
+        return Stack(
+          children: [
+            if (child != null) child,
+            const Positioned(
+                top: 0, left: 0, right: 0, child: OfflineBanner()),
+          ],
+        );
+      },
 
       // Localization
       localizationsDelegates: const [

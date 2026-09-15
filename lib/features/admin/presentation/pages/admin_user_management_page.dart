@@ -75,7 +75,7 @@ class _AdminUserManagementPageState
                       tooltip: 'Refresh users',
                       style: IconButton.styleFrom(
                         backgroundColor: AdminColors.cardBg,
-                        side: const BorderSide(color: AdminColors.cardBorder),
+                        side: BorderSide(color: AdminColors.cardBorder),
                       ),
                       onPressed: () {
                         ref.invalidate(adminUsersProvider);
@@ -151,13 +151,13 @@ class _AdminUserManagementPageState
                   SizedBox(
                     width: 360,
                     child: TextField(
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: AdminColors.textPrimary, fontSize: 14),
                       decoration: InputDecoration(
                         hintText: 'Search users by name or email...',
                         hintStyle:
-                            const TextStyle(color: AdminColors.textMuted),
-                        prefixIcon: const Icon(Icons.search_rounded,
+                            TextStyle(color: AdminColors.textMuted),
+                        prefixIcon: Icon(Icons.search_rounded,
                             color: AdminColors.textSecondary, size: 20),
                         filled: true,
                         fillColor: AdminColors.navy900,
@@ -166,12 +166,12 @@ class _AdminUserManagementPageState
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                           borderSide:
-                              const BorderSide(color: AdminColors.cardBorder),
+                              BorderSide(color: AdminColors.cardBorder),
                         ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                           borderSide:
-                              const BorderSide(color: AdminColors.cardBorder),
+                              BorderSide(color: AdminColors.cardBorder),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
@@ -193,9 +193,9 @@ class _AdminUserManagementPageState
                       child: DropdownButton<String>(
                         dropdownColor: AdminColors.navy900,
                         value: _roleFilter,
-                        icon: const Icon(Icons.filter_list_rounded,
+                        icon: Icon(Icons.filter_list_rounded,
                             color: AdminColors.textSecondary),
-                        style: const TextStyle(
+                        style: TextStyle(
                             color: AdminColors.textPrimary, fontSize: 14),
                         items: [
                           'All',
@@ -226,9 +226,9 @@ class _AdminUserManagementPageState
                       child: DropdownButton<String>(
                         dropdownColor: AdminColors.navy900,
                         value: _verificationFilter,
-                        icon: const Icon(Icons.mark_email_read_rounded,
+                        icon: Icon(Icons.mark_email_read_rounded,
                             color: AdminColors.textSecondary),
-                        style: const TextStyle(
+                        style: TextStyle(
                             color: AdminColors.textPrimary, fontSize: 14),
                         items: const [
                           DropdownMenuItem(
@@ -254,7 +254,7 @@ class _AdminUserManagementPageState
                       child: DropdownButton<String>(
                         dropdownColor: AdminColors.navy900,
                         value: _statusFilter,
-                        style: const TextStyle(
+                        style: TextStyle(
                             color: AdminColors.textPrimary, fontSize: 14),
                         items: const [
                           DropdownMenuItem(
@@ -313,7 +313,7 @@ class _AdminUserManagementPageState
                     }).toList();
 
                     if (filtered.isEmpty) {
-                      return const Center(
+                      return Center(
                         child: Text(
                             'No users match the search and filter criteria.',
                             style: TextStyle(color: AdminColors.textSecondary)),
@@ -346,7 +346,7 @@ class _AdminUserManagementPageState
                                   WidgetStateProperty.all(Colors.transparent),
                               horizontalMargin: 20,
                               columnSpacing: 24,
-                              columns: const [
+                              columns: [
                                 DataColumn(
                                     label: Text('USER',
                                         style: TextStyle(
@@ -458,7 +458,7 @@ class _AdminUserManagementPageState
                                           ),
                                           const SizedBox(width: 10),
                                           Text(name,
-                                              style: const TextStyle(
+                                              style: TextStyle(
                                                   color:
                                                       AdminColors.textPrimary,
                                                   fontWeight: FontWeight.w600,
@@ -471,7 +471,7 @@ class _AdminUserManagementPageState
                                               .push('/admin/users/$userId'),
                                     ),
                                     DataCell(Text(email,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                             color: AdminColors.textSecondary,
                                             fontSize: 13))),
                                     DataCell(_RoleBadge(role: role)),
@@ -480,7 +480,7 @@ class _AdminUserManagementPageState
                                       child: Text(linkedLabel,
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                               color: AdminColors.textSecondary,
                                               fontSize: 12)),
                                     )),
@@ -513,7 +513,7 @@ class _AdminUserManagementPageState
                                         method: registrationMethod)),
                                     DataCell(Text(
                                       _formatCreatedAt(u['created_at']),
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                           color: AdminColors.textSecondary,
                                           fontSize: 12),
                                     )),
@@ -563,12 +563,12 @@ class _AdminUserManagementPageState
                       },
                     );
                   },
-                  loading: () => const Center(
+                  loading: () => Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        CircularProgressIndicator(color: AdminColors.orange),
-                        SizedBox(height: AppSpacing.md),
+                        const CircularProgressIndicator(color: AdminColors.orange),
+                        const SizedBox(height: AppSpacing.md),
                         Text(
                           'Loading user registry...',
                           style: TextStyle(color: AdminColors.textSecondary),
@@ -586,7 +586,7 @@ class _AdminUserManagementPageState
                           size: 36,
                         ),
                         const SizedBox(height: AppSpacing.sm),
-                        const Text(
+                        Text(
                           'Unable to load the user registry.',
                           style: TextStyle(
                             color: AdminColors.textPrimary,
@@ -594,7 +594,7 @@ class _AdminUserManagementPageState
                           ),
                         ),
                         const SizedBox(height: 4),
-                        const Text(
+                        Text(
                           'Check the API connection, then try again.',
                           style: TextStyle(color: AdminColors.textSecondary),
                         ),
@@ -643,7 +643,7 @@ class _AdminUserManagementPageState
       builder: (ctx) => StatefulBuilder(
           builder: (ctx, setDialogState) => AlertDialog(
                 backgroundColor: AdminColors.navy900,
-                title: const Text('Add New System User',
+                title: Text('Add New System User',
                     style: TextStyle(
                         color: AdminColors.textPrimary,
                         fontWeight: FontWeight.bold)),
@@ -656,8 +656,8 @@ class _AdminUserManagementPageState
                         TextFormField(
                           controller: nameCtrl,
                           style:
-                              const TextStyle(color: AdminColors.textPrimary),
-                          decoration: const InputDecoration(
+                              TextStyle(color: AdminColors.textPrimary),
+                          decoration: InputDecoration(
                               labelText: 'Full Name',
                               labelStyle:
                                   TextStyle(color: AdminColors.textSecondary)),
@@ -671,8 +671,8 @@ class _AdminUserManagementPageState
                           controller: emailCtrl,
                           keyboardType: TextInputType.emailAddress,
                           style:
-                              const TextStyle(color: AdminColors.textPrimary),
-                          decoration: const InputDecoration(
+                              TextStyle(color: AdminColors.textPrimary),
+                          decoration: InputDecoration(
                               labelText: 'Email Address',
                               labelStyle:
                                   TextStyle(color: AdminColors.textSecondary)),
@@ -688,8 +688,8 @@ class _AdminUserManagementPageState
                           controller: passCtrl,
                           obscureText: true,
                           style:
-                              const TextStyle(color: AdminColors.textPrimary),
-                          decoration: const InputDecoration(
+                              TextStyle(color: AdminColors.textPrimary),
+                          decoration: InputDecoration(
                               labelText: 'Password',
                               labelStyle:
                                   TextStyle(color: AdminColors.textSecondary)),
@@ -702,8 +702,8 @@ class _AdminUserManagementPageState
                           initialValue: selectedRoleId,
                           dropdownColor: AdminColors.navy900,
                           style:
-                              const TextStyle(color: AdminColors.textPrimary),
-                          decoration: const InputDecoration(
+                              TextStyle(color: AdminColors.textPrimary),
+                          decoration: InputDecoration(
                               labelText: 'System Role',
                               labelStyle:
                                   TextStyle(color: AdminColors.textSecondary)),
@@ -732,7 +732,7 @@ class _AdminUserManagementPageState
                 actions: [
                   TextButton(
                     onPressed: saving ? null : () => Navigator.pop(ctx),
-                    child: const Text('Cancel',
+                    child: Text('Cancel',
                         style: TextStyle(color: AdminColors.textSecondary)),
                   ),
                   ElevatedButton(
@@ -840,19 +840,19 @@ class _AdminUserManagementPageState
                         Text(name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                                 color: AdminColors.textPrimary,
                                 fontWeight: FontWeight.w700)),
                         Text(email,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                                 color: AdminColors.textSecondary,
                                 fontSize: 12)),
                       ],
                     ),
                   ),
-                  const Icon(Icons.chevron_right_rounded,
+                  Icon(Icons.chevron_right_rounded,
                       color: AdminColors.textSecondary),
                 ],
               ),
@@ -871,14 +871,14 @@ class _AdminUserManagementPageState
                 Text('Linked: $linkedLabel',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: AdminColors.textSecondary, fontSize: 12)),
               ],
               const SizedBox(height: AppSpacing.sm),
               Row(
                 children: [
                   Text(_formatCreatedAt(user['created_at']),
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: AdminColors.textSecondary, fontSize: 12)),
                   const Spacer(),
                   IconButton(
@@ -923,9 +923,9 @@ class _AdminUserManagementPageState
       builder: (ctx) => AlertDialog(
         backgroundColor: AdminColors.navy900,
         title: Text('${active ? 'Activate' : 'Deactivate'} account?',
-            style: const TextStyle(color: AdminColors.textPrimary)),
+            style: TextStyle(color: AdminColors.textPrimary)),
         content: Text(name,
-            style: const TextStyle(color: AdminColors.textSecondary)),
+            style: TextStyle(color: AdminColors.textSecondary)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -964,13 +964,13 @@ class _AdminUserManagementPageState
       builder: (ctx) => AlertDialog(
         backgroundColor: AdminColors.navy900,
         title: Text('Edit Role: $name',
-            style: const TextStyle(
+            style: TextStyle(
                 color: AdminColors.textPrimary, fontWeight: FontWeight.bold)),
         content: DropdownButtonFormField<String>(
           initialValue: selectedRoleId,
           dropdownColor: AdminColors.navy900,
-          style: const TextStyle(color: AdminColors.textPrimary),
-          decoration: const InputDecoration(
+          style: TextStyle(color: AdminColors.textPrimary),
+          decoration: InputDecoration(
               labelText: 'Assigned Role',
               labelStyle: TextStyle(color: AdminColors.textSecondary)),
           items: availableRoles
@@ -984,7 +984,7 @@ class _AdminUserManagementPageState
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel',
+            child: Text('Cancel',
                 style: TextStyle(color: AdminColors.textSecondary)),
           ),
           ElevatedButton(
@@ -1020,15 +1020,15 @@ class _AdminUserManagementPageState
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AdminColors.navy900,
-        title: const Text('Archive User',
+        title: Text('Archive User',
             style: TextStyle(color: AdminColors.textPrimary)),
         content: Text(
             'Archive "$name"? The account will no longer be able to sign in.',
-            style: const TextStyle(color: AdminColors.textSecondary)),
+            style: TextStyle(color: AdminColors.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel',
+            child: Text('Cancel',
                 style: TextStyle(color: AdminColors.textSecondary)),
           ),
           ElevatedButton(
@@ -1081,14 +1081,14 @@ class _UserStat extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('$value',
-                style: const TextStyle(
+                style: TextStyle(
                     color: AdminColors.textPrimary,
                     fontSize: 20,
                     fontWeight: FontWeight.bold)),
             Text(label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                     color: AdminColors.textSecondary, fontSize: 12)),
           ],
         ),

@@ -12,6 +12,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import '../../../core/services/local_storage_service.dart';
 import '../../../core/routes/route_names.dart';
+import '../../../core/widgets/app_logo.dart';
 import '../auth_provider.dart';
 import '../google_auth_service.dart';
 import '../widgets/google_web_button.dart';
@@ -748,39 +749,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     // Brand Badge
                     Row(
                       children: [
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 500),
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                page.accent,
-                                page.accent.withValues(alpha: 0.65),
-                              ],
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: page.accent.withValues(alpha: 0.4),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: const Center(
-                            child: Text(
-                              'T',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 18,
-                              ),
-                            ),
-                          ),
-                        ),
+                        const AppLogo(size: 36, radius: 12),
                         const SizedBox(width: 10),
                         Text(
                           'TUBIGON',

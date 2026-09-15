@@ -170,8 +170,10 @@ class ApiClient {
         }
         if (statusCode == 403) {
           return AuthException(
-            message: _extractMessage(
-                data, 'You do not have permission to perform this action.'),
+            // Server details remain available in responseData for development
+            // diagnostics, but ordinary users should never see policy names,
+            // framework exception text, or minified exception output.
+            message: 'You do not have permission to access this feature.',
             statusCode: statusCode,
             isUnauthorized: true,
             responseData: _responseData(data),

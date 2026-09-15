@@ -6,7 +6,6 @@ import 'package:image_picker/image_picker.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../map/providers/map_provider.dart';
 import '../../providers/msme_portal_providers.dart';
-import '../../models/msme.dart';
 import '../../repositories/msme_repository.dart';
 import '../msme_theme.dart';
 import '../widgets/msme_portal_states.dart';
@@ -22,6 +21,7 @@ class _ProfileState extends ConsumerState<MsmePortalProfilePage> {
   final _formKey = GlobalKey<FormState>();
   final _name = TextEditingController();
   final _category = TextEditingController();
+  String? _categoryId;
   final _tagline = TextEditingController();
   final _phone = TextEditingController();
   final _address = TextEditingController();
@@ -165,7 +165,7 @@ class _ProfileState extends ConsumerState<MsmePortalProfilePage> {
                             const SizedBox(height: 20),
                             Text('Media', style: MsmeTheme.headingSmall()),
                             const SizedBox(height: 4),
-                            const Text(
+                            Text(
                                 'Upload a cover or gallery image (JPEG/PNG/WebP, maximum 5 MB).',
                                 style: TextStyle(color: MsmeTheme.textMuted)),
                             const SizedBox(height: 10),
@@ -274,7 +274,7 @@ class _ProfileState extends ConsumerState<MsmePortalProfilePage> {
                             Text('Opening hours',
                                 style: MsmeTheme.headingSmall()),
                             const SizedBox(height: 4),
-                            const Text(
+                            Text(
                                 'Use 24-hour HH:mm-HH:mm, or leave blank for Closed.',
                                 style: TextStyle(color: MsmeTheme.textMuted)),
                             const SizedBox(height: 10),
@@ -325,6 +325,10 @@ class _ProfileState extends ConsumerState<MsmePortalProfilePage> {
     _businessId = data['id']?.toString();
     _name.text = data['name']?.toString() ?? '';
     _category.text = data['category']?.toString() ?? '';
+    _categoryId = data['category_id']?.toString() ??
+        (data['category_record'] is Map
+            ? (data['category_record'] as Map)['id']?.toString()
+            : null);
     _tagline.text = data['tagline']?.toString() ?? '';
     _phone.text = data['phone']?.toString() ?? '';
     _address.text = data['address']?.toString() ?? '';
@@ -371,7 +375,10 @@ class _ProfileState extends ConsumerState<MsmePortalProfilePage> {
     try {
       final payload = <String, dynamic>{
         'name': _name.text.trim(),
-        'category': _category.text.trim(),
+        if (_categoryId?.startsWith('legacy:') == true)
+          'category': _category.text.trim()
+        else
+          'category_id': _categoryId,
         'tagline': _tagline.text.trim(),
         'phone': _phone.text.trim(),
         'address': _address.text.trim(),
@@ -451,22 +458,49 @@ class _ProfileState extends ConsumerState<MsmePortalProfilePage> {
   }
 
   Widget _categoryField() {
-    final options = <String>{
-      ...msmeCategories.where((item) => item != 'All'),
-      if (_category.text.trim().isNotEmpty) _category.text.trim(),
-    }.toList();
-    return DropdownButtonFormField<String>(
-      initialValue:
-          _category.text.trim().isEmpty ? null : _category.text.trim(),
-      decoration: const InputDecoration(labelText: 'Category / type *'),
-      items: options
-          .map((item) => DropdownMenuItem(value: item, child: Text(item)))
-          .toList(),
-      onChanged: (value) => _category.text = value ?? '',
-      validator: (value) => value == null || value.isEmpty
-          ? 'Category / type is required.'
-          : null,
-    );
+    return ref.watch(msmeCategoriesProvider).when(
+          loading: () => const LinearProgressIndicator(),
+          error: (_, __) => OutlinedButton.icon(
+            onPressed: () => ref.invalidate(msmeCategoriesProvider),
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Retry loading categories'),
+          ),
+          data: (categories) {
+            final legacyValue = _category.text.trim().isEmpty
+                ? null
+                : 'legacy:${_category.text.trim()}';
+            final knownSelection =
+                categories.any((item) => item.id == _categoryId);
+            final selected = knownSelection ? _categoryId : legacyValue;
+            return DropdownButtonFormField<String>(
+              initialValue: selected,
+              decoration: const InputDecoration(labelText: 'Category / type *'),
+              items: [
+                ...categories.map((item) => DropdownMenuItem(
+                      value: item.id,
+                      child: Text(item.name),
+                    )),
+                if (legacyValue != null && !knownSelection)
+                  DropdownMenuItem(
+                    value: legacyValue,
+                    child: Text('${_category.text.trim()} (legacy)'),
+                  ),
+              ],
+              onChanged: (value) {
+                _categoryId = value;
+                if (value == null) {
+                  _category.clear();
+                } else if (!value.startsWith('legacy:')) {
+                  _category.text =
+                      categories.firstWhere((item) => item.id == value).name;
+                }
+              },
+              validator: (value) => value == null || value.isEmpty
+                  ? 'Category / type is required.'
+                  : null,
+            );
+          },
+        );
   }
 
   Widget _scheduleRow(MapEntry<String, TextEditingController> entry) {
@@ -590,7 +624,7 @@ class _ProfileState extends ConsumerState<MsmePortalProfilePage> {
       maxLines: lines,
       keyboardType:
           numeric ? const TextInputType.numberWithOptions(decimal: true) : null,
-      style: const TextStyle(color: MsmeTheme.textWhite),
+      style: TextStyle(color: MsmeTheme.textWhite),
       validator: (value) {
         final text = value?.trim() ?? '';
         if (isRequired && text.isEmpty) return '$label is required.';

@@ -3,6 +3,24 @@ import 'package:flutter/material.dart';
 /// Tour Tubigon — Premium Dark Color Token System
 /// Never hardcode colors elsewhere; always reference AppColors.
 abstract final class AppColors {
+  // Resolved by MaterialApp's builder so legacy role portals that still use
+  // shared static tokens participate in immediate light/dark switching.
+  static Brightness _brightness = Brightness.dark;
+
+  static void configure(Brightness brightness) => _brightness = brightness;
+
+  static bool get isDark => _brightness == Brightness.dark;
+  static Color get background =>
+      isDark ? darkBackground : lightBackground;
+  static Color get surface => isDark ? darkSurface : lightSurface;
+  static Color get surfaceVariant =>
+      isDark ? darkSurfaceVariant : lightSurfaceVariant;
+  static Color get onBackground =>
+      isDark ? darkOnBackground : lightOnBackground;
+  static Color get onSurface => isDark ? darkOnSurface : lightOnSurface;
+  static Color get onSurfaceVariant =>
+      isDark ? grey300 : const Color(0xFF5B6778);
+  static Color get outline => isDark ? darkOutline : lightOutline;
   // ─── Brand Primary — Dark Navy Blue ──────────────────────────────────────
   static const Color primary = Color(0xFF0B1F3A);
   static const Color primaryLight = Color(0xFF1B365D);
@@ -50,12 +68,12 @@ abstract final class AppColors {
   static const Color grey900 = Color(0xFF111827);
 
   // ─── Light & Dark Theme Surfaces (Unified Luxury Dark System) ───────────────
-  static const Color lightBackground = Color(0xFF0B1F3A);
-  static const Color lightSurface = Color(0xFF1F2937);
-  static const Color lightSurfaceVariant = Color(0xFF27313F);
-  static const Color lightOnBackground = Color(0xFFFFFFFF);
-  static const Color lightOnSurface = Color(0xFFFFFFFF);
-  static const Color lightOutline = Color(0x1AFFFFFF);
+  static const Color lightBackground = Color(0xFFF6F7F9);
+  static const Color lightSurface = Color(0xFFFFFFFF);
+  static const Color lightSurfaceVariant = Color(0xFFEEF1F5);
+  static const Color lightOnBackground = Color(0xFF0B1F3A);
+  static const Color lightOnSurface = Color(0xFF27313F);
+  static const Color lightOutline = Color(0xFFD6DBE3);
 
   static const Color darkBackground = Color(0xFF0B1F3A);
   static const Color darkSurface = Color(0xFF1F2937);
@@ -65,8 +83,8 @@ abstract final class AppColors {
   static const Color darkOutline = Color(0x1AFFFFFF);
 
   // ─── Cards & Containers ───────────────────────────────────────────────────
-  static const Color cardBg = Color(0xFF27313F);
-  static const Color surfaceDark = Color(0xFF1F2937);
+  static Color get cardBg => surface;
+  static Color get surfaceDark => surfaceVariant;
 
   // ─── Category Colors ──────────────────────────────────────────────────────
   static const Color categoryBeach = Color(0xFF4DA8DA);

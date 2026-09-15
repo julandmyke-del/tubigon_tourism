@@ -3,6 +3,7 @@ import 'dart:async';
 
 import '../../../core/constants/api_endpoints.dart';
 import '../../../core/network/api_client.dart';
+import '../../authentication/auth_provider.dart';
 
 class SettingsRepository {
   const SettingsRepository(this._client);
@@ -30,6 +31,8 @@ final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
 });
 
 final touristSettingsProvider = FutureProvider<Map<String, dynamic>>((ref) {
+  ref.watch(
+      authProvider.select((auth) => (auth.isLoggedIn, auth.userId, auth.role)));
   return ref.watch(settingsRepositoryProvider).getSettings();
 });
 

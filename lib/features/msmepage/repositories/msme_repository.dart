@@ -7,11 +7,44 @@ import '../../../core/services/sync_service.dart';
 import '../../../database/database_helper.dart';
 import '../models/msme.dart';
 
+class MsmeCategoryOption {
+  const MsmeCategoryOption({
+    required this.id,
+    required this.name,
+    required this.slug,
+  });
+
+  final String id;
+  final String name;
+  final String slug;
+
+  factory MsmeCategoryOption.fromJson(Map<String, dynamic> json) =>
+      MsmeCategoryOption(
+        id: json['id']?.toString() ?? '',
+        name: json['name']?.toString() ?? '',
+        slug: json['slug']?.toString() ?? '',
+      );
+}
+
 class MsmeRepository {
   MsmeRepository({required this.apiClient});
 
   final ApiClient apiClient;
   final dbHelper = DatabaseHelper.instance;
+
+  Future<List<MsmeCategoryOption>> getCategories() async {
+    final response = await apiClient.get(ApiEndpoints.msmeCategories);
+    if (response.statusCode != 200 || response.data['status'] != 'success') {
+      throw const FormatException('Invalid MSME category response.');
+    }
+    return (response.data['data'] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => MsmeCategoryOption.fromJson(
+              Map<String, dynamic>.from(item),
+            ))
+        .where((item) => item.id.isNotEmpty && item.name.isNotEmpty)
+        .toList(growable: false);
+  }
 
   Future<List<Msme>> getMsmes() async {
     if (!DatabaseHelper.isSupported) {
@@ -105,3 +138,7 @@ final msmeListProvider = FutureProvider<List<Msme>>((ref) async {
 });
 
 final msmesProvider = msmeListProvider;
+
+final msmeCategoriesProvider = FutureProvider<List<MsmeCategoryOption>>((ref) {
+  return ref.watch(msmeRepositoryProvider).getCategories();
+});

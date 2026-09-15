@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../../msmepage/models/msme.dart';
-import '../../../msmepage/repositories/msme_repository.dart';
 import '../../../itinerary/presentation/itinerary_add_sheet.dart';
-import '../../../map/providers/map_provider.dart';
 import '../../../map/map_focus.dart';
+import '../../../map/providers/map_provider.dart';
+import '../../../msmepage/models/msme.dart';
+import '../../../msmepage/providers/msme_portal_providers.dart';
+import '../../../msmepage/repositories/msme_repository.dart';
 import '../widgets/place_reviews_panel.dart';
 
 class MsmeDetailPage extends ConsumerWidget {
@@ -18,400 +18,508 @@ class MsmeDetailPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final msmesAsync = ref.watch(msmeListProvider);
-
-    return msmesAsync.when(
-      loading: () => const Scaffold(
-        backgroundColor: Color(0xFF080F1A),
-        body:
-            Center(child: CircularProgressIndicator(color: Color(0xFFF59E0B))),
-      ),
-      error: (err, _) => Scaffold(
-        backgroundColor: const Color(0xFF080F1A),
-        body: Center(
-            child: Text('Error loading MSME details: $err',
-                style: const TextStyle(color: Colors.white))),
-      ),
-      data: (msmes) {
-        final msme = msmes.firstWhere(
-          (m) => m.id == msmeId,
-          orElse: () => const Msme(
-            id: 0,
-            uuid: '',
-            name: 'Not Found',
-            category: 'General',
-            description: 'Business details not found.',
-            phone: '',
-            address: '',
-            reviewCount: 0,
-            color: Color(0xFFF59E0B),
-            icon: Icons.store_rounded,
-            tagline: '',
-            isVerified: false,
-            products: [],
-            reviews: [],
+    return ref.watch(msmeListProvider).when(
+          loading: () => const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
           ),
+          error: (_, __) => Scaffold(
+            body: _LoadFailure(
+              message: 'Unable to load business details. Please try again.',
+              onRetry: () => ref.invalidate(msmeListProvider),
+            ),
+          ),
+          data: (items) {
+            final matches = items.where((item) => item.id == msmeId);
+            if (matches.isEmpty) {
+              return const Scaffold(
+                body: _LoadFailure(message: 'Business not found.'),
+              );
+            }
+            return MsmeBusinessDetailView(
+              business: matches.first,
+              onReviewSaved: () => ref.invalidate(msmeListProvider),
+            );
+          },
         );
+  }
+}
 
-        if (msme.id == 0) {
-          return const Scaffold(
-            backgroundColor: Color(0xFF080F1A),
-            body: Center(
-                child: Text('MSME not found.',
-                    style: TextStyle(color: Colors.white))),
-          );
-        }
+/// Ownership-scoped preview. The provider calls `/msme/profile`, so an owner
+/// never supplies an arbitrary business ID and their auth role is untouched.
+class MsmeOwnerPreviewPage extends ConsumerWidget {
+  const MsmeOwnerPreviewPage({super.key});
 
-        final hasCoordinates = msme.latitude != null &&
-            msme.longitude != null &&
-            msme.latitude! >= -90 &&
-            msme.latitude! <= 90 &&
-            msme.longitude! >= -180 &&
-            msme.longitude! <= 180 &&
-            !(msme.latitude == 0 && msme.longitude == 0);
-
-        Color catColor = const Color(0xFFF59E0B);
-        IconData catIcon = Icons.store_rounded;
-
-        if (msme.category == 'Food & Dining') {
-          catColor = const Color(0xFFF87171);
-          catIcon = Icons.restaurant_rounded;
-        } else if (msme.category == 'Tour Services') {
-          catColor = const Color(0xFF38BDF8);
-          catIcon = Icons.sailing_rounded;
-        } else if (msme.category == 'Handicrafts') {
-          catColor = const Color(0xFFC084FC);
-          catIcon = Icons.local_offer_rounded;
-        } else if (msme.category == 'Agriculture') {
-          catColor = const Color(0xFF34D399);
-          catIcon = Icons.agriculture_rounded;
-        } else if (msme.category == 'Accommodation') {
-          catColor = const Color(0xFFF59E0B);
-          catIcon = Icons.home_rounded;
-        }
-
-        return Scaffold(
-          backgroundColor: const Color(0xFF080F1A),
-          appBar: AppBar(
-            backgroundColor: const Color(0xFF0F172A),
-            elevation: 0,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-              onPressed: () => context.pop(),
-            ),
-            title: Text(
-              msme.name,
-              style: const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.w700),
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ref.watch(currentMsmeProvider).when(
+          loading: () => const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          ),
+          error: (_, __) => Scaffold(
+            body: _LoadFailure(
+              message: 'Unable to load business preview. Please try again.',
+              onRetry: () => ref.invalidate(currentMsmeProvider),
             ),
           ),
-          body: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
+          data: (state) {
+            if (state.business == null) {
+              return const Scaffold(
+                body: _LoadFailure(
+                  message:
+                      'Complete your business profile before previewing it.',
+                ),
+              );
+            }
+            return MsmeBusinessDetailView(
+              business: Msme.fromJson(state.business!),
+              previewMode: true,
+            );
+          },
+        );
+  }
+}
+
+/// The one tourist-facing MSME presentation used by public browsing and owner
+/// preview. Preview mode preserves the visuals while suppressing mutations.
+class MsmeBusinessDetailView extends StatelessWidget {
+  const MsmeBusinessDetailView({
+    super.key,
+    required this.business,
+    this.previewMode = false,
+    this.onReviewSaved,
+  });
+
+  final Msme business;
+  final bool previewMode;
+  final VoidCallback? onReviewSaved;
+
+  bool get _hasCoordinates =>
+      business.latitude != null &&
+      business.longitude != null &&
+      business.latitude! >= -90 &&
+      business.latitude! <= 90 &&
+      business.longitude! >= -180 &&
+      business.longitude! <= 180 &&
+      !(business.latitude == 0 && business.longitude == 0);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final categoryColor = _categoryColor(business.category);
+    final categoryIcon = _categoryIcon(business.category);
+
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          tooltip: previewMode ? 'Close preview' : 'Back',
+          icon: Icon(
+              previewMode ? Icons.close_rounded : Icons.arrow_back_rounded),
+          onPressed: () => context.canPop()
+              ? context.pop()
+              : context.go(previewMode ? '/msme-portal/listings' : '/explore'),
+        ),
+        title: Text(previewMode ? 'Tourist Preview' : business.name),
+      ),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.symmetric(
+          horizontal: MediaQuery.sizeOf(context).width < 600 ? 16 : 24,
+          vertical: 20,
+        ),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 980),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Header Card
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0F172A),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: catColor.withValues(alpha: 0.3)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.3),
-                        blurRadius: 15,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 72,
-                        height: 72,
-                        decoration: BoxDecoration(
-                          color: catColor.withValues(alpha: 0.2),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(catIcon, color: catColor, size: 36),
-                      ),
-                      const SizedBox(height: 14),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            msme.name,
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.w800),
-                            textAlign: TextAlign.center,
+                if (previewMode)
+                  Material(
+                    color: colors.tertiaryContainer,
+                    borderRadius: BorderRadius.circular(14),
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Row(children: [
+                        Icon(Icons.visibility_rounded,
+                            color: colors.onTertiaryContainer),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            business.isVerified
+                                ? 'Preview mode — tourist actions are disabled.'
+                                : 'Private preview — this listing is not published. Tourist actions are disabled.',
+                            style: TextStyle(color: colors.onTertiaryContainer),
                           ),
-                          if (msme.isVerified) ...[
-                            const SizedBox(width: 6),
-                            const Icon(Icons.verified_rounded,
-                                color: Color(0xFF38BDF8), size: 18),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Category: ${msme.category}',
-                        style: TextStyle(
-                            color: catColor,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600),
-                      ),
-                    ],
+                        ),
+                      ]),
+                    ),
                   ),
-                ).animate().fadeIn(duration: 350.ms),
-
-                const SizedBox(height: 24),
-
-                // Details List
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0F172A),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFF1E293B)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Business Information',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 14),
-                      _DetailRow(
+                if (previewMode) const SizedBox(height: 16),
+                _HeroCard(
+                  business: business,
+                  color: categoryColor,
+                  icon: categoryIcon,
+                ),
+                const SizedBox(height: 18),
+                LayoutBuilder(builder: (context, constraints) {
+                  final cards = [
+                    _InfoCard(
+                      title: 'Business Information',
+                      children: [
+                        _DetailRow(
                           icon: Icons.location_on_rounded,
                           label: 'Address',
-                          value:
-                              (msme.address != null && msme.address!.isNotEmpty)
-                                  ? msme.address!
-                                  : 'Tubigon, Bohol'),
-                      const Divider(color: Color(0xFF1E293B), height: 24),
-                      _DetailRow(
+                          value: business.address?.trim().isNotEmpty == true
+                              ? business.address!
+                              : 'Tubigon, Bohol',
+                        ),
+                        const Divider(),
+                        _DetailRow(
                           icon: Icons.phone_rounded,
                           label: 'Contact',
-                          value: msme.contactNumber),
-                    ],
-                  ),
-                ).animate().fadeIn(duration: 350.ms, delay: 100.ms),
-
+                          value: business.contactNumber,
+                        ),
+                        if ((business.businessHours ?? '').isNotEmpty) ...[
+                          const Divider(),
+                          _DetailRow(
+                            icon: Icons.schedule_rounded,
+                            label: 'Operating information',
+                            value: business.businessHours!,
+                          ),
+                        ],
+                      ],
+                    ),
+                    _InfoCard(
+                      title: 'About Business',
+                      children: [
+                        Text(
+                          business.description.isNotEmpty
+                              ? business.description
+                              : 'Local MSME registered with Tour Tubigon.',
+                          style: theme.textTheme.bodyMedium
+                              ?.copyWith(height: 1.55),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          business.bookingEnabled
+                              ? 'Online reservations are available.'
+                              : 'Reservations are currently unavailable.',
+                          style: TextStyle(
+                            color: business.bookingEnabled
+                                ? colors.primary
+                                : colors.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ];
+                  if (constraints.maxWidth < 720) {
+                    return Column(
+                      children: [
+                        cards[0],
+                        const SizedBox(height: 14),
+                        cards[1]
+                      ],
+                    );
+                  }
+                  return IntrinsicHeight(
+                    child: Row(children: [
+                      Expanded(child: cards[0]),
+                      const SizedBox(width: 14),
+                      Expanded(child: cards[1]),
+                    ]),
+                  );
+                }),
                 const SizedBox(height: 24),
-
-                // Description Card
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0F172A),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: const Color(0xFF1E293B)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                if (business.isVerified && business.uuid.isNotEmpty)
+                  PlaceReviewsPanel(
+                    reviewableType: 'msme',
+                    reviewableId: business.uuid,
+                    targetName: business.name,
+                    readOnly: previewMode,
+                    onReviewSaved: onReviewSaved,
+                  )
+                else
+                  _InfoCard(
+                    title: 'Reviews & Ratings',
                     children: [
-                      const Text(
-                        'About Business',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 10),
                       Text(
-                        msme.description.isNotEmpty
-                            ? msme.description
-                            : 'Local MSME registered under the Tubigon Tourism Information and Management System.',
-                        style: const TextStyle(
-                            color: Color(0xFFCBD5E1),
-                            fontSize: 14,
-                            height: 1.6),
+                        '${business.rating?.toStringAsFixed(1) ?? '0.0'} • ${business.reviewCount} reviews',
                       ),
+                      const SizedBox(height: 6),
+                      const Text(
+                          'Reviews become publicly available after verification.'),
                     ],
                   ),
-                ).animate().fadeIn(duration: 350.ms, delay: 200.ms),
-
-                const SizedBox(height: 32),
-                PlaceReviewsPanel(
-                  reviewableType: 'msme',
-                  reviewableId: msme.uuid,
-                  targetName: msme.name,
-                  onReviewSaved: () => ref.invalidate(msmeListProvider),
-                ),
-
-                const SizedBox(height: 32),
-
-                if (msme.bookingEnabled)
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      final target = Uri(
-                        path: '/reservations/create',
-                        queryParameters: {
-                          'type': 'msme',
-                          'id': msme.uuid,
-                          'name': msme.name,
-                          'price': '0',
-                        },
-                      );
-                      context.push(target.toString());
-                    },
-                    icon: const Icon(Icons.calendar_month_rounded),
-                    label: const Text('Request a Reservation'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFF59E0B),
-                      foregroundColor: Colors.black,
-                      minimumSize: const Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
-                    ),
-                  ),
-                if (msme.bookingEnabled) const SizedBox(height: 12),
-
-                // Contact Action Button
-                if (msme.contactNumber.isNotEmpty &&
-                    msme.contactNumber != 'N/A')
-                  ElevatedButton.icon(
-                    onPressed: () async {
-                      final url = 'tel:${msme.contactNumber}';
-                      final uri = Uri.parse(url);
-                      if (await canLaunchUrl(uri)) {
-                        await launchUrl(uri);
-                      }
-                    },
-                    icon: const Icon(Icons.call_rounded),
-                    label: const Text('Call Business',
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.w700)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF38BDF8),
-                      foregroundColor: Colors.black,
-                      minimumSize: const Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
-                    ),
-                  ),
-                const SizedBox(height: 12),
-                if (hasCoordinates) ...[
-                  OutlinedButton.icon(
-                    onPressed: () => context.push(
-                      mapFocusPathForEntity(
-                        entityType: 'msme',
-                        entityId: msme.uuid,
-                      ),
-                    ),
-                    icon: const Icon(Icons.map_rounded),
-                    label: const Text('View on Smart Map'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF38BDF8),
-                      minimumSize: const Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: () => context.push(
-                      mapFocusPathForEntity(
-                        entityType: 'msme',
-                        entityId: msme.uuid,
-                        directions: true,
-                      ),
-                    ),
-                    icon: const Icon(Icons.directions_rounded),
-                    label: const Text('Get Directions'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFFF59E0B),
-                      minimumSize: const Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                OutlinedButton.icon(
-                  onPressed: hasCoordinates
-                      ? () => showAddToItinerarySheet(
-                            context,
-                            ref,
-                            MapMarker(
-                              id: 'msme:${msme.uuid}',
-                              sourceId: msme.uuid,
-                              sourceIntegerId: msme.id,
-                              name: msme.name,
-                              description: msme.description,
-                              address: msme.address,
-                              latitude: msme.latitude!,
-                              longitude: msme.longitude!,
-                              category: MapMarkerCategory.msme,
-                              categoryName: msme.category,
-                              rating: msme.rating,
-                              reviewCount: msme.reviewCount,
-                              operatingHours: msme.businessHours,
-                              contact: msme.phone,
-                              isVerified: msme.isVerified,
-                            ),
-                          )
-                      : null,
-                  icon: const Icon(Icons.luggage_rounded),
-                  label: Text(hasCoordinates
-                      ? 'Add to Itinerary'
-                      : 'Map location not yet available'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFFF59E0B),
-                    minimumSize: const Size(double.infinity, 50),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
-                  ),
+                const SizedBox(height: 24),
+                _ActionArea(
+                  business: business,
+                  previewMode: previewMode,
+                  hasCoordinates: _hasCoordinates,
                 ),
               ],
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }
 
-class _DetailRow extends StatelessWidget {
-  const _DetailRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
+class _HeroCard extends StatelessWidget {
+  const _HeroCard(
+      {required this.business, required this.color, required this.icon});
+  final Msme business;
+  final Color color;
+  final IconData icon;
 
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Card(
+      child: Column(children: [
+        if (business.images.isNotEmpty)
+          SizedBox(
+            height: 250,
+            width: double.infinity,
+            child: Image.network(
+              business.images.first,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) =>
+                  _ImageFallback(icon: icon, color: color),
+            ),
+          )
+        else
+          SizedBox(
+              height: 180, child: _ImageFallback(icon: icon, color: color)),
+        Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(children: [
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Flexible(
+                child: Text(
+                  business.name,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+              ),
+              if (business.isVerified) ...[
+                const SizedBox(width: 6),
+                const Icon(Icons.verified_rounded, color: Color(0xFF1686C9)),
+              ],
+            ]),
+            const SizedBox(height: 5),
+            Text(business.category,
+                style: TextStyle(color: color, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Text(
+              '★ ${business.rating?.toStringAsFixed(1) ?? '0.0'}  •  ${business.reviewCount} reviews',
+              style: TextStyle(color: colors.onSurfaceVariant),
+            ),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+class _ImageFallback extends StatelessWidget {
+  const _ImageFallback({required this.icon, required this.color});
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => ColoredBox(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        child: Center(child: Icon(icon, color: color, size: 64)),
+      );
+}
+
+class _InfoCard extends StatelessWidget {
+  const _InfoCard({required this.title, required this.children});
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      )),
+              const SizedBox(height: 14),
+              ...children,
+            ],
+          ),
+        ),
+      );
+}
+
+class _DetailRow extends StatelessWidget {
+  const _DetailRow(
+      {required this.icon, required this.label, required this.value});
   final IconData icon;
   final String label;
   final String value;
 
   @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, color: const Color(0xFF94A3B8), size: 20),
+  Widget build(BuildContext context) => Row(children: [
+        Icon(icon, color: Theme.of(context).colorScheme.primary),
         const SizedBox(width: 12),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label,
-                style: const TextStyle(color: Color(0xFF64748B), fontSize: 11)),
-            const SizedBox(height: 2),
-            Text(value,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600)),
-          ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: Theme.of(context).textTheme.labelMedium),
+              const SizedBox(height: 2),
+              Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+            ],
+          ),
         ),
-      ],
-    );
+      ]);
+}
+
+class _ActionArea extends ConsumerWidget {
+  const _ActionArea({
+    required this.business,
+    required this.previewMode,
+    required this.hasCoordinates,
+  });
+  final Msme business;
+  final bool previewMode;
+  final bool hasCoordinates;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final buttons = <Widget>[
+      if (business.bookingEnabled)
+        FilledButton.icon(
+          onPressed: previewMode
+              ? null
+              : () => context.push(Uri(
+                    path: '/reservations/create',
+                    queryParameters: {
+                      'type': 'msme',
+                      'id': business.uuid,
+                      'name': business.name,
+                      'price': '0',
+                    },
+                  ).toString()),
+          icon: const Icon(Icons.calendar_month_rounded),
+          label: Text(
+              previewMode ? 'Reservation disabled in preview' : 'Reserve Now'),
+        ),
+      if (!business.bookingEnabled)
+        const OutlinedButton(
+          onPressed: null,
+          child: Text('Reservations currently unavailable'),
+        ),
+      if (business.contactNumber != 'N/A')
+        OutlinedButton.icon(
+          onPressed: previewMode
+              ? null
+              : () async {
+                  final uri = Uri.parse('tel:${business.contactNumber}');
+                  if (await canLaunchUrl(uri)) await launchUrl(uri);
+                },
+          icon: const Icon(Icons.call_rounded),
+          label: const Text('Call Business'),
+        ),
+      OutlinedButton.icon(
+        onPressed: hasCoordinates
+            ? () => context.push(mapFocusPathForEntity(
+                  entityType: 'msme',
+                  entityId: business.uuid,
+                ))
+            : null,
+        icon: const Icon(Icons.map_rounded),
+        label: const Text('View on Smart Map'),
+      ),
+      OutlinedButton.icon(
+        onPressed: !previewMode && hasCoordinates
+            ? () => showAddToItinerarySheet(
+                  context,
+                  ref,
+                  MapMarker(
+                    id: 'msme:${business.uuid}',
+                    sourceId: business.uuid,
+                    sourceIntegerId: business.id,
+                    name: business.name,
+                    description: business.description,
+                    address: business.address,
+                    latitude: business.latitude!,
+                    longitude: business.longitude!,
+                    category: MapMarkerCategory.msme,
+                    categoryName: business.category,
+                    rating: business.rating,
+                    reviewCount: business.reviewCount,
+                    operatingHours: business.businessHours,
+                    contact: business.phone,
+                    isVerified: business.isVerified,
+                  ),
+                )
+            : null,
+        icon: const Icon(Icons.luggage_rounded),
+        label: Text(
+            previewMode ? 'Itinerary disabled in preview' : 'Add to Itinerary'),
+      ),
+    ];
+    return Wrap(spacing: 10, runSpacing: 10, children: buttons);
   }
+}
+
+class _LoadFailure extends StatelessWidget {
+  const _LoadFailure({required this.message, this.onRetry});
+  final String message;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.storefront_outlined, size: 48),
+            const SizedBox(height: 12),
+            Text(message, textAlign: TextAlign.center),
+            if (onRetry != null) ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Try again'),
+              ),
+            ],
+          ]),
+        ),
+      );
+}
+
+Color _categoryColor(String category) {
+  final key = category.toLowerCase();
+  if (key.contains('food') || key.contains('restaurant')) {
+    return const Color(0xFFE4572E);
+  }
+  if (key.contains('tour')) return const Color(0xFF1686C9);
+  if (key.contains('handicraft') || key.contains('shopping')) {
+    return const Color(0xFF8B5CF6);
+  }
+  if (key.contains('agri')) return const Color(0xFF059669);
+  return const Color(0xFFF59E0B);
+}
+
+IconData _categoryIcon(String category) {
+  final key = category.toLowerCase();
+  if (key.contains('food') || key.contains('restaurant')) {
+    return Icons.restaurant_rounded;
+  }
+  if (key.contains('accommodation')) return Icons.hotel_rounded;
+  if (key.contains('agri')) return Icons.agriculture_rounded;
+  if (key.contains('tour')) return Icons.sailing_rounded;
+  return Icons.storefront_rounded;
 }

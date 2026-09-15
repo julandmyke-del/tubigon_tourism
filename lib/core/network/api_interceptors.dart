@@ -1,12 +1,12 @@
 import 'package:dio/dio.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:logger/logger.dart';
 
 import '../constants/app_constants.dart';
+import '../services/secure_storage_service.dart';
 
 final _logger = Logger();
-const _storage = FlutterSecureStorage();
+final _storage = SecureStorageService();
 
 /// Rejects direct server mutations when the device has no network interface.
 /// Tourist waste reporting remains safe because its repository writes the
@@ -48,7 +48,7 @@ class AuthInterceptor extends Interceptor {
     }
 
     try {
-      final token = await _storage.read(key: AppConstants.authTokenKey);
+      final token = await _storage.read(AppConstants.authTokenKey);
       if (token != null && token.isNotEmpty) {
         options.headers['Authorization'] = 'Bearer $token';
       }

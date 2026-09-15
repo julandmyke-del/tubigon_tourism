@@ -60,7 +60,7 @@ class _AdminReservationManagementPageState
                 IconButton(
                   style: IconButton.styleFrom(
                     backgroundColor: AdminColors.cardBg,
-                    side: const BorderSide(color: AdminColors.cardBorder),
+                    side: BorderSide(color: AdminColors.cardBorder),
                   ),
                   onPressed: () => ref.invalidate(adminReservationsProvider),
                   icon: const Icon(Icons.refresh_rounded,
@@ -78,14 +78,14 @@ class _AdminReservationManagementPageState
                 children: [
                   Expanded(
                     child: TextField(
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: AdminColors.textPrimary, fontSize: 14),
                       decoration: InputDecoration(
                         hintText:
                             'Search by reservation ID, tourist name, or destination...',
                         hintStyle:
-                            const TextStyle(color: AdminColors.textMuted),
-                        prefixIcon: const Icon(Icons.search_rounded,
+                            TextStyle(color: AdminColors.textMuted),
+                        prefixIcon: Icon(Icons.search_rounded,
                             color: AdminColors.textSecondary, size: 20),
                         filled: true,
                         fillColor: AdminColors.navy900,
@@ -93,11 +93,11 @@ class _AdminReservationManagementPageState
                             horizontal: 14, vertical: 10),
                         border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(
+                            borderSide: BorderSide(
                                 color: AdminColors.cardBorder)),
                         enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(
+                            borderSide: BorderSide(
                                 color: AdminColors.cardBorder)),
                         focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
@@ -119,9 +119,9 @@ class _AdminReservationManagementPageState
                       child: DropdownButton<String>(
                         dropdownColor: AdminColors.navy900,
                         value: _statusFilter,
-                        icon: const Icon(Icons.filter_list_rounded,
+                        icon: Icon(Icons.filter_list_rounded,
                             color: AdminColors.textSecondary),
-                        style: const TextStyle(
+                        style: TextStyle(
                             color: AdminColors.textPrimary, fontSize: 14),
                         items: [
                           const DropdownMenuItem(
@@ -161,7 +161,7 @@ class _AdminReservationManagementPageState
                           : const <String, dynamic>{};
                       final statusData = r['status'] is Map
                           ? Map<String, dynamic>.from(r['status'])
-                          : const <String, dynamic>{};
+                          : <String, dynamic>{};
                       final tourist =
                           (user['name'] ?? '').toString().toLowerCase();
                       final spot =
@@ -180,7 +180,7 @@ class _AdminReservationManagementPageState
                     }).toList();
 
                     if (filtered.isEmpty) {
-                      return const Center(
+                      return Center(
                           child: Text(
                               'No reservations match the search criteria.',
                               style:
@@ -196,7 +196,7 @@ class _AdminReservationManagementPageState
                               WidgetStateProperty.all(AdminColors.navy900),
                           horizontalMargin: 20,
                           columnSpacing: 24,
-                          columns: const [
+                          columns: [
                             DataColumn(
                                 label: Text('RESERVATION ID',
                                     style: TextStyle(
@@ -301,20 +301,20 @@ class _AdminReservationManagementPageState
                                           .push('/admin/reservations/$resId'),
                                 ),
                                 DataCell(Text(tourist,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                         color: AdminColors.textPrimary,
                                         fontWeight: FontWeight.w600,
                                         fontSize: 13))),
                                 DataCell(Text(spot,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                         color: AdminColors.textSecondary,
                                         fontSize: 13))),
                                 DataCell(Text(date,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                         color: AdminColors.textSecondary,
                                         fontSize: 12))),
                                 DataCell(Text('$pax pax',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                         color: AdminColors.textPrimary,
                                         fontSize: 13))),
                                 DataCell(Text(
@@ -327,7 +327,7 @@ class _AdminReservationManagementPageState
                                 DataCell(
                                   PopupMenuButton<String>(
                                     enabled: allowedTransitions.isNotEmpty,
-                                    icon: const Icon(Icons.more_vert_rounded,
+                                    icon: Icon(Icons.more_vert_rounded,
                                         color: AdminColors.textSecondary,
                                         size: 18),
                                     color: AdminColors.navy900,
@@ -357,7 +357,7 @@ class _AdminReservationManagementPageState
                                       return PopupMenuItem(
                                           value: id,
                                           child: Text(_label(name),
-                                              style: const TextStyle(
+                                              style: TextStyle(
                                                   color: AdminColors
                                                       .textPrimary)));
                                     }).toList(),

@@ -33,6 +33,7 @@ class PrivateSessionDataService {
   }) async {
     final storage = LocalStorageService.instance;
     final owner = userId ?? '';
+    final sessionOwner = '${role}_$owner';
     final removableKeys = storage.keys.where((key) {
       if (key.startsWith('smart_map_cache_private_')) return true;
       if (_privateRoles.contains(role) && key == 'smart_map_cache_$role') {
@@ -41,7 +42,12 @@ class PrivateSessionDataService {
       if (owner.isEmpty) return false;
       return key == 'itineraries_cache_$owner' ||
           key == 'itinerary_pending_sync_$owner' ||
-          key.startsWith('itinerary_detail_${owner}_');
+          key.startsWith('itinerary_detail_${owner}_') ||
+          (key.startsWith('announcements_account_') &&
+              key.endsWith(sessionOwner)) ||
+          (key.startsWith('partner_offerings_') &&
+              key.endsWith(sessionOwner)) ||
+          (key.startsWith('partner_gallery_') && key.endsWith(sessionOwner));
     }).toList(growable: false);
 
     for (final key in removableKeys) {

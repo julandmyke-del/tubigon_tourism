@@ -7,6 +7,7 @@ import '../../../../core/routes/route_names.dart';
 import '../../../authentication/auth_provider.dart';
 import '../../../../core/localization/app_localization.dart';
 import '../../../../core/utils/auth_action_guard.dart';
+import '../../../../core/widgets/app_logo.dart';
 
 class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key});
@@ -443,12 +444,19 @@ class ProfilePage extends ConsumerWidget {
         title: const Text('About Tour Tubigon',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         content: const SingleChildScrollView(
-          child: Text(
-            'Tubigon is a major seaport town and gateway to Bohol, Philippines. Known for its rich loomweaving heritage, coastal ecosystems, and eco-tourism destinations.\n\n'
-            'Tour Tubigon connects tourists with verified destinations, local MSME businesses, ferry schedules, eco guidelines, and emergency services.\n\n'
-            'Version 1.0.0 (Official Tourist Module)',
-            style:
-                TextStyle(color: Color(0xFFCBD5E1), height: 1.5, fontSize: 13),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AppLogo(size: 88, radius: 20),
+              SizedBox(height: 16),
+              Text(
+                'Tubigon is a major seaport town and gateway to Bohol, Philippines. Known for its rich loomweaving heritage, coastal ecosystems, and eco-tourism destinations.\n\n'
+                'Tour Tubigon connects tourists with verified destinations, local MSME businesses, ferry schedules, eco guidelines, and emergency services.\n\n'
+                'Version 1.0.0 (Official Tourist Module)',
+                style: TextStyle(
+                    color: Color(0xFFCBD5E1), height: 1.5, fontSize: 13),
+              ),
+            ],
           ),
         ),
         actions: [

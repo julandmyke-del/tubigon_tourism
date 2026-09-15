@@ -49,6 +49,7 @@ abstract final class ApiEndpoints {
 
   // ─── MSMEs ────────────────────────────────────────────────────────────────
   static const String msmes = '$_base/msmes';
+  static const String msmeCategories = '$_base/msme-categories';
   static String msmeById(String id) => '$_base/msmes/$id';
   static const String myMsme = '$_base/msmes/mine';
   static const String registerMsme = '$_base/msmes/register';

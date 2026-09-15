@@ -9,10 +9,12 @@ import '../../../core/exceptions/app_exception.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/connectivity_provider.dart';
 import '../../../core/services/local_storage_service.dart';
+import '../../authentication/auth_provider.dart';
 
 class ConnectedOperationsRepository {
-  ConnectedOperationsRepository(this.client);
+  ConnectedOperationsRepository(this.client, {this.sessionOwner = 'guest'});
   final ApiClient client;
+  final String sessionOwner;
   static const _concernDraftKey = 'concern_submission_draft_v1';
 
   Future<Map<String, dynamic>> publicOfferings(String spotId) => _cachedMap(
@@ -24,7 +26,9 @@ class ConnectedOperationsRepository {
   Future<List<Map<String, dynamic>>> announcements({bool guest = false}) =>
       _cachedList(
           guest ? ApiEndpoints.publicAnnouncements : ApiEndpoints.announcements,
-          'announcements_${guest ? 'public' : 'account'}');
+          guest
+              ? 'announcements_public'
+              : _privateKey('announcements_account'));
 
   Future<void> markAnnouncementRead(String id) async {
     await _requireOnline();
@@ -37,8 +41,8 @@ class ConnectedOperationsRepository {
   }
 
   Future<List<Map<String, dynamic>>> partnerOfferings(String spotId) =>
-      _cachedList(
-          ApiEndpoints.partnerOfferings(spotId), 'partner_offerings_$spotId');
+      _cachedList(ApiEndpoints.partnerOfferings(spotId),
+          _privateKey('partner_offerings_$spotId'));
   Future<void> saveOffering(String spotId, Map<String, dynamic> data,
       {String? id}) async {
     await _requireOnline();
@@ -73,8 +77,8 @@ class ConnectedOperationsRepository {
   }
 
   Future<List<Map<String, dynamic>>> partnerGallery(String spotId) =>
-      _cachedList(
-          ApiEndpoints.partnerSpotGallery(spotId), 'partner_gallery_$spotId');
+      _cachedList(ApiEndpoints.partnerSpotGallery(spotId),
+          _privateKey('partner_gallery_$spotId'));
   Future<void> uploadGalleryImage(String spotId, Uint8List bytes, String name,
       {String? caption,
       String category = 'general',
@@ -313,10 +317,22 @@ class ConnectedOperationsRepository {
           message: 'Internet connection is required for this action.');
     }
   }
+
+  String _privateKey(String base) => '${base}_$sessionOwner';
 }
 
-final connectedOperationsRepositoryProvider = Provider(
-    (ref) => ConnectedOperationsRepository(ref.watch(apiClientProvider)));
+final connectedOperationsRepositoryProvider = Provider((ref) {
+  final auth = LocalStorageService.isInitialized
+      ? ref.watch(authProvider)
+      : const AuthState();
+  final owner = auth.isLoggedIn && (auth.userId?.isNotEmpty ?? false)
+      ? '${auth.role.name}_${auth.userId}'
+      : 'guest';
+  return ConnectedOperationsRepository(
+    ref.watch(apiClientProvider),
+    sessionOwner: owner,
+  );
+});
 final publicOfferingsProvider =
     FutureProvider.family<Map<String, dynamic>, String>((ref, id) =>
         ref.watch(connectedOperationsRepositoryProvider).publicOfferings(id));

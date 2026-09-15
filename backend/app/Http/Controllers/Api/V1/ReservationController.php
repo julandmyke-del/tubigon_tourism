@@ -90,16 +90,19 @@ class ReservationController extends Controller
                 'spot' => TouristSpot::whereKey($validated['reservable_id'])->lockForUpdate()->firstOrFail(),
                 'msme' => Msme::where('is_verified', true)
                     ->where('verification_status', 'verified')
-                    ->where('operational_status', 'open')
-                    ->when(
-                        Schema::hasColumn('msmes', 'booking_enabled'),
-                        fn ($query) => $query->where('booking_enabled', true),
-                    )
                     ->lockForUpdate()->findOrFail($validated['reservable_id']),
                 'tourism_listing' => TourismListing::where('is_active', true)
                     ->where('approval_status', 'approved')
                     ->lockForUpdate()->findOrFail($validated['reservable_id']),
             };
+
+            if ($reservable instanceof Msme) {
+                abort_unless(
+                    $reservable->booking_enabled && $reservable->operational_status === 'open',
+                    422,
+                    'Reservations are currently unavailable for this business.',
+                );
+            }
 
             if ($validated['reservable_type'] === 'spot') {
                 $serverBooking = $spotBooking->validate(

@@ -424,12 +424,23 @@ class AdminRepository {
     }
   }
 
-  Future<bool> deleteReview(String reviewId) async {
+  Future<bool> removeReview(
+    String reviewId, {
+    required String reasonCode,
+    String? reasonDetail,
+  }) async {
     try {
-      await apiClient.delete(ApiEndpoints.reviewById(reviewId));
+      await apiClient.delete(
+        ApiEndpoints.reviewById(reviewId),
+        data: {
+          'reason_code': reasonCode,
+          if (reasonDetail?.trim().isNotEmpty == true)
+            'reason_detail': reasonDetail!.trim(),
+        },
+      );
       return true;
-    } catch (e) {
-      throw Exception('Failed to delete review: $e');
+    } catch (_) {
+      throw Exception('Unable to remove the review. Please try again.');
     }
   }
 

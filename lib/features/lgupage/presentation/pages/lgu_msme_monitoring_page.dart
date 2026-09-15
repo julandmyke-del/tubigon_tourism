@@ -17,30 +17,35 @@ class _State extends ConsumerState<LguMsmeMonitoringPage> {
   String _filter = 'pending';
   String _query = '';
   String _category = 'all';
+  final _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final msmes =
         ref.watch(lguMsmesProvider(_filter == 'all' ? null : _filter));
     final allMsmes = ref.watch(lguMsmesProvider(null)).valueOrNull ?? const [];
-    final categories = allMsmes
-        .map((item) => item['category']?.toString() ?? 'Uncategorized')
-        .toSet()
-        .toList()
-      ..sort();
+    final categories =
+        ref.watch(msmeCategoriesProvider).valueOrNull ?? const [];
     return Scaffold(
-      backgroundColor: const Color(0xFF0B132B),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('MSME Verification',
+          Text('MSME Verification',
               style: TextStyle(
-                  color: Colors.white,
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 25,
                   fontWeight: FontWeight.bold)),
-          const Text(
+          Text(
               'Review real owner profiles, locations, and submitted information.',
-              style: TextStyle(color: AppColors.grey400)),
+              style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant)),
           const SizedBox(height: 14),
           Wrap(spacing: 8, runSpacing: 8, children: [
             for (final value in const [
@@ -52,8 +57,13 @@ class _State extends ConsumerState<LguMsmeMonitoringPage> {
               _Summary(
                 label: value,
                 count: allMsmes
-                    .where((item) => item['verification_status'] == value)
+                    .where((item) =>
+                        normalizeVerificationStatus(
+                            item['verification_status']) ==
+                        value)
                     .length,
+                selected: _filter == value,
+                onTap: () => _selectStatus(value),
               ),
           ]),
           const SizedBox(height: 12),
@@ -61,6 +71,7 @@ class _State extends ConsumerState<LguMsmeMonitoringPage> {
             SizedBox(
               width: 300,
               child: TextField(
+                controller: _search,
                 decoration: const InputDecoration(
                     labelText: 'Search business, owner, or category',
                     prefixIcon: Icon(Icons.search_rounded)),
@@ -71,16 +82,19 @@ class _State extends ConsumerState<LguMsmeMonitoringPage> {
             SizedBox(
               width: 220,
               child: DropdownButtonFormField<String>(
-                initialValue:
-                    categories.contains(_category) || _category == 'all'
-                        ? _category
-                        : 'all',
+                initialValue: _category == 'all' ||
+                        categories.any((item) => item.id == _category)
+                    ? _category
+                    : 'all',
                 decoration: const InputDecoration(labelText: 'Category'),
-                items: ['all', ...categories]
-                    .map((value) => DropdownMenuItem(
-                        value: value,
-                        child: Text(value == 'all' ? 'All categories' : value)))
-                    .toList(),
+                items: [
+                  const DropdownMenuItem(
+                      value: 'all', child: Text('All categories')),
+                  ...categories.map((item) => DropdownMenuItem(
+                        value: item.id,
+                        child: Text(item.name),
+                      )),
+                ],
                 onChanged: (value) =>
                     setState(() => _category = value ?? 'all'),
               ),
@@ -95,7 +109,7 @@ class _State extends ConsumerState<LguMsmeMonitoringPage> {
               ChoiceChip(
                   label: Text(value.replaceAll('_', ' ')),
                   selected: _filter == value,
-                  onSelected: (_) => setState(() => _filter = value)),
+                  onSelected: (_) => _selectStatus(value)),
           ]),
           const SizedBox(height: 14),
           Expanded(
@@ -111,16 +125,23 @@ class _State extends ConsumerState<LguMsmeMonitoringPage> {
                 final profile = item['profile'];
                 final owner = profile is Map ? profile['name'] : '';
                 return (_category == 'all' ||
-                        item['category']?.toString() == _category) &&
+                        item['category_id']?.toString() == _category) &&
                     '${item['name'] ?? ''} ${item['category'] ?? ''} $owner ${item['address'] ?? ''}'
                         .toLowerCase()
                         .contains(_query);
               }).toList();
               return filtered.isEmpty
-                  ? const Center(
+                  ? Center(
                       child: Text(
-                          'No MSMEs match this review state and search.',
-                          style: TextStyle(color: AppColors.grey400)))
+                          _filter == 'pending' &&
+                                  _query.isEmpty &&
+                                  _category == 'all'
+                              ? 'No Pending MSMEs. Select Verified or All to view other records.'
+                              : 'No MSMEs match this status and filters.',
+                          style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant)))
                   : RefreshIndicator(
                       onRefresh: () async => ref.refresh(
                           lguMsmesProvider(_filter == 'all' ? null : _filter)
@@ -140,12 +161,12 @@ class _State extends ConsumerState<LguMsmeMonitoringPage> {
 
   Widget _card(Map<String, dynamic> item) {
     final profile = item['profile'];
-    final status = item['verification_status']?.toString() ??
+    final status = normalizeVerificationStatus(item['verification_status']) ??
         (item['is_verified'] == true ? 'verified' : 'pending');
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-          color: const Color(0xFF1C2541),
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(14)),
       child: Wrap(
           alignment: WrapAlignment.spaceBetween,
@@ -157,19 +178,28 @@ class _State extends ConsumerState<LguMsmeMonitoringPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(item['name']?.toString() ?? 'Business',
-                          style: const TextStyle(
-                              color: Colors.white,
+                          style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurface,
                               fontSize: 17,
                               fontWeight: FontWeight.bold)),
                       Text(
                           'Owner: ${profile is Map ? profile['name'] ?? 'Owner' : 'Owner'} • ${item['category'] ?? 'Uncategorized'}',
-                          style: const TextStyle(color: AppColors.grey400)),
+                          style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant)),
                       Text(
                           '${item['address'] ?? 'Address not supplied'}\n${item['phone'] ?? 'Contact not supplied'}',
-                          style: const TextStyle(color: AppColors.grey400)),
+                          style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant)),
                       Text(
                           'Coordinates: ${item['latitude'] ?? '—'}, ${item['longitude'] ?? '—'}',
-                          style: const TextStyle(color: AppColors.grey400)),
+                          style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant)),
                       Chip(label: Text(status.toUpperCase())),
                       if ((item['verification_notes']?.toString() ?? '')
                           .isNotEmpty)
@@ -191,6 +221,15 @@ class _State extends ConsumerState<LguMsmeMonitoringPage> {
             ]),
           ]),
     );
+  }
+
+  void _selectStatus(String value) {
+    setState(() {
+      _filter = value;
+      _query = '';
+      _category = 'all';
+      _search.clear();
+    });
   }
 
   Future<void> _review(Map<String, dynamic> item) async {
@@ -345,26 +384,51 @@ class _State extends ConsumerState<LguMsmeMonitoringPage> {
 }
 
 class _Summary extends StatelessWidget {
-  const _Summary({required this.label, required this.count});
+  const _Summary({
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onTap,
+  });
   final String label;
   final int count;
+  final bool selected;
+  final VoidCallback onTap;
   @override
-  Widget build(BuildContext context) => Container(
-        width: 155,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1C2541),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFF334155)),
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: 155,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.outlineVariant,
+              width: selected ? 2 : 1,
+            ),
+          ),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('$count',
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800)),
+            Text(label.replaceAll('_', ' ').toUpperCase(),
+                style: const TextStyle(color: AppColors.grey400, fontSize: 10)),
+          ]),
         ),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('$count',
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800)),
-          Text(label.replaceAll('_', ' ').toUpperCase(),
-              style: const TextStyle(color: AppColors.grey400, fontSize: 10)),
-        ]),
       );
+}
+
+String? normalizeVerificationStatus(dynamic raw) {
+  final value = raw?.toString().trim().toLowerCase().replaceAll(' ', '_');
+  return const {'pending', 'verified', 'needs_changes', 'suspended'}
+          .contains(value)
+      ? value
+      : null;
 }

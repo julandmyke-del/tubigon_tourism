@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
@@ -28,7 +29,8 @@ class MapLocationPickerPage extends StatefulWidget {
   State<MapLocationPickerPage> createState() => _MapLocationPickerPageState();
 }
 
-class _MapLocationPickerPageState extends State<MapLocationPickerPage> {
+class _MapLocationPickerPageState extends State<MapLocationPickerPage>
+    with WidgetsBindingObserver {
   late LatLng _selected;
   MapLibreMapController? _mapController;
   Circle? _locationMarker;
@@ -41,11 +43,13 @@ class _MapLocationPickerPageState extends State<MapLocationPickerPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _selected = LatLng(widget.initialLatitude, widget.initialLongitude);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _styleLoadTimer?.cancel();
     _styleLoaded = false;
     final controller = _mapController;
@@ -53,6 +57,14 @@ class _MapLocationPickerPageState extends State<MapLocationPickerPage> {
     controller?.dispose();
     super.dispose();
   }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _scheduleWebMapResize();
+  }
+
+  @override
+  void didChangeMetrics() => _scheduleWebMapResize();
 
   @override
   Widget build(BuildContext context) {
@@ -76,6 +88,19 @@ class _MapLocationPickerPageState extends State<MapLocationPickerPage> {
           onStyleLoadedCallback: () => unawaited(_onStyleLoaded()),
           onMapClick: (_, point) => unawaited(_moveMarker(point)),
         ),
+        if (!_styleLoaded && !_tileError)
+          const IgnorePointer(
+            child: ColoredBox(
+              color: Color(0x99080F1A),
+              child: Center(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  CircularProgressIndicator(color: Color(0xFFF59E0B)),
+                  SizedBox(height: 12),
+                  Text('Loading map…', style: TextStyle(color: Colors.white)),
+                ]),
+              ),
+            ),
+          ),
         Positioned(
           left: 16,
           right: 16,
@@ -109,7 +134,7 @@ class _MapLocationPickerPageState extends State<MapLocationPickerPage> {
               ),
               child: Row(children: [
                 const Expanded(
-                  child: Text('Map tiles unavailable. Check your connection.',
+                  child: Text('Unable to load map. Check your connection.',
                       style: TextStyle(color: Colors.white, fontSize: 12)),
                 ),
                 TextButton(onPressed: _retryStyle, child: const Text('Retry')),
@@ -141,6 +166,7 @@ class _MapLocationPickerPageState extends State<MapLocationPickerPage> {
       return;
     }
     _mapController = controller;
+    _scheduleWebMapResize();
     _styleLoadTimer?.cancel();
     _styleLoadTimer = Timer(const Duration(seconds: 15), () {
       if (mounted && !_styleLoaded) setState(() => _tileError = true);
@@ -156,6 +182,7 @@ class _MapLocationPickerPageState extends State<MapLocationPickerPage> {
     _boundaryLines.clear();
     _styleLoadTimer?.cancel();
     if (mounted) setState(() => _tileError = false);
+    _scheduleWebMapResize();
     final boundary = await TubigonBoundary.load();
     if (!mounted || !identical(controller, _mapController)) return;
     _boundary = boundary;
@@ -190,6 +217,13 @@ class _MapLocationPickerPageState extends State<MapLocationPickerPage> {
       circleStrokeWidth: 4,
       draggable: true,
     ));
+  }
+
+  void _scheduleWebMapResize() {
+    if (!kIsWeb) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _mapController?.resizeWebMap();
+    });
   }
 
   Future<void> _moveMarker(LatLng point) async {

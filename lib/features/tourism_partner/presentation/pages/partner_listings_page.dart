@@ -370,7 +370,7 @@ class _DestinationHeader extends StatelessWidget {
           height: 190,
           color: PartnerTheme.cardDark,
           child: image == null
-              ? const Icon(Icons.landscape_rounded,
+              ? Icon(Icons.landscape_rounded,
                   size: 58, color: PartnerTheme.textMuted)
               : Image.network(image,
                   fit: BoxFit.cover,

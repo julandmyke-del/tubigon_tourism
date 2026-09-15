@@ -61,7 +61,7 @@ class AdminDashboardPage extends ConsumerWidget {
                       IconButton(
                         style: IconButton.styleFrom(
                           backgroundColor: AdminColors.cardBg,
-                          side: const BorderSide(color: AdminColors.cardBorder),
+                          side: BorderSide(color: AdminColors.cardBorder),
                         ),
                         onPressed: () =>
                             ref.invalidate(adminDashboardStatsProvider),
@@ -202,12 +202,12 @@ class AdminDashboardPage extends ConsumerWidget {
                             ),
                           ],
                         ),
-                        const Divider(
+                        Divider(
                             color: AdminColors.cardBorder, height: 24),
                         if (activities.isEmpty)
-                          const Padding(
+                          Padding(
                             padding:
-                                EdgeInsets.symmetric(vertical: AppSpacing.lg),
+                                const EdgeInsets.symmetric(vertical: AppSpacing.lg),
                             child: Center(
                               child: Text(
                                 'No recent activity logs available.',
@@ -222,7 +222,7 @@ class AdminDashboardPage extends ConsumerWidget {
                             physics: const NeverScrollableScrollPhysics(),
                             itemCount:
                                 activities.length > 5 ? 5 : activities.length,
-                            separatorBuilder: (_, __) => const Divider(
+                            separatorBuilder: (_, __) => Divider(
                                 color: AdminColors.cardBorder, height: 16),
                             itemBuilder: (context, idx) {
                               final item =
@@ -295,7 +295,7 @@ class AdminDashboardPage extends ConsumerWidget {
               const Icon(Icons.error_outline_rounded,
                   color: AdminColors.danger, size: 48),
               const SizedBox(height: AppSpacing.md),
-              const Text('Unable to load dashboard data.',
+              Text('Unable to load dashboard data.',
                   style: TextStyle(color: AdminColors.textSecondary)),
               const SizedBox(height: AppSpacing.md),
               ElevatedButton(
@@ -401,7 +401,7 @@ class _StatCard extends StatelessWidget {
                 children: [
                   Text(
                     value,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AdminColors.textPrimary,
                       fontSize: 24,
                       fontWeight: FontWeight.w800,
@@ -411,7 +411,7 @@ class _StatCard extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     label,
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: AdminColors.textSecondary, fontSize: 12),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -443,7 +443,7 @@ class _QuickActionButton extends StatelessWidget {
       style: ElevatedButton.styleFrom(
         backgroundColor: AdminColors.cardBg,
         foregroundColor: AdminColors.textPrimary,
-        side: const BorderSide(color: AdminColors.cardBorder),
+        side: BorderSide(color: AdminColors.cardBorder),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),

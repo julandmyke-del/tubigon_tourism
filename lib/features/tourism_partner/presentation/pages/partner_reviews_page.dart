@@ -183,7 +183,7 @@ class _ReviewEmpty extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Center(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const Icon(Icons.rate_review_outlined,
+        Icon(Icons.rate_review_outlined,
             size: 48, color: PartnerTheme.textMuted),
         const SizedBox(height: 10),
         Text('No reviews yet', style: PartnerTheme.headingSmall()),

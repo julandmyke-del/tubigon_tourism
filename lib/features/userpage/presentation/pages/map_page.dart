@@ -53,7 +53,7 @@ class MapPage extends ConsumerStatefulWidget {
   ConsumerState<MapPage> createState() => _MapPageState();
 }
 
-class _MapPageState extends ConsumerState<MapPage> {
+class _MapPageState extends ConsumerState<MapPage> with WidgetsBindingObserver {
   static const _tubigon =
       LatLng(AppConstants.tubigonLat, AppConstants.tubigonLng);
   static final Map<String, Future<Uint8List>> _markerImageCache = {};
@@ -106,6 +106,7 @@ class _MapPageState extends ConsumerState<MapPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _userLocationNotifier = ref.read(userLocationProvider.notifier);
     _selectedMarkerController = ref.read(selectedMarkerProvider.notifier);
     _navigationController = ref.read(navigationProvider.notifier);
@@ -140,6 +141,7 @@ class _MapPageState extends ConsumerState<MapPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _styleGeneration++;
     _searchDebounce?.cancel();
     _searchController.dispose();
@@ -180,6 +182,14 @@ class _MapPageState extends ConsumerState<MapPage> {
     controller?.dispose();
     super.dispose();
   }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _scheduleWebMapResize();
+  }
+
+  @override
+  void didChangeMetrics() => _scheduleWebMapResize();
 
   bool get _canNavigate {
     final role = ref.read(authProvider).role;
@@ -295,34 +305,27 @@ class _MapPageState extends ConsumerState<MapPage> {
       backgroundColor: const Color(0xFF080F1A),
       body: Stack(
         children: [
-          locations.when(
-            data: (items) => MapLibreMap(
-              initialCameraPosition:
-                  const CameraPosition(target: _tubigon, zoom: 14),
-              styleString: AppConstants.mapStyleUrl,
-              compassEnabled: false,
-              logoEnabled: false,
-              attributionButtonPosition: AttributionButtonPosition.bottomLeft,
-              attributionButtonMargins: const math.Point<double>(12, 92),
-              rotateGesturesEnabled: true,
-              tiltGesturesEnabled: false,
-              trackCameraPosition: true,
-              onMapCreated: (controller) => _onMapCreated(
-                controller,
-                _mapItemsForPage(items, allLocations),
-              ),
-              onStyleLoadedCallback: () => unawaited(_onStyleLoaded()),
-              onCameraIdle: () => unawaited(_refreshLabelVisibility()),
-              onMapClick: (_, __) => unawaited(_clearSelectedMarker()),
+          MapLibreMap(
+            initialCameraPosition:
+                const CameraPosition(target: _tubigon, zoom: 14),
+            styleString: AppConstants.mapStyleUrl,
+            compassEnabled: false,
+            logoEnabled: false,
+            attributionButtonPosition: AttributionButtonPosition.bottomLeft,
+            attributionButtonMargins: const math.Point<double>(12, 92),
+            rotateGesturesEnabled: true,
+            tiltGesturesEnabled: false,
+            trackCameraPosition: true,
+            onMapCreated: (controller) => _onMapCreated(
+              controller,
+              _mapItemsForPage(visibleLocations, allLocations),
             ),
-            loading: () => const Center(
-              child: CircularProgressIndicator(color: Color(0xFFF59E0B)),
-            ),
-            error: (error, _) => _MapError(
-              message: 'Map locations are unavailable. Please try again.',
-              onRetry: () => ref.invalidate(mapMarkersProvider),
-            ),
+            onStyleLoadedCallback: () => unawaited(_onStyleLoaded()),
+            onCameraIdle: () => unawaited(_refreshLabelVisibility()),
+            onMapClick: (_, __) => unawaited(_clearSelectedMarker()),
           ),
+          if (!_styleLoaded && !_tileError)
+            _MapLoadingOverlay(label: context.tr('loading_map')),
           SafeArea(
             child: Column(
               children: [
@@ -499,6 +502,15 @@ class _MapPageState extends ConsumerState<MapPage> {
               right: 72,
               top: 168,
               child: _TileErrorPill(onRetry: _retryMapStyle),
+            ),
+          if (!_tileError && locations.hasError)
+            Positioned(
+              left: 12,
+              right: 72,
+              top: 168,
+              child: _MapDataErrorPill(
+                onRetry: () => ref.invalidate(mapMarkersProvider),
+              ),
             ),
           if (!_tileError && userLocation.isWithinTubigon == false)
             const Positioned(
@@ -815,6 +827,7 @@ class _MapPageState extends ConsumerState<MapPage> {
       return;
     }
     _mapController = controller;
+    _scheduleWebMapResize();
     controller.onSymbolTapped.add(_onSymbolTapped);
     _pendingMarkerSync = List<MapMarker>.of(items);
     _styleLoadTimer?.cancel();
@@ -849,6 +862,7 @@ class _MapPageState extends ConsumerState<MapPage> {
     _boundaryLines.clear();
     _installedMarkerImages.clear();
     if (mounted) setState(() => _tileError = false);
+    _scheduleWebMapResize();
 
     try {
       await const SmartMapStyleEnhancer().install(
@@ -880,6 +894,14 @@ class _MapPageState extends ConsumerState<MapPage> {
     } catch (_) {
       if (mounted) setState(() => _tileError = true);
     }
+  }
+
+  void _scheduleWebMapResize() {
+    if (!kIsWeb) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _mapController?.resizeWebMap();
+    });
   }
 
   Future<void> _ensureMarkerImages(
@@ -1924,7 +1946,7 @@ class _MapResultCount extends StatelessWidget {
       );
 }
 
-class _CategoryBar extends ConsumerWidget {
+class _CategoryBar extends ConsumerStatefulWidget {
   const _CategoryBar(
       {required this.role, required this.active, required this.onSelected});
   final UserRole role;
@@ -1932,30 +1954,39 @@ class _CategoryBar extends ConsumerWidget {
   final ValueChanged<String?> onSelected;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_CategoryBar> createState() => _CategoryBarState();
+}
+
+class _CategoryBarState extends ConsumerState<_CategoryBar> {
+  final Map<String, GlobalKey> _chipKeys = {};
+  String? _lastEnsuredTarget;
+
+  @override
+  Widget build(BuildContext context) {
     final configured = ref.watch(mapPlaceCategoriesProvider).valueOrNull ??
         const <MapPlaceCategory>[];
     final bySlug = <String, MapPlaceCategory>{
       for (final category in configured)
         if (category.active) category.slug: category,
     };
-    if (bySlug.isEmpty) {
-      for (final marker
-          in ref.watch(mapMarkersProvider).valueOrNull ?? const <MapMarker>[]) {
-        bySlug.putIfAbsent(
-          marker.categorySlug,
-          () => MapPlaceCategory(
-            id: marker.categorySlug,
-            name: marker.categoryName ?? 'Places',
-            slug: marker.categorySlug,
-            icon: marker.categoryIcon,
-            markerColor: marker.markerColor,
-            sortOrder: marker.categorySortOrder,
-          ),
-        );
-      }
+    // Managed group filters and data-driven specific categories coexist. This
+    // keeps newly created MSME/spot categories visible without duplicating the
+    // taxonomy in the map UI.
+    for (final marker
+        in ref.watch(mapMarkersProvider).valueOrNull ?? const <MapMarker>[]) {
+      bySlug.putIfAbsent(
+        marker.categorySlug,
+        () => MapPlaceCategory(
+          id: marker.categorySlug,
+          name: marker.categoryName ?? 'Places',
+          slug: marker.categorySlug,
+          icon: marker.categoryIcon,
+          markerColor: marker.markerColor,
+          sortOrder: marker.categorySortOrder,
+        ),
+      );
     }
-    if (role == UserRole.lguStaff || role == UserRole.admin) {
+    if (widget.role == UserRole.lguStaff || widget.role == UserRole.admin) {
       bySlug.putIfAbsent(
         'waste-reports',
         () => const MapPlaceCategory(
@@ -1970,50 +2001,83 @@ class _CategoryBar extends ConsumerWidget {
     }
     final categories = bySlug.values.toList()
       ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final target = widget.active.isEmpty ? '__all__' : widget.active.last;
+    final targetKey = _chipKeys.putIfAbsent(target, GlobalKey.new);
+    if (_lastEnsuredTarget != target || targetKey.currentContext == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final chipContext = targetKey.currentContext;
+        if (chipContext == null) return;
+        _lastEnsuredTarget = target;
+        Scrollable.ensureVisible(
+          chipContext,
+          alignment: .5,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      });
+    }
     return SizedBox(
       height: 40,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        scrollDirection: Axis.horizontal,
-        itemCount: categories.length + 1,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final category = index == 0 ? null : categories[index - 1];
-          final selected = category == null
-              ? active.isEmpty
-              : active.contains(category.slug);
-          return FilterChip(
-            selected: selected,
-            showCheckmark: selected,
-            avatar: category == null
-                ? null
-                : Icon(
-                    placeCategoryIcon(category.icon),
-                    size: 16,
+      child: ScrollConfiguration(
+        behavior: const _MapCategoryScrollBehavior(),
+        child: ListView.separated(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          scrollDirection: Axis.horizontal,
+          itemCount: categories.length + 1,
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemBuilder: (context, index) {
+            final category = index == 0 ? null : categories[index - 1];
+            final slug = category?.slug ?? '__all__';
+            final selected = category == null
+                ? widget.active.isEmpty
+                : widget.active.contains(category.slug);
+            return KeyedSubtree(
+              key: _chipKeys.putIfAbsent(slug, GlobalKey.new),
+              child: FilterChip(
+                selected: selected,
+                showCheckmark: selected,
+                avatar: category == null
+                    ? null
+                    : Icon(
+                        placeCategoryIcon(category.icon),
+                        size: 16,
+                        color: selected
+                            ? Colors.black
+                            : placeCategoryColor(category.markerColor),
+                      ),
+                label: Text(category == null
+                    ? context.tr('all')
+                    : _localizedMapCategory(context, category)),
+                onSelected: (_) => widget.onSelected(category?.slug),
+                backgroundColor: const Color(0xFF0F172A).withValues(alpha: .92),
+                selectedColor: const Color(0xFFF59E0B),
+                side: BorderSide(
                     color: selected
-                        ? Colors.black
-                        : placeCategoryColor(category.markerColor),
-                  ),
-            label: Text(category == null
-                ? context.tr('all')
-                : _localizedMapCategory(context, category)),
-            onSelected: (_) => onSelected(category?.slug),
-            backgroundColor: const Color(0xFF0F172A).withValues(alpha: .92),
-            selectedColor: const Color(0xFFF59E0B),
-            side: BorderSide(
-                color: selected
-                    ? const Color(0xFFF59E0B)
-                    : const Color(0xFF334155)),
-            labelStyle: TextStyle(
-              color: selected ? Colors.black : const Color(0xFFE2E8F0),
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
-          );
-        },
+                        ? const Color(0xFFF59E0B)
+                        : const Color(0xFF334155)),
+                labelStyle: TextStyle(
+                  color: selected ? Colors.black : const Color(0xFFE2E8F0),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
+}
+
+class _MapCategoryScrollBehavior extends MaterialScrollBehavior {
+  const _MapCategoryScrollBehavior();
+
+  @override
+  Set<ui.PointerDeviceKind> get dragDevices => {
+        ...super.dragDevices,
+        ui.PointerDeviceKind.mouse,
+      };
 }
 
 String _localizedMapCategory(BuildContext context, MapPlaceCategory category) {
@@ -2417,30 +2481,47 @@ class _LocationError extends StatelessWidget {
       );
 }
 
-class _MapError extends StatelessWidget {
-  const _MapError({required this.message, required this.onRetry});
-  final String message;
-  final VoidCallback onRetry;
+class _MapLoadingOverlay extends StatelessWidget {
+  const _MapLoadingOverlay({required this.label});
+
+  final String label;
+
   @override
-  Widget build(BuildContext context) => ColoredBox(
-        color: const Color(0xFF080F1A),
-        child: Center(
-            child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.map_outlined, color: Color(0xFFF59E0B), size: 46),
-            const SizedBox(height: 12),
-            const Text('Map locations unavailable',
-                style: TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 6),
-            Text(message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
-            const SizedBox(height: 14),
-            ElevatedButton(onPressed: onRetry, child: const Text('Retry')),
-          ]),
-        )),
+  Widget build(BuildContext context) => IgnorePointer(
+        child: ColoredBox(
+          color: const Color(0x99080F1A),
+          child: Center(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const CircularProgressIndicator(color: Color(0xFFF59E0B)),
+              const SizedBox(height: 12),
+              Text(label, style: const TextStyle(color: Colors.white)),
+            ]),
+          ),
+        ),
+      );
+}
+
+class _MapDataErrorPill extends StatelessWidget {
+  const _MapDataErrorPill({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+        decoration: _glassDecoration(radius: 14),
+        child: Row(children: [
+          const Icon(Icons.location_off_rounded,
+              color: Color(0xFFFBBF24), size: 18),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              'Place markers are unavailable. The base map is still ready.',
+              style: TextStyle(color: Colors.white, fontSize: 11),
+            ),
+          ),
+          TextButton(onPressed: onRetry, child: const Text('Retry')),
+        ]),
       );
 }
 
@@ -2481,7 +2562,7 @@ class _TileErrorPill extends StatelessWidget {
           const SizedBox(width: 8),
           const Expanded(
             child: Text(
-              'Map tiles are unavailable. Locations and GPS data are preserved.',
+              'Unable to load map. Please check your connection and try again.',
               style: TextStyle(color: Colors.white, fontSize: 11),
             ),
           ),

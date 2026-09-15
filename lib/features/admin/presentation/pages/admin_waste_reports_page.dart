@@ -55,7 +55,7 @@ class _AdminWasteReportsPageState extends ConsumerState<AdminWasteReportsPage> {
                 IconButton(
                   style: IconButton.styleFrom(
                     backgroundColor: AdminColors.cardBg,
-                    side: const BorderSide(color: AdminColors.cardBorder),
+                    side: BorderSide(color: AdminColors.cardBorder),
                   ),
                   onPressed: () => ref.invalidate(adminWasteReportsProvider),
                   icon: const Icon(Icons.refresh_rounded,
@@ -73,13 +73,13 @@ class _AdminWasteReportsPageState extends ConsumerState<AdminWasteReportsPage> {
                 children: [
                   Expanded(
                     child: TextField(
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: AdminColors.textPrimary, fontSize: 14),
                       decoration: InputDecoration(
                         hintText: 'Search by location or reporter name...',
                         hintStyle:
-                            const TextStyle(color: AdminColors.textMuted),
-                        prefixIcon: const Icon(Icons.search_rounded,
+                            TextStyle(color: AdminColors.textMuted),
+                        prefixIcon: Icon(Icons.search_rounded,
                             color: AdminColors.textSecondary, size: 20),
                         filled: true,
                         fillColor: AdminColors.navy900,
@@ -87,11 +87,11 @@ class _AdminWasteReportsPageState extends ConsumerState<AdminWasteReportsPage> {
                             horizontal: 14, vertical: 10),
                         border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(
+                            borderSide: BorderSide(
                                 color: AdminColors.cardBorder)),
                         enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(
+                            borderSide: BorderSide(
                                 color: AdminColors.cardBorder)),
                         focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
@@ -113,9 +113,9 @@ class _AdminWasteReportsPageState extends ConsumerState<AdminWasteReportsPage> {
                       child: DropdownButton<String>(
                         dropdownColor: AdminColors.navy900,
                         value: _statusFilter,
-                        icon: const Icon(Icons.filter_alt_outlined,
+                        icon: Icon(Icons.filter_alt_outlined,
                             color: AdminColors.textSecondary),
-                        style: const TextStyle(
+                        style: TextStyle(
                             color: AdminColors.textPrimary, fontSize: 14),
                         items: [
                           'All',
@@ -150,7 +150,7 @@ class _AdminWasteReportsPageState extends ConsumerState<AdminWasteReportsPage> {
                     final filtered = reports.where((r) {
                       final user = r['user'] is Map
                           ? Map<String, dynamic>.from(r['user'])
-                          : const <String, dynamic>{};
+                          : <String, dynamic>{};
                       final reporter =
                           (user['name'] ?? '').toString().toLowerCase();
                       final location = (r['location_description'] ?? '')
@@ -167,7 +167,7 @@ class _AdminWasteReportsPageState extends ConsumerState<AdminWasteReportsPage> {
                     }).toList();
 
                     if (filtered.isEmpty) {
-                      return const Center(
+                      return Center(
                           child: Text(
                               'No environmental reports match the criteria.',
                               style:
@@ -183,7 +183,7 @@ class _AdminWasteReportsPageState extends ConsumerState<AdminWasteReportsPage> {
                               WidgetStateProperty.all(AdminColors.navy900),
                           horizontalMargin: 20,
                           columnSpacing: 24,
-                          columns: const [
+                          columns: [
                             DataColumn(
                                 label: Text('REPORT ID',
                                     style: TextStyle(
@@ -249,22 +249,22 @@ class _AdminWasteReportsPageState extends ConsumerState<AdminWasteReportsPage> {
                                         fontWeight: FontWeight.bold,
                                         fontSize: 12))),
                                 DataCell(Text(reporter,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                         color: AdminColors.textPrimary,
                                         fontWeight: FontWeight.w600,
                                         fontSize: 13))),
                                 DataCell(Text(location,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                         color: AdminColors.textSecondary,
                                         fontSize: 13))),
                                 DataCell(Text(category,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                         color: AdminColors.textPrimary,
                                         fontSize: 12))),
                                 DataCell(_StatusBadge(status: status)),
                                 DataCell(
                                   PopupMenuButton<String>(
-                                    icon: const Icon(Icons.edit_outlined,
+                                    icon: Icon(Icons.edit_outlined,
                                         color: AdminColors.textSecondary,
                                         size: 18),
                                     color: AdminColors.navy900,
@@ -290,7 +290,7 @@ class _AdminWasteReportsPageState extends ConsumerState<AdminWasteReportsPage> {
                                           child: Text('Set Pending',
                                               style: TextStyle(
                                                   color: AdminColors.warning))),
-                                      const PopupMenuItem(
+                                      PopupMenuItem(
                                           value: 'submitted',
                                           child: Text('Set Submitted',
                                               style: TextStyle(

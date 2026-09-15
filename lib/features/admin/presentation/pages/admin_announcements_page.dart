@@ -185,7 +185,7 @@ class _AdminAnnouncementsPageState
           child: DropdownButton<String>(
             value: value,
             dropdownColor: AdminColors.navy900,
-            style: const TextStyle(color: AdminColors.textPrimary),
+            style: TextStyle(color: AdminColors.textPrimary),
             items: values
                 .map((item) => DropdownMenuItem(
                     value: item, child: Text('$label: ${_label(item)}')))
@@ -213,7 +213,7 @@ class _AdminAnnouncementsPageState
       builder: (ctx) => AlertDialog(
         backgroundColor: AdminColors.navy900,
         title: Text(item['title']?.toString() ?? 'Announcement',
-            style: const TextStyle(color: AdminColors.textPrimary)),
+            style: TextStyle(color: AdminColors.textPrimary)),
         content: SizedBox(
           width: 680,
           child: SingleChildScrollView(
@@ -221,9 +221,9 @@ class _AdminAnnouncementsPageState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(item['body']?.toString() ?? '',
-                    style: const TextStyle(color: AdminColors.textSecondary)),
+                    style: TextStyle(color: AdminColors.textSecondary)),
                 const SizedBox(height: 16),
-                const Text('Approximate placements',
+                Text('Approximate placements',
                     style: TextStyle(
                         color: AdminColors.textPrimary,
                         fontWeight: FontWeight.bold)),
@@ -249,13 +249,13 @@ class _AdminAnnouncementsPageState
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(placement.$1,
-                                style: const TextStyle(
+                                style: TextStyle(
                                     color: AdminColors.textMuted,
                                     fontSize: 11)),
                             Text(item['title']?.toString() ?? 'Announcement',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                     color: AdminColors.textPrimary,
                                     fontWeight: FontWeight.bold)),
                           ],
@@ -308,10 +308,10 @@ class _AdminAnnouncementsPageState
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AdminColors.navy900,
-        title: const Text('Archive announcement?',
+        title: Text('Archive announcement?',
             style: TextStyle(color: AdminColors.textPrimary)),
         content: Text(item['title']?.toString() ?? '',
-            style: const TextStyle(color: AdminColors.textSecondary)),
+            style: TextStyle(color: AdminColors.textSecondary)),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -413,7 +413,7 @@ class _ComposeDialogState extends ConsumerState<_ComposeDialog> {
             widget.existing == null
                 ? 'Create Announcement'
                 : 'Edit Announcement',
-            style: const TextStyle(color: AdminColors.textPrimary)),
+            style: TextStyle(color: AdminColors.textPrimary)),
         content: SizedBox(
           width: 680,
           child: Form(
@@ -624,7 +624,7 @@ class _ComposeDialogState extends ConsumerState<_ComposeDialog> {
           _title.text.trim().isEmpty
               ? 'Announcement title'
               : _title.text.trim(),
-          style: const TextStyle(color: AdminColors.textPrimary),
+          style: TextStyle(color: AdminColors.textPrimary),
         ),
         content: SizedBox(
           width: 520,
@@ -645,7 +645,7 @@ class _ComposeDialogState extends ConsumerState<_ComposeDialog> {
                     _body.text.trim().isEmpty
                         ? 'Announcement message preview'
                         : _body.text.trim(),
-                    style: const TextStyle(color: AdminColors.textSecondary),
+                    style: TextStyle(color: AdminColors.textSecondary),
                   ),
                 ],
               ),
@@ -668,7 +668,7 @@ class _ComposeDialogState extends ConsumerState<_ComposeDialog> {
         enabled: !_saving,
         maxLength: max,
         maxLines: lines,
-        style: const TextStyle(color: AdminColors.textPrimary),
+        style: TextStyle(color: AdminColors.textPrimary),
         decoration: InputDecoration(labelText: label),
         validator: (value) => value == null || value.trim().isEmpty
             ? '$label is required.'
@@ -683,7 +683,7 @@ class _ComposeDialogState extends ConsumerState<_ComposeDialog> {
           initialValue: value,
           dropdownColor: AdminColors.navy900,
           decoration: InputDecoration(labelText: label),
-          style: const TextStyle(color: AdminColors.textPrimary),
+          style: TextStyle(color: AdminColors.textPrimary),
           items: values
               .map((v) => DropdownMenuItem(value: v, child: Text(_label(v))))
               .toList(),
@@ -783,7 +783,7 @@ class _AnnouncementCard extends StatelessWidget {
     return Card(
       color: AdminColors.cardBg,
       shape: RoundedRectangleBorder(
-          side: const BorderSide(color: AdminColors.cardBorder),
+          side: BorderSide(color: AdminColors.cardBorder),
           borderRadius: BorderRadius.circular(14)),
       child: Padding(
         padding: const EdgeInsets.all(18),
@@ -793,7 +793,7 @@ class _AnnouncementCard extends StatelessWidget {
                 child: Text(item['title']?.toString() ?? 'Untitled',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: AdminColors.textPrimary,
                         fontSize: 17,
                         fontWeight: FontWeight.bold))),
@@ -814,7 +814,7 @@ class _AnnouncementCard extends StatelessWidget {
               child: Text(item['body']?.toString() ?? '',
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: AdminColors.textSecondary, height: 1.4))),
           Wrap(spacing: 4, children: [
             TextButton(onPressed: onPreview, child: const Text('Preview')),
@@ -854,10 +854,10 @@ class _Badge extends StatelessWidget {
 class _Empty extends StatelessWidget {
   const _Empty();
   @override
-  Widget build(BuildContext context) => const Center(
+  Widget build(BuildContext context) => Center(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
         Icon(Icons.campaign_outlined, size: 48, color: AdminColors.textMuted),
-        SizedBox(height: 10),
+        const SizedBox(height: 10),
         Text('No announcements match these filters.',
             style: TextStyle(color: AdminColors.textSecondary)),
       ]));

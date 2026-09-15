@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_spacing.dart';
 import '../../providers/msme_portal_providers.dart';
@@ -27,9 +28,9 @@ class _MsmePortalReservationsPageState
         ref.watch(msmePortalReservationsProvider(_statusFilter));
 
     if (current.isLoading) {
-      return const Scaffold(
+      return Scaffold(
           backgroundColor: MsmeTheme.bgDark,
-          body: Center(child: CircularProgressIndicator()));
+          body: const Center(child: CircularProgressIndicator()));
     }
     if (current.hasError) {
       return Scaffold(
@@ -42,9 +43,9 @@ class _MsmePortalReservationsPageState
       );
     }
     if (current.valueOrNull?.hasBusiness != true) {
-      return const Scaffold(
+      return Scaffold(
         backgroundColor: MsmeTheme.bgDark,
-        body: MsmeSetupRequired(
+        body: const MsmeSetupRequired(
           title: 'Reservations aren’t available yet',
           message:
               'Complete your business setup before managing customer reservations.',
@@ -89,16 +90,16 @@ class _MsmePortalReservationsPageState
               decoration: InputDecoration(
                 hintText: 'Search by guest, business, or booking reference...',
                 hintStyle: GoogleFonts.inter(color: MsmeTheme.textDisabled),
-                prefixIcon: const Icon(Icons.search_rounded,
+                prefixIcon: Icon(Icons.search_rounded,
                     color: MsmeTheme.textMuted),
                 filled: true,
                 fillColor: MsmeTheme.surfaceDark,
                 border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: MsmeTheme.cardBorder)),
+                    borderSide: BorderSide(color: MsmeTheme.cardBorder)),
                 enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: MsmeTheme.cardBorder)),
+                    borderSide: BorderSide(color: MsmeTheme.cardBorder)),
               ),
             ),
             const SizedBox(height: AppSpacing.md),
@@ -255,6 +256,17 @@ class _MsmePortalReservationsPageState
                                         'Time not set'),
                                 _detail(Icons.groups_rounded,
                                     '${reservation['guests'] ?? 1} guest(s)'),
+                                _detail(
+                                  Icons.send_rounded,
+                                  'Submitted ${_reservationTime(reservation['created_at'])}',
+                                ),
+                                if ((reservation['status_history'] as List? ??
+                                        const [])
+                                    .isNotEmpty)
+                                  _detail(
+                                    Icons.update_rounded,
+                                    'Status updated ${_reservationTime((reservation['status_history'] as List).last['created_at'])}',
+                                  ),
                               ]),
                               if ((reservation['notes']?.toString() ?? '')
                                   .isNotEmpty) ...[
@@ -344,4 +356,11 @@ class _MsmePortalReservationsPageState
       }
     }
   }
+}
+
+String _reservationTime(dynamic raw) {
+  final value = DateTime.tryParse(raw?.toString() ?? '')?.toLocal();
+  return value == null
+      ? 'time unavailable'
+      : DateFormat('MMM d, y • h:mm a').format(value);
 }

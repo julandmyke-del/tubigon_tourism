@@ -8,6 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/constants/asset_paths.dart';
 import '../../../core/services/local_storage_service.dart';
 import '../../../core/utils/auth_action_guard.dart';
+import '../../../core/widgets/app_logo.dart';
 import '../../authentication/auth_provider.dart';
 
 // ─── Data Models ─────────────────────────────────────────────────────────────
@@ -388,37 +389,7 @@ class _OnboardingPageState extends ConsumerState<RedesignOnboardingPage>
                       // Brand logo
                       Row(
                         children: [
-                          AnimatedContainer(
-                            duration: const Duration(milliseconds: 500),
-                            width: 36,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
-                              gradient: LinearGradient(
-                                colors: [
-                                  page.accent,
-                                  page.accent.withValues(alpha: 0.7)
-                                ],
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: page.accent.withValues(alpha: 0.4),
-                                  blurRadius: 16,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                            ),
-                            child: Center(
-                              child: Text(
-                                'T',
-                                style: GoogleFonts.dmSerifDisplay(
-                                  fontSize: 18,
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
+                          const AppLogo(size: 36, radius: 12),
                           const SizedBox(width: 10),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,

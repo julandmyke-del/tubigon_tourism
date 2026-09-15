@@ -192,7 +192,7 @@ class _NotificationEmpty extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Center(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const Icon(Icons.notifications_none_rounded,
+        Icon(Icons.notifications_none_rounded,
             size: 50, color: PartnerTheme.textMuted),
         const SizedBox(height: 10),
         Text("You're all caught up", style: PartnerTheme.headingSmall()),

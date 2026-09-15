@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/responsive/responsive_layout.dart';
+import '../../../core/widgets/app_logo.dart';
 import '../../authentication/auth_provider.dart';
 import '../providers/tourism_partner_providers.dart';
 import 'partner_theme.dart';
@@ -19,7 +22,9 @@ class PartnerShell extends ConsumerStatefulWidget {
 
 class _PartnerShellState extends ConsumerState<PartnerShell> {
   static const double _sidebarWidth = 260.0;
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
   final Set<String> _dismissedUrgent = {};
+  bool _openingAnnouncement = false;
 
   static final List<_PartnerNavItem> _navItems = [
     const _PartnerNavItem(
@@ -97,7 +102,8 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
     final auth = ref.watch(authProvider);
 
     return Scaffold(
-      backgroundColor: PartnerTheme.bgDark,
+      key: _scaffoldKey,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       drawer: isDesktop ? null : _buildDrawer(context, activeIndex, auth),
       body: Row(
         children: [
@@ -109,8 +115,8 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
                 if (location == '/tourism-partner')
                   _partnerAnnouncementHighlights(),
                 Expanded(
-                  child: Container(
-                    color: PartnerTheme.bgDark,
+                  child: ColoredBox(
+                    color: Theme.of(context).scaffoldBackgroundColor,
                     child: widget.child,
                   ),
                 ),
@@ -168,7 +174,7 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
         0;
     return Container(
       height: 72,
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: EdgeInsets.symmetric(horizontal: isDesktop ? 24 : 8),
       decoration: const BoxDecoration(
         color: Color(0xE6060D1F),
         border: Border(
@@ -179,46 +185,52 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
         children: [
           if (!isDesktop)
             IconButton(
+              key: const Key('partner-navigation-menu'),
               icon:
-                  const Icon(Icons.menu_rounded, color: PartnerTheme.textWhite),
-              onPressed: () => Scaffold.of(context).openDrawer(),
+                  Icon(Icons.menu_rounded, color: PartnerTheme.textWhite),
+              tooltip: 'Open navigation menu',
+              onPressed: () => _scaffoldKey.currentState?.openDrawer(),
             ),
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text(
-                    'Partner Portal',
-                    style: GoogleFonts.inter(
-                        fontSize: 11, color: PartnerTheme.textDisabled),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isDesktop)
+                  Row(
+                    children: [
+                      Text(
+                        'Partner Portal',
+                        style: GoogleFonts.inter(
+                            fontSize: 11, color: PartnerTheme.textDisabled),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(Icons.chevron_right_rounded,
+                          size: 14, color: PartnerTheme.textDisabled),
+                      const SizedBox(width: 4),
+                      Text(
+                        activeItem.label,
+                        style: GoogleFonts.inter(
+                            fontSize: 11,
+                            color: PartnerTheme.primaryOrange,
+                            fontWeight: FontWeight.w600),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 4),
-                  const Icon(Icons.chevron_right_rounded,
-                      size: 14, color: PartnerTheme.textDisabled),
-                  const SizedBox(width: 4),
-                  Text(
-                    activeItem.label,
-                    style: GoogleFonts.inter(
-                        fontSize: 11,
-                        color: PartnerTheme.primaryOrange,
-                        fontWeight: FontWeight.w600),
+                const SizedBox(height: 2),
+                Text(
+                  activeItem.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.plusJakartaSans(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: PartnerTheme.textWhite,
                   ),
-                ],
-              ),
-              const SizedBox(height: 2),
-              Text(
-                activeItem.label,
-                style: GoogleFonts.plusJakartaSans(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: PartnerTheme.textWhite,
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-          const Spacer(),
 
           // Search Field (Desktop)
           if (isDesktop)
@@ -233,7 +245,7 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.search_rounded,
+                  Icon(Icons.search_rounded,
                       size: 18, color: PartnerTheme.textDisabled),
                   const SizedBox(width: 8),
                   Expanded(
@@ -255,7 +267,7 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
                 ],
               ),
             ),
-          const SizedBox(width: 16),
+          SizedBox(width: isDesktop ? 16 : 4),
 
           // Notification Bell
           Builder(
@@ -266,7 +278,7 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
                 isLabelVisible: unread > 0,
                 label: Text(unread > 99 ? '99+' : '$unread'),
                 backgroundColor: PartnerTheme.primaryOrange,
-                child: const Icon(Icons.notifications_outlined,
+                child: Icon(Icons.notifications_outlined,
                     color: PartnerTheme.textMuted),
               ),
             ),
@@ -334,11 +346,7 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
     final item =
         items.where((entry) => entry['id']?.toString() == selected).firstOrNull;
     if (item == null) return;
-    await ref
-        .read(tourismPartnerRepositoryProvider)
-        .markNotificationRead(selected);
-    if (!mounted) return;
-    ref.invalidate(partnerNotificationsProvider);
+    unawaited(_markPartnerNotificationReadSafely(selected));
     final data = item['data'];
     final route = data is Map ? data['route']?.toString() : null;
     if (route != null &&
@@ -347,7 +355,7 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
       context.go(route);
       return;
     }
-    await showDialog<void>(
+    final action = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(item['title']?.toString() ?? 'Announcement'),
@@ -357,14 +365,16 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
               onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
           TextButton(
             onPressed: () {
-              Navigator.pop(ctx);
-              context.go('/tourism-partner/notifications');
+              Navigator.pop(ctx, 'view_all');
             },
             child: const Text('View All'),
           ),
         ],
       ),
     );
+    if (action == 'view_all' && mounted) {
+      context.go('/tourism-partner/notifications');
+    }
   }
 
   Widget _partnerAnnouncementHighlights() {
@@ -435,22 +445,42 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
   }
 
   Future<void> _openPartnerAnnouncement(Map<String, dynamic> item) async {
-    await ref
-        .read(tourismPartnerRepositoryProvider)
-        .markNotificationRead(item['id'].toString());
-    if (!mounted) return;
-    ref.invalidate(partnerNotificationsProvider);
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(item['title']?.toString() ?? 'Announcement'),
-        content: Text(item['body']?.toString() ?? ''),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
-        ],
-      ),
-    );
+    if (_openingAnnouncement) return;
+    _openingAnnouncement = true;
+    try {
+      final id = item['id']?.toString();
+      if (id != null && id.isNotEmpty) {
+        unawaited(_markPartnerNotificationReadSafely(id));
+      }
+      if (!mounted) return;
+      final title = item['title']?.toString().trim() ?? '';
+      final body = item['body']?.toString().trim() ?? '';
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(title.isEmpty ? 'Announcement' : title),
+          content: SingleChildScrollView(
+            child: Text(body.isEmpty ? 'No additional details.' : body),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Close')),
+          ],
+        ),
+      );
+    } finally {
+      _openingAnnouncement = false;
+    }
+  }
+
+  Future<void> _markPartnerNotificationReadSafely(String id) async {
+    try {
+      await ref.read(tourismPartnerRepositoryProvider).markNotificationRead(id);
+      if (mounted) ref.invalidate(partnerNotificationsProvider);
+    } catch (_) {
+      // Opening and closing announcements does not depend on read receipts.
+    }
   }
 
   Widget _buildSidebar(BuildContext context, int activeIndex, AuthState auth) {
@@ -460,9 +490,9 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
         destination is Map ? destination['name']?.toString() : null;
     return Container(
       width: _sidebarWidth,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: PartnerTheme.sidebarGradient,
-        border: Border(
+        border: const Border(
           right: BorderSide(color: Color(0x1AFFFFFF), width: 1),
         ),
       ),
@@ -475,23 +505,7 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
               children: [
                 Row(
                   children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        gradient: PartnerTheme.orangeGradient,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x59F97316),
-                            blurRadius: 15,
-                            offset: Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(Icons.location_on_rounded,
-                          color: Colors.white, size: 22),
-                    ),
+                    const AppLogo(size: 40, radius: 12),
                     const SizedBox(width: 12),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -656,7 +670,7 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
       child: Column(
         children: [
           UserAccountsDrawerHeader(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: PartnerTheme.sidebarGradient,
             ),
             currentAccountPicture: CircleAvatar(

@@ -397,11 +397,10 @@ class MapRepository {
         if (response.statusCode == 200 &&
             response.data['status'] == 'success') {
           final raw = (response.data['data'] as List<dynamic>? ?? const []);
-          final locations = raw
-              .whereType<Map<String, dynamic>>()
-              .map(MapMarker.fromJson)
-              .where((item) => item.isWithinMapScope(boundary))
-              .toList(growable: false);
+          final locations = _safeUniqueMarkers(
+            raw.whereType<Map<String, dynamic>>().map(MapMarker.fromJson),
+            boundary,
+          );
           if (kDebugMode && locations.isEmpty) {
             debugPrint('[MAP] Map API returned 0 public markers for '
                 '${auth.role.name}. No data was fabricated locally.');
@@ -421,15 +420,34 @@ class MapRepository {
     final cached = storage.getString(cacheKey);
     if (cached == null || cached.isEmpty) return const [];
     try {
-      return (jsonDecode(cached) as List<dynamic>)
-          .whereType<Map<String, dynamic>>()
-          .map(MapMarker.fromJson)
-          .where((item) => item.isWithinMapScope(boundary))
-          .toList(growable: false);
+      return _safeUniqueMarkers(
+        (jsonDecode(cached) as List<dynamic>)
+            .whereType<Map<String, dynamic>>()
+            .map(MapMarker.fromJson),
+        boundary,
+      );
     } catch (error) {
       debugPrint('[MAP] Invalid cached map data: $error');
       return const [];
     }
+  }
+
+  List<MapMarker> _safeUniqueMarkers(
+    Iterable<MapMarker> markers,
+    TubigonBoundary boundary,
+  ) {
+    final seen = <String>{};
+    return markers.where((item) {
+      if (!item.isWithinMapScope(boundary)) return false;
+      final id = item.id.trim();
+      final sourceId = item.sourceId.trim();
+      final identity = id.isNotEmpty
+          ? id
+          : sourceId.isNotEmpty
+              ? '${item.category.name}:$sourceId'
+              : '${item.category.name}:${item.latitude}:${item.longitude}:${item.name}';
+      return seen.add(identity);
+    }).toList(growable: false);
   }
 
   Future<List<MapPlaceCategory>> getCategories(

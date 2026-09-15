@@ -26,6 +26,7 @@ class _AnnouncementPlacementState extends ConsumerState<AnnouncementPlacement>
   bool _reconcileScheduled = false;
   bool _appIsActive = true;
   bool _animationsDisabled = false;
+  bool _openingAnnouncement = false;
   final Set<String> sessionDismissed = {};
 
   @override
@@ -212,7 +213,7 @@ class _AnnouncementPlacementState extends ConsumerState<AnnouncementPlacement>
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: () => _open(announcement, guest),
+          onTap: _openingAnnouncement ? null : () => _open(announcement, guest),
           child: Row(
             children: [
               if (image != null && image.isNotEmpty)
@@ -283,79 +284,102 @@ class _AnnouncementPlacementState extends ConsumerState<AnnouncementPlacement>
       );
 
   Future<void> _open(Map<String, dynamic> announcement, bool guest) async {
+    if (_openingAnnouncement) return;
+    _openingAnnouncement = true;
     timer?.cancel();
     final repository = ref.read(connectedOperationsRepositoryProvider);
-    if (!guest) {
-      try {
-        await repository.markAnnouncementRead(announcement['id'].toString());
-      } catch (_) {
-        // Reading cached announcements remains available while offline.
-      }
+    final id = announcement['id']?.toString();
+    if (!guest && id != null && id.isNotEmpty) {
+      unawaited(_markReadSafely(repository, id));
     }
-    if (!mounted) return;
-    final action = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(announcement['title']?.toString() ?? 'Announcement'),
-        content: SizedBox(
-          width: 620,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (announcement['image_url']?.toString().isNotEmpty == true)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.network(announcement['image_url'].toString()),
-                  ),
-                const SizedBox(height: 10),
-                Text(announcement['body']?.toString() ?? ''),
-              ],
+    try {
+      if (!mounted) return;
+      final action = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(_announcementText(announcement['title'], 'Announcement')),
+          content: SizedBox(
+            width: 620,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (announcement['image_url']?.toString().isNotEmpty == true)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.network(
+                        announcement['image_url'].toString(),
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                      ),
+                    ),
+                  const SizedBox(height: 10),
+                  Text(_announcementText(
+                      announcement['body'], 'No additional details.')),
+                ],
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, 'dismiss'),
+              child: const Text('Dismiss'),
+            ),
+            if (announcement['related_type'] != null)
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, 'related'),
+                child: Text(
+                    announcement['cta_label']?.toString().isNotEmpty == true
+                        ? announcement['cta_label'].toString()
+                        : 'View related content'),
+              ),
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Close')),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, 'dismiss'),
-            child: const Text('Dismiss'),
-          ),
-          if (announcement['related_type'] != null)
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, 'related'),
-              child: Text(
-                  announcement['cta_label']?.toString().isNotEmpty == true
-                      ? announcement['cta_label'].toString()
-                      : 'View related content'),
-            ),
-          TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Close')),
-        ],
-      ),
-    );
-    if (action == 'dismiss') {
-      if (guest) {
-        const key = 'guest_dismissed_announcements';
-        sessionDismissed.add(announcement['id'].toString());
-        if (LocalStorageService.isInitialized) {
-          final dismissed =
-              LocalStorageService.instance.getStringList(key) ?? <String>[];
-          await LocalStorageService.instance.setStringList(
-            key,
-            {...dismissed, announcement['id'].toString()}.toList(),
-          );
+      );
+      if (!mounted) return;
+      if (action == 'dismiss' && id != null && id.isNotEmpty) {
+        if (guest) {
+          const key = 'guest_dismissed_announcements';
+          sessionDismissed.add(id);
+          if (LocalStorageService.isInitialized) {
+            final dismissed =
+                LocalStorageService.instance.getStringList(key) ?? <String>[];
+            await LocalStorageService.instance.setStringList(
+              key,
+              {...dismissed, id}.toList(),
+            );
+          }
+        } else {
+          try {
+            await repository.dismissAnnouncement(id);
+          } catch (_) {
+            // A receipt failure must never break close/back navigation.
+          }
         }
-      } else {
-        await repository.dismissAnnouncement(announcement['id'].toString());
+        if (mounted) ref.invalidate(publicAnnouncementsProvider(guest));
+      } else if (action == 'related') {
+        final route = _relatedRoute(announcement['related_type']?.toString());
+        if (route != null && mounted) context.push(route);
+      } else if (!guest) {
+        ref.invalidate(publicAnnouncementsProvider(false));
       }
-      ref.invalidate(publicAnnouncementsProvider(guest));
-    } else if (action == 'related' && mounted) {
-      final route = _relatedRoute(announcement['related_type']?.toString());
-      if (route != null) context.push(route);
-    } else if (!guest) {
-      ref.invalidate(publicAnnouncementsProvider(false));
+    } finally {
+      _openingAnnouncement = false;
+      if (mounted) _restartTimer();
     }
-    if (mounted && action != 'related') _restartTimer();
+  }
+
+  Future<void> _markReadSafely(
+      ConnectedOperationsRepository repository, String id) async {
+    try {
+      await repository.markAnnouncementRead(id);
+      if (mounted) ref.invalidate(publicAnnouncementsProvider(false));
+    } catch (_) {
+      // Cached announcement content remains readable while offline.
+    }
   }
 
   String? _relatedRoute(String? type) => switch (type) {
@@ -374,3 +398,8 @@ String _label(dynamic value) => value
     .map((part) =>
         part.isEmpty ? '' : '${part[0].toUpperCase()}${part.substring(1)}')
     .join(' ');
+
+String _announcementText(dynamic value, String fallback) {
+  final text = value?.toString().trim() ?? '';
+  return text.isEmpty ? fallback : text;
+}

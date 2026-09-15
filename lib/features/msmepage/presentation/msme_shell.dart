@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/responsive/responsive_layout.dart';
+import '../../../core/widgets/app_logo.dart';
 import '../../authentication/auth_provider.dart';
 import '../../notifications/presentation/notification_bell_button.dart';
 import '../providers/msme_portal_providers.dart';
@@ -20,6 +21,7 @@ class MsmeShell extends ConsumerStatefulWidget {
 
 class _MsmeShellState extends ConsumerState<MsmeShell> {
   static const double _sidebarWidth = 260.0;
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
 
   static final List<_MsmeNavItem> _navItems = [
     const _MsmeNavItem(
@@ -90,7 +92,8 @@ class _MsmeShellState extends ConsumerState<MsmeShell> {
     final verification = business?['verification_status']?.toString();
 
     return Scaffold(
-      backgroundColor: MsmeTheme.bgDark,
+      key: _scaffoldKey,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       drawer: isDesktop
           ? null
           : _buildDrawer(
@@ -106,8 +109,9 @@ class _MsmeShellState extends ConsumerState<MsmeShell> {
                 _buildTopAppBar(context, activeItem, isDesktop),
                 if (location == '/msme-portal') const AnnouncementHighlights(),
                 Expanded(
-                    child: Container(
-                        color: MsmeTheme.bgDark, child: widget.child)),
+                    child: ColoredBox(
+                        color: Theme.of(context).scaffoldBackgroundColor,
+                        child: widget.child)),
               ],
             ),
           ),
@@ -120,7 +124,7 @@ class _MsmeShellState extends ConsumerState<MsmeShell> {
       BuildContext context, _MsmeNavItem activeItem, bool isDesktop) {
     return Container(
       height: 72,
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: EdgeInsets.symmetric(horizontal: isDesktop ? 24 : 8),
       decoration: const BoxDecoration(
           color: Color(0xE6060D1F),
           border:
@@ -129,36 +133,42 @@ class _MsmeShellState extends ConsumerState<MsmeShell> {
         children: [
           if (!isDesktop)
             IconButton(
+                key: const Key('msme-navigation-menu'),
                 icon:
-                    const Icon(Icons.menu_rounded, color: MsmeTheme.textWhite),
-                onPressed: () => Scaffold.of(context).openDrawer()),
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                Text('MSME Owner Portal',
-                    style: GoogleFonts.inter(
-                        fontSize: 11, color: MsmeTheme.textDisabled)),
-                const SizedBox(width: 4),
-                const Icon(Icons.chevron_right_rounded,
-                    size: 14, color: MsmeTheme.textDisabled),
-                const SizedBox(width: 4),
+                    Icon(Icons.menu_rounded, color: MsmeTheme.textWhite),
+                tooltip: 'Open navigation menu',
+                onPressed: () => _scaffoldKey.currentState?.openDrawer()),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isDesktop)
+                  Row(children: [
+                    Text('MSME Owner Portal',
+                        style: GoogleFonts.inter(
+                            fontSize: 11, color: MsmeTheme.textDisabled)),
+                    const SizedBox(width: 4),
+                    Icon(Icons.chevron_right_rounded,
+                        size: 14, color: MsmeTheme.textDisabled),
+                    const SizedBox(width: 4),
+                    Text(activeItem.label,
+                        style: GoogleFonts.inter(
+                            fontSize: 11,
+                            color: MsmeTheme.primaryOrange,
+                            fontWeight: FontWeight.w600))
+                  ]),
+                const SizedBox(height: 2),
                 Text(activeItem.label,
-                    style: GoogleFonts.inter(
-                        fontSize: 11,
-                        color: MsmeTheme.primaryOrange,
-                        fontWeight: FontWeight.w600))
-              ]),
-              const SizedBox(height: 2),
-              Text(activeItem.label,
-                  style: GoogleFonts.plusJakartaSans(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: MsmeTheme.textWhite)),
-            ],
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.plusJakartaSans(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: MsmeTheme.textWhite)),
+              ],
+            ),
           ),
-          const Spacer(),
           if (isDesktop)
             Container(
               width: 240,
@@ -170,7 +180,7 @@ class _MsmeShellState extends ConsumerState<MsmeShell> {
                   border:
                       Border.all(color: Colors.white.withValues(alpha: 0.08))),
               child: Row(children: [
-                const Icon(Icons.search_rounded,
+                Icon(Icons.search_rounded,
                     size: 18, color: MsmeTheme.textDisabled),
                 const SizedBox(width: 8),
                 Expanded(
@@ -187,7 +197,7 @@ class _MsmeShellState extends ConsumerState<MsmeShell> {
                         onSubmitted: (value) => _searchPortal(context, value)))
               ]),
             ),
-          const SizedBox(width: 16),
+          SizedBox(width: isDesktop ? 16 : 4),
           NotificationBellButton(
             onViewAll: () => context.go('/msme-portal/notifications'),
             iconColor: MsmeTheme.textMuted,
@@ -202,30 +212,17 @@ class _MsmeShellState extends ConsumerState<MsmeShell> {
       String? businessName, String? verification) {
     return Container(
       width: _sidebarWidth,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
           gradient: MsmeTheme.sidebarGradient,
           border:
-              Border(right: BorderSide(color: Color(0x1AFFFFFF), width: 1))),
+              const Border(right: BorderSide(color: Color(0x1AFFFFFF), width: 1))),
       child: Column(
         children: [
           Padding(
               padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
               child: Column(children: [
                 Row(children: [
-                  Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                          gradient: MsmeTheme.orangeGradient,
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: const [
-                            BoxShadow(
-                                color: Color(0x59F97316),
-                                blurRadius: 15,
-                                offset: Offset(0, 4))
-                          ]),
-                      child: const Icon(Icons.storefront_rounded,
-                          color: Colors.white, size: 22)),
+                  const AppLogo(size: 40, radius: 12),
                   const SizedBox(width: 12),
                   Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -344,7 +341,7 @@ class _MsmeShellState extends ConsumerState<MsmeShell> {
         children: [
           UserAccountsDrawerHeader(
               decoration:
-                  const BoxDecoration(gradient: MsmeTheme.sidebarGradient),
+                  BoxDecoration(gradient: MsmeTheme.sidebarGradient),
               currentAccountPicture: CircleAvatar(
                   backgroundColor: MsmeTheme.primaryOrange,
                   child: Text((auth.name ?? 'M')[0].toUpperCase(),

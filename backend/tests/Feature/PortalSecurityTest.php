@@ -27,6 +27,8 @@ class PortalSecurityTest extends TestCase
 
     private Role $lguRole;
 
+    private Role $adminRole;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -35,6 +37,7 @@ class PortalSecurityTest extends TestCase
         $this->touristRole = Role::create(['name' => 'tourist']);
         $this->msmeRole = Role::create(['name' => 'msme_owner']);
         $this->lguRole = Role::create(['name' => 'lgu_staff']);
+        $this->adminRole = Role::create(['name' => 'admin']);
         foreach (['pending', 'approved', 'confirmed', 'rejected', 'completed', 'cancelled'] as $status) {
             ReservationStatus::create(['name' => $status]);
         }
@@ -134,6 +137,44 @@ class PortalSecurityTest extends TestCase
             'name' => 'Owner Business',
             'category' => 'Food',
         ])->assertCreated();
+    }
+
+    public function test_msme_categories_are_authoritative_and_arbitrary_values_are_rejected(): void
+    {
+        Schema::create('msme_categories', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->string('name');
+            $table->string('slug')->unique();
+            $table->text('description')->nullable();
+            $table->boolean('is_active')->default(true);
+            $table->integer('display_order')->default(0);
+            $table->timestamps();
+            $table->softDeletes();
+        });
+        $categoryId = Str::uuid()->toString();
+        Schema::getConnection()->table('msme_categories')->insert([
+            'id' => $categoryId,
+            'name' => 'Restaurants',
+            'slug' => 'restaurants',
+            'is_active' => true,
+            'display_order' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->getJson('/api/v1/msme-categories')
+            ->assertOk()
+            ->assertJsonPath('data.0.slug', 'restaurants');
+
+        Sanctum::actingAs($this->user('taxonomy-owner', $this->msmeRole));
+        $this->postJson('/api/v1/msmes', [
+            'name' => 'Typo Category Business',
+            'category' => 'Restuarants',
+        ])->assertUnprocessable();
+        $this->postJson('/api/v1/msmes', [
+            'name' => 'Controlled Category Business',
+            'category_id' => $categoryId,
+        ])->assertCreated()->assertJsonPath('data.category', 'Restaurants');
     }
 
     public function test_development_msme_seeder_is_idempotent_authentic_and_owner_scoped(): void
@@ -260,6 +301,87 @@ class PortalSecurityTest extends TestCase
             ->assertJsonMissingPath('data.0.user.email');
     }
 
+    public function test_review_edit_delete_and_admin_moderation_are_owner_scoped_and_audited(): void
+    {
+        $owner = $this->user('review-owner', $this->touristRole);
+        $other = $this->user('review-other', $this->touristRole);
+        $admin = $this->user('review-admin', $this->adminRole);
+        $businessId = $this->msme(true, null);
+
+        Sanctum::actingAs($owner);
+        $created = $this->postJson('/api/v1/reviews', [
+            'reviewable_type' => 'msme',
+            'reviewable_id' => $businessId,
+            'rating' => 5,
+            'content' => 'A useful original review.',
+        ])->assertCreated();
+        $reviewId = $created->json('data.id');
+
+        Sanctum::actingAs($other);
+        $this->putJson("/api/v1/reviews/{$reviewId}", [
+            'rating' => 1,
+            'content' => 'Attempted takeover.',
+        ])->assertForbidden();
+        $this->deleteJson("/api/v1/reviews/{$reviewId}")->assertForbidden();
+
+        Sanctum::actingAs($owner);
+        $this->putJson("/api/v1/reviews/{$reviewId}", [
+            'rating' => 3,
+            'content' => 'Updated by the actual owner.',
+        ])->assertOk()->assertJsonPath('data.rating', 3);
+        $this->assertDatabaseHas('msmes', [
+            'id' => $businessId,
+            'rating' => 3,
+            'review_count' => 1,
+        ]);
+
+        Sanctum::actingAs($admin);
+        $this->deleteJson("/api/v1/reviews/{$reviewId}")
+            ->assertUnprocessable();
+        $this->deleteJson("/api/v1/reviews/{$reviewId}", [
+            'reason_code' => 'other',
+        ])->assertUnprocessable();
+        $this->deleteJson("/api/v1/reviews/{$reviewId}", [
+            'reason_code' => 'spam',
+        ])->assertOk();
+
+        $this->assertSoftDeleted('reviews', ['id' => $reviewId]);
+        $this->assertDatabaseHas('msmes', [
+            'id' => $businessId,
+            'rating' => 0,
+            'review_count' => 0,
+        ]);
+        $this->assertDatabaseHas('notifications', [
+            'user_id' => $owner->id,
+            'type' => 'review_removed',
+            'title' => 'Review Removed',
+        ]);
+        $this->assertDatabaseHas('activity_logs', [
+            'user_id' => $admin->id,
+            'action' => 'Review removed by administrator',
+        ]);
+    }
+
+    public function test_review_owner_can_delete_without_a_moderation_reason(): void
+    {
+        $owner = $this->user('deleting-review-owner', $this->touristRole);
+        $businessId = $this->msme(true, null);
+        Sanctum::actingAs($owner);
+        $reviewId = $this->postJson('/api/v1/reviews', [
+            'reviewable_type' => 'msme',
+            'reviewable_id' => $businessId,
+            'rating' => 4,
+            'content' => 'Review to remove myself.',
+        ])->assertCreated()->json('data.id');
+
+        $this->deleteJson("/api/v1/reviews/{$reviewId}")->assertOk();
+        $this->assertSoftDeleted('reviews', ['id' => $reviewId]);
+        $this->assertDatabaseMissing('notifications', [
+            'user_id' => $owner->id,
+            'type' => 'review_removed',
+        ]);
+    }
+
     public function test_sync_pull_hides_unpublished_records_but_keeps_owner_private_msme(): void
     {
         $tourist = $this->user('tourist', $this->touristRole);
@@ -316,7 +438,9 @@ class PortalSecurityTest extends TestCase
             'start_time' => '09:00',
             'guests' => 2,
         ];
-        $this->postJson('/api/v1/reservations', $bookingPayload)->assertNotFound();
+        $this->postJson('/api/v1/reservations', $bookingPayload)
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Reservations are currently unavailable for this business.');
 
         Sanctum::actingAs($owner);
         $this->putJson('/api/v1/msme/profile', [
@@ -340,6 +464,20 @@ class PortalSecurityTest extends TestCase
             ...$bookingPayload,
         ])->assertCreated();
         $reservationId = $reservation->json('data.id');
+
+        Sanctum::actingAs($owner);
+        $this->putJson('/api/v1/msme/profile', [
+            'booking_enabled' => false,
+        ])->assertOk();
+        $this->getJson('/api/v1/msme/reservations')
+            ->assertOk()->assertJsonFragment(['id' => $reservationId]);
+
+        Sanctum::actingAs($tourist);
+        $this->postJson('/api/v1/reservations', [
+            ...$bookingPayload,
+            'reservation_date' => now()->addDays(3)->toDateString(),
+        ])->assertUnprocessable()
+            ->assertJsonPath('message', 'Reservations are currently unavailable for this business.');
 
         Sanctum::actingAs($owner);
         $this->getJson('/api/v1/msme/reservations')
@@ -502,6 +640,28 @@ class PortalSecurityTest extends TestCase
         ]);
     }
 
+    public function test_lgu_msme_summary_source_and_status_lists_use_the_same_business_state(): void
+    {
+        $verified = $this->msme(true, null);
+        $pending = $this->msme(false, null);
+        Sanctum::actingAs($this->user('verification-list-lgu', $this->lguRole));
+
+        $this->getJson('/api/v1/lgu/msmes')
+            ->assertOk()
+            ->assertJsonFragment(['id' => $verified])
+            ->assertJsonFragment(['id' => $pending]);
+        $this->getJson('/api/v1/lgu/msmes?status=verified')
+            ->assertOk()
+            ->assertJsonFragment(['id' => $verified])
+            ->assertJsonMissing(['id' => $pending]);
+        $this->getJson('/api/v1/lgu/msmes?status=pending')
+            ->assertOk()
+            ->assertJsonFragment(['id' => $pending])
+            ->assertJsonMissing(['id' => $verified]);
+        $this->getJson('/api/v1/lgu/msmes?status=UNKNOWN')
+            ->assertUnprocessable();
+    }
+
     public function test_partner_draft_review_public_booking_and_secure_management_flow(): void
     {
         $partner = $this->user('partner-flow-owner', $this->partnerRole);
@@ -622,7 +782,7 @@ class PortalSecurityTest extends TestCase
 
     private function createSchema(): void
     {
-        foreach (['personal_access_tokens', 'notifications', 'partner_notifications', 'reviews', 'reservation_status_history', 'reservations', 'reservation_status', 'tourism_listings', 'msmes', 'profiles', 'activity_logs', 'users', 'roles'] as $table) {
+        foreach (['personal_access_tokens', 'notifications', 'partner_notifications', 'reviews', 'reservation_status_history', 'reservations', 'reservation_status', 'tourism_listings', 'msmes', 'msme_categories', 'profiles', 'activity_logs', 'users', 'roles'] as $table) {
             Schema::dropIfExists($table);
         }
         Schema::create('roles', function (Blueprint $table) {
@@ -660,6 +820,7 @@ class PortalSecurityTest extends TestCase
             $table->uuid('profile_id')->nullable();
             $table->string('name');
             $table->string('category');
+            $table->uuid('category_id')->nullable();
             $table->string('tagline')->nullable();
             $table->text('description')->nullable();
             $table->string('phone')->nullable();

@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
+import '../../../reservations/models/reservation.dart';
 import '../../../reservations/repositories/reservation_repository.dart';
 import '../../../itinerary/presentation/itinerary_add_sheet.dart';
 import '../../../itinerary/repositories/itinerary_repository.dart';
@@ -268,7 +270,7 @@ class ReservationDetailPage extends ConsumerWidget {
 
                 const SizedBox(height: 24),
 
-                _StatusTimeline(status: reservation.status),
+                _StatusTimeline(reservation: reservation),
 
                 if (reservation.items.isNotEmpty)
                   _ReservationInfo(
@@ -285,7 +287,7 @@ class ReservationDetailPage extends ConsumerWidget {
                     title: 'Status History',
                     value: reservation.statusHistory
                         .map((entry) =>
-                            '${entry.status.toUpperCase()}${entry.createdAt == null ? '' : ' · ${entry.createdAt}'}')
+                            '${entry.status.toUpperCase()}${entry.createdAt == null ? '' : ' · ${_formatServerTimestamp(entry.createdAt)}'}')
                         .join('\n'),
                   ),
                 ],
@@ -477,11 +479,12 @@ class _ReservationInfo extends StatelessWidget {
 }
 
 class _StatusTimeline extends StatelessWidget {
-  const _StatusTimeline({required this.status});
-  final String status;
+  const _StatusTimeline({required this.reservation});
+  final Reservation reservation;
 
   @override
   Widget build(BuildContext context) {
+    final status = reservation.status;
     final cancelled = status == 'cancelled' || status == 'rejected';
     final activeIndex = switch (status) {
       'completed' => 2,
@@ -533,10 +536,24 @@ class _StatusTimeline extends StatelessWidget {
               const SizedBox(width: 12),
               Padding(
                 padding: const EdgeInsets.only(top: 2),
-                child: Text(steps[index].$1,
-                    style: TextStyle(
-                        color: reached ? Colors.white : const Color(0xFF64748B),
-                        fontWeight: FontWeight.w600)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(steps[index].$1,
+                        style: TextStyle(
+                            color: reached
+                                ? Theme.of(context).colorScheme.onSurface
+                                : Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                            fontWeight: FontWeight.w600)),
+                    if (_timestampForStep(index) case final timestamp?)
+                      Text(
+                        _formatServerTimestamp(timestamp),
+                        style: Theme.of(context).textTheme.labelSmall,
+                      ),
+                  ],
+                ),
               ),
             ]);
           }),
@@ -544,6 +561,32 @@ class _StatusTimeline extends StatelessWidget {
       ),
     );
   }
+
+  String? _timestampForStep(int index) {
+    if (index == 0) return reservation.createdAt;
+    final expected = index == 1
+        ? (reservation.status == 'rejected'
+            ? 'rejected'
+            : reservation.status == 'cancelled'
+                ? 'cancelled'
+                : 'confirmed')
+        : 'completed';
+    for (final entry in reservation.statusHistory.reversed) {
+      final normalized = entry.status.toLowerCase();
+      if (normalized == expected ||
+          (expected == 'confirmed' && normalized == 'approved')) {
+        return entry.createdAt;
+      }
+    }
+    return null;
+  }
+}
+
+String _formatServerTimestamp(String? raw) {
+  final value = DateTime.tryParse(raw ?? '')?.toLocal();
+  return value == null
+      ? 'Time unavailable'
+      : DateFormat('MMM d, y • h:mm a').format(value);
 }
 
 class _SummaryRow extends StatelessWidget {

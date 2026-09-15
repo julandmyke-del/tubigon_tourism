@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -122,10 +124,7 @@ class NotificationBellButton extends ConsumerWidget {
     if (item == null) return;
     if (!item.isRead) {
       final repository = ref.read(notificationRepositoryProvider);
-      await repository.markRead(item.id);
-      if (!context.mounted) return;
-      ref.invalidate(touristNotificationsProvider);
-      ref.invalidate(touristUnreadCountProvider);
+      unawaited(_markReadSafely(ref, repository, item.id));
     }
     if (!context.mounted) return;
     final route = item.data['route']?.toString();
@@ -138,7 +137,7 @@ class NotificationBellButton extends ConsumerWidget {
       context.go(route!);
       return;
     }
-    await showDialog<void>(
+    final action = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(item.title),
@@ -149,14 +148,25 @@ class NotificationBellButton extends ConsumerWidget {
               child: const Text('Close')),
           TextButton(
             onPressed: () {
-              Navigator.pop(dialogContext);
-              onViewAll();
+              Navigator.pop(dialogContext, 'view_all');
             },
             child: const Text('View All'),
           ),
         ],
       ),
     );
+    if (action == 'view_all' && context.mounted) onViewAll();
+  }
+
+  Future<void> _markReadSafely(WidgetRef ref, NotificationRepository repository,
+      String notificationId) async {
+    try {
+      await repository.markRead(notificationId);
+      ref.invalidate(touristNotificationsProvider);
+      ref.invalidate(touristUnreadCountProvider);
+    } catch (_) {
+      // The notification detail must remain readable if its receipt fails.
+    }
   }
 }
 
@@ -181,6 +191,7 @@ class AnnouncementHighlights extends ConsumerStatefulWidget {
 class _AnnouncementHighlightsState
     extends ConsumerState<AnnouncementHighlights> {
   final Set<String> _dismissedUrgent = {};
+  bool _openingAnnouncement = false;
 
   @override
   Widget build(BuildContext context) {
@@ -278,23 +289,42 @@ class _AnnouncementHighlightsState
   }
 
   Future<void> _open(TouristNotification item) async {
-    if (!item.isRead) {
-      await ref.read(notificationRepositoryProvider).markRead(item.id);
+    if (_openingAnnouncement) return;
+    _openingAnnouncement = true;
+    try {
+      if (!item.isRead) {
+        unawaited(_markAnnouncementReadSafely(item.id));
+      }
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(item.title.trim().isEmpty ? 'Announcement' : item.title),
+          content: SingleChildScrollView(
+            child: Text(item.body.trim().isEmpty
+                ? 'No additional details.'
+                : item.body),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Close')),
+          ],
+        ),
+      );
+    } finally {
+      _openingAnnouncement = false;
+    }
+  }
+
+  Future<void> _markAnnouncementReadSafely(String id) async {
+    try {
+      await ref.read(notificationRepositoryProvider).markRead(id);
       if (!mounted) return;
       ref.invalidate(touristNotificationsProvider);
       ref.invalidate(touristUnreadCountProvider);
+    } catch (_) {
+      // Do not couple dialog rendering or closing to the receipt request.
     }
-    if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(item.title),
-        content: SingleChildScrollView(child: Text(item.body)),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
-        ],
-      ),
-    );
   }
 }

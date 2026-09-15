@@ -122,7 +122,9 @@ void main() {
 
     expect(repository.submissions, 1);
     expect(find.text('Write a Review'), findsWidgets);
-    expect(find.textContaining('Server rejected review'), findsOneWidget);
+    expect(find.text('Unable to save the review. Please try again.'),
+        findsOneWidget);
+    expect(find.textContaining('Server rejected review'), findsNothing);
     expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
         isNotNull);
   });

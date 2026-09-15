@@ -36,7 +36,7 @@ class MsmePortalNotificationsPage extends ConsumerWidget {
               onRetry: () => ref.invalidate(msmePortalNotificationsProvider),
             ),
             data: (items) => items.isEmpty
-                ? const Center(
+                ? Center(
                     child: Text('No notifications yet.',
                         style: TextStyle(color: MsmeTheme.textMuted)))
                 : ListView.separated(
@@ -64,7 +64,7 @@ class MsmePortalNotificationsPage extends ConsumerWidget {
                           subtitle: Text(
                               '${item['body'] ?? ''}\n${item['created_at'] ?? ''}',
                               style:
-                                  const TextStyle(color: MsmeTheme.textMuted)),
+                                  TextStyle(color: MsmeTheme.textMuted)),
                           isThreeLine: true,
                           onTap: () => _open(context, ref, item),
                         ),

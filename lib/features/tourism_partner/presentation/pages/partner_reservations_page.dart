@@ -406,7 +406,7 @@ class _EmptyState extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 56, horizontal: 24),
         decoration: PartnerTheme.cardDecoration(),
         child: Column(children: [
-          const Icon(Icons.event_note_outlined,
+          Icon(Icons.event_note_outlined,
               size: 48, color: PartnerTheme.textMuted),
           const SizedBox(height: 12),
           Text('No reservations yet', style: PartnerTheme.headingSmall()),

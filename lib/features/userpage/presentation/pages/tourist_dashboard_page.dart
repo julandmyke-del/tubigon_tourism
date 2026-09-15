@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/routes/route_names.dart';
 import '../../../../core/localization/app_localization.dart';
+import '../../../../core/widgets/live_greeting.dart';
 import '../../../authentication/auth_provider.dart';
 import '../../../tourist_spots/models/tourist_spot.dart';
 import '../../../tourist_spots/repositories/tourist_spot_repository.dart';
@@ -97,24 +98,7 @@ class TouristDashboardPage extends ConsumerWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    '👋 Good morning!',
-                                    style: TextStyle(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.7),
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                  Text(
-                                    userName,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 24,
-                                      fontWeight: FontWeight.w700,
-                                      letterSpacing: -0.5,
-                                    ),
-                                  ),
+                                  LiveGreeting(name: userName),
                                 ],
                               ),
                             ),

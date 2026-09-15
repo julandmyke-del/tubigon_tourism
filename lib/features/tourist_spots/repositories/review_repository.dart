@@ -16,6 +16,7 @@ class Review {
   final double rating;
   final String content;
   final String createdAt;
+  final String updatedAt;
 
   Review({
     required this.id,
@@ -26,7 +27,16 @@ class Review {
     required this.rating,
     required this.content,
     required this.createdAt,
+    required this.updatedAt,
   });
+
+  bool get isEdited {
+    final created = DateTime.tryParse(createdAt);
+    final updated = DateTime.tryParse(updatedAt);
+    return created != null &&
+        updated != null &&
+        updated.difference(created).abs() > const Duration(seconds: 1);
+  }
 
   factory Review.fromJson(Map<String, dynamic> json) {
     final profile = json['user'] as Map<String, dynamic>?;
@@ -42,6 +52,8 @@ class Review {
       rating: (json['rating'] as num?)?.toDouble() ?? 5.0,
       content: json['content'] as String? ?? '',
       createdAt: json['created_at'] as String? ?? '',
+      updatedAt:
+          json['updated_at'] as String? ?? json['created_at'] as String? ?? '',
     );
   }
 
@@ -55,6 +67,7 @@ class Review {
       'rating': rating.toInt(),
       'content': content,
       'created_at': createdAt,
+      'updated_at': updatedAt,
     };
   }
 }
@@ -171,6 +184,7 @@ class ReviewRepository {
       rating: rating,
       content: cleanContent,
       createdAt: DateTime.now().toIso8601String(),
+      updatedAt: DateTime.now().toIso8601String(),
     );
 
     final reviewJson = newReview.toJson();
@@ -233,6 +247,83 @@ class ReviewRepository {
         .whereType<Map<String, dynamic>>()
         .map(Review.fromJson)
         .toList(growable: false);
+  }
+
+  Future<bool> updateReview(
+    Review review, {
+    required double rating,
+    required String content,
+  }) async {
+    final userId = _userId;
+    if (userId == null || review.userId != userId) {
+      throw Exception('You may only edit your own review.');
+    }
+    final cleanContent = content.trim();
+    if (rating < 1 ||
+        rating > 5 ||
+        cleanContent.length < 3 ||
+        cleanContent.length > 1000) {
+      throw Exception(
+          'Enter a rating and a review between 3 and 1000 characters.');
+    }
+    if (!DatabaseHelper.isSupported) {
+      final response = await apiClient.put(
+        ApiEndpoints.reviewById(review.id),
+        data: {'rating': rating.toInt(), 'content': cleanContent},
+      );
+      if (response.statusCode != 200 || response.data['status'] != 'success') {
+        throw Exception('Unable to update the review. Please try again.');
+      }
+      return true;
+    }
+
+    final values = {
+      'rating': rating.toInt(),
+      'content': cleanContent,
+      'updated_at': DateTime.now().toIso8601String(),
+      'dirty': 1,
+      'sync_status': 'pending_update',
+    };
+    await dbHelper.update('reviews', values,
+        where: 'id = ? AND user_id = ?', whereArgs: [review.id, userId]);
+    if (!SyncService.instance.isOnline) return false;
+    final response = await apiClient.put(
+      ApiEndpoints.reviewById(review.id),
+      data: {'rating': rating.toInt(), 'content': cleanContent},
+    );
+    if (response.statusCode != 200 || response.data['status'] != 'success') {
+      throw Exception('Unable to update the review. Please try again.');
+    }
+    final server = Review.fromJson(
+      Map<String, dynamic>.from(response.data['data'] as Map),
+    ).toJson()
+      ..['dirty'] = 0
+      ..['pending_delete'] = 0
+      ..['sync_status'] = 'synced';
+    await dbHelper
+        .update('reviews', server, where: 'id = ?', whereArgs: [review.id]);
+    return true;
+  }
+
+  Future<bool> deleteReview(Review review) async {
+    final userId = _userId;
+    if (userId == null || review.userId != userId) {
+      throw Exception('You may only delete your own review.');
+    }
+    if (!DatabaseHelper.isSupported) {
+      await apiClient.delete(ApiEndpoints.reviewById(review.id));
+      return true;
+    }
+    await dbHelper.update(
+      'reviews',
+      {'pending_delete': 1, 'dirty': 0, 'sync_status': 'pending_delete'},
+      where: 'id = ? AND user_id = ?',
+      whereArgs: [review.id, userId],
+    );
+    if (!SyncService.instance.isOnline) return false;
+    await apiClient.delete(ApiEndpoints.reviewById(review.id));
+    await dbHelper.delete('reviews', where: 'id = ?', whereArgs: [review.id]);
+    return true;
   }
 
   Future<bool> _addRemoteReview({

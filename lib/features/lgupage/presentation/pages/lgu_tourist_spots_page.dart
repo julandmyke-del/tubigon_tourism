@@ -27,18 +27,19 @@ class _LguTouristSpotsPageState extends ConsumerState<LguTouristSpotsPage> {
   Widget build(BuildContext context) {
     final spots = ref.watch(lguTouristSpotsProvider);
     return Scaffold(
-      backgroundColor: const Color(0xFF0B132B),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Tourist Spot Monitoring',
+          Text('Tourist Spot Monitoring',
               style: TextStyle(
-                  color: Colors.white,
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 25,
                   fontWeight: FontWeight.bold)),
-          const Text(
+          Text(
               'Monitor authoritative destination status, partner assignments, maps, and booking availability.',
-              style: TextStyle(color: AppColors.grey400)),
+              style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant)),
           const SizedBox(height: 14),
           Wrap(spacing: 10, runSpacing: 10, children: [
             SizedBox(
@@ -104,73 +105,69 @@ class _LguTouristSpotsPageState extends ConsumerState<LguTouristSpotsPage> {
                         final reason = _reasonLabel(
                             item['booking_unavailable_reason_code']
                                 ?.toString());
-                        return Material(
-                          color: Colors.transparent,
-                          child: ListTile(
-                            tileColor: const Color(0xFF1C2541),
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14)),
-                            leading: Icon(Icons.place_rounded,
-                                color: active
-                                    ? AppColors.success
-                                    : AppColors.warning),
-                            title: Text(
-                                item['name']?.toString() ?? 'Tourist spot',
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold)),
-                            subtitle: Text(
-                                '${item['address'] ?? 'No address'} • ${_label(_spotStatus(item))}\n'
-                                'Booking: ${bookingEnabled ? 'Accepting reservations' : 'Unavailable — $reason'}'
-                                '${actor is Map ? '\nSet by: ${actor['name'] ?? 'Authorized user'}' : ''}'
-                                '\nPartner: $partnerLabel',
-                                style:
-                                    const TextStyle(color: AppColors.grey400)),
-                            trailing: PopupMenuButton<String>(
-                              tooltip: 'Destination actions',
-                              onSelected: (action) {
-                                if (action == 'edit') {
-                                  _edit(context, ref, item);
-                                } else if (action == 'map') {
-                                  context.push(
-                                      '/map?marker=tourist_spot:${item['id']}');
-                                } else if (action == 'reservations') {
-                                  context.go('/lgu/reservations');
-                                } else if (action == 'booking') {
-                                  _booking(context, ref, item);
-                                } else if (action == 'availability') {
-                                  _availability(
-                                      context, ref, item, bookingEnabled);
-                                } else {
-                                  _update(context, ref, item['id'].toString(),
-                                      action);
-                                }
-                              },
-                              itemBuilder: (_) => const [
-                                PopupMenuItem(
-                                    value: 'edit',
-                                    child: Text('View / edit details')),
-                                PopupMenuItem(
-                                    value: 'map', child: Text('View on map')),
-                                PopupMenuItem(
-                                    value: 'reservations',
-                                    child: Text('View reservations')),
-                                PopupMenuItem(
-                                    value: 'booking',
-                                    child: Text('Configure booking rules')),
-                                PopupMenuItem(
-                                    value: 'availability',
-                                    child: Text('Manage live availability')),
-                                PopupMenuDivider(),
-                                PopupMenuItem(
-                                    value: 'active', child: Text('Set active')),
-                                PopupMenuItem(
-                                    value: 'maintenance',
-                                    child: Text('Set maintenance')),
-                                PopupMenuItem(
-                                    value: 'inactive',
-                                    child: Text('Set inactive')),
-                              ],
+                        return MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: Material(
+                            color: Theme.of(context).colorScheme.surface,
+                            borderRadius: BorderRadius.circular(14),
+                            child: ListTile(
+                              key: ValueKey('lgu-spot-card-${item['id']}'),
+                              onTap: () => _handleDestinationAction(
+                                  context, ref, 'edit', item, bookingEnabled),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14)),
+                              leading: Icon(Icons.place_rounded,
+                                  color: active
+                                      ? AppColors.success
+                                      : AppColors.warning),
+                              title: Text(
+                                  item['name']?.toString() ?? 'Tourist spot',
+                                  style: TextStyle(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurface,
+                                      fontWeight: FontWeight.bold)),
+                              subtitle: Text(
+                                  '${item['address'] ?? 'No address'} • ${_label(_spotStatus(item))}\n'
+                                  'Booking: ${bookingEnabled ? 'Accepting reservations' : 'Unavailable — $reason'}'
+                                  '${actor is Map ? '\nSet by: ${actor['name'] ?? 'Authorized user'}' : ''}'
+                                  '\nPartner: $partnerLabel',
+                                  style: TextStyle(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant)),
+                              trailing: PopupMenuButton<String>(
+                                tooltip: 'Destination actions',
+                                onSelected: (action) =>
+                                    _handleDestinationAction(context, ref,
+                                        action, item, bookingEnabled),
+                                itemBuilder: (_) => const [
+                                  PopupMenuItem(
+                                      value: 'edit',
+                                      child: Text('View / edit details')),
+                                  PopupMenuItem(
+                                      value: 'map', child: Text('View on map')),
+                                  PopupMenuItem(
+                                      value: 'reservations',
+                                      child: Text('View reservations')),
+                                  PopupMenuItem(
+                                      value: 'booking',
+                                      child: Text('Configure booking rules')),
+                                  PopupMenuItem(
+                                      value: 'availability',
+                                      child: Text('Manage live availability')),
+                                  PopupMenuDivider(),
+                                  PopupMenuItem(
+                                      value: 'active',
+                                      child: Text('Set active')),
+                                  PopupMenuItem(
+                                      value: 'maintenance',
+                                      child: Text('Set maintenance')),
+                                  PopupMenuItem(
+                                      value: 'inactive',
+                                      child: Text('Set inactive')),
+                                ],
+                              ),
                             ),
                           ),
                         );
@@ -183,11 +180,37 @@ class _LguTouristSpotsPageState extends ConsumerState<LguTouristSpotsPage> {
     );
   }
 
+  Future<void> _handleDestinationAction(
+    BuildContext context,
+    WidgetRef ref,
+    String action,
+    Map<String, dynamic> item,
+    bool bookingEnabled,
+  ) async {
+    switch (action) {
+      case 'edit':
+        await _edit(context, ref, item);
+      case 'map':
+        if (context.mounted) {
+          context.push('/map?marker=tourist_spot:${item['id']}');
+        }
+      case 'reservations':
+        if (context.mounted) context.go('/lgu/reservations');
+      case 'booking':
+        await _booking(context, ref, item);
+      case 'availability':
+        await _availability(context, ref, item, bookingEnabled);
+      default:
+        await _update(context, ref, item['id'].toString(), action);
+    }
+  }
+
   Widget _filter(String label, String value, List<String> values,
           ValueChanged<String> onChanged) =>
       SizedBox(
         width: 165,
         child: DropdownButtonFormField<String>(
+          isExpanded: true,
           initialValue: value,
           decoration: InputDecoration(labelText: label),
           items: values
@@ -312,6 +335,7 @@ class _LguTouristSpotsPageState extends ConsumerState<LguTouristSpotsPage> {
           content: currentlyEnabled
               ? Column(mainAxisSize: MainAxisSize.min, children: [
                   DropdownButtonFormField<String>(
+                    isExpanded: true,
                     initialValue: reasonCode,
                     decoration: const InputDecoration(labelText: 'Reason'),
                     items: _reasonCodes
@@ -403,6 +427,12 @@ class _LguTouristSpotsPageState extends ConsumerState<LguTouristSpotsPage> {
 
   Future<void> _edit(
       BuildContext context, WidgetRef ref, Map<String, dynamic> spot) async {
+    final categories = await ref.read(spotCategoriesProvider.future);
+    if (!context.mounted) return;
+    String? categoryId = spot['category_id']?.toString() ??
+        (spot['category'] is Map
+            ? (spot['category'] as Map)['id']?.toString()
+            : null);
     final shortDescription = TextEditingController(
         text: spot['short_description']?.toString() ?? '');
     final description =
@@ -418,100 +448,122 @@ class _LguTouristSpotsPageState extends ConsumerState<LguTouristSpotsPage> {
 
     final save = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: const Color(0xFF1C2541),
-        title: Text('Edit ${spot['name'] ?? 'destination'}',
-            style: const TextStyle(color: Colors.white)),
-        content: SizedBox(
-          width: 560,
-          child: Form(
-            key: formKey,
-            child: SingleChildScrollView(
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                TextFormField(
-                  controller: shortDescription,
-                  maxLength: 500,
-                  maxLines: 2,
-                  style: const TextStyle(color: Colors.white),
-                  decoration:
-                      const InputDecoration(labelText: 'Short description'),
-                ),
-                TextFormField(
-                  controller: description,
-                  maxLines: 5,
-                  style: const TextStyle(color: Colors.white),
-                  decoration:
-                      const InputDecoration(labelText: 'Full description'),
-                ),
-                TextFormField(
-                  controller: aliases,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                      labelText: 'Search aliases (comma-separated)'),
-                ),
-                const SizedBox(height: 10),
-                Row(children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: latitude,
-                      keyboardType: const TextInputType.numberWithOptions(
-                          signed: true, decimal: true),
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(labelText: 'Latitude'),
-                      validator: (value) {
-                        final text = value?.trim() ?? '';
-                        if (text.isEmpty) {
-                          return longitude.text.trim().isEmpty
-                              ? null
-                              : 'Required with longitude';
-                        }
-                        final parsed = double.tryParse(text);
-                        return parsed == null || parsed < -90 || parsed > 90
-                            ? 'Use -90 to 90'
-                            : null;
-                      },
+      builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+                title: Text('Edit ${spot['name'] ?? 'destination'}'),
+                content: SizedBox(
+                  width: 560,
+                  child: Form(
+                    key: formKey,
+                    child: SingleChildScrollView(
+                      child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        DropdownButtonFormField<String>(
+                          initialValue:
+                              categories.any((item) => item.uuid == categoryId)
+                                  ? categoryId
+                                  : null,
+                          decoration:
+                              const InputDecoration(labelText: 'Category *'),
+                          items: categories
+                              .map((item) => DropdownMenuItem(
+                                    value: item.uuid,
+                                    child: Text(item.name),
+                                  ))
+                              .toList(),
+                          onChanged: (value) =>
+                              setDialogState(() => categoryId = value),
+                          validator: (value) => value == null
+                              ? 'Select a destination category.'
+                              : null,
+                        ),
+                        const SizedBox(height: 10),
+                        TextFormField(
+                          controller: shortDescription,
+                          maxLength: 500,
+                          maxLines: 2,
+                          decoration: const InputDecoration(
+                              labelText: 'Short description'),
+                        ),
+                        TextFormField(
+                          controller: description,
+                          maxLines: 5,
+                          decoration: const InputDecoration(
+                              labelText: 'Full description'),
+                        ),
+                        TextFormField(
+                          controller: aliases,
+                          decoration: const InputDecoration(
+                              labelText: 'Search aliases (comma-separated)'),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: latitude,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                      signed: true, decimal: true),
+                              decoration:
+                                  const InputDecoration(labelText: 'Latitude'),
+                              validator: (value) {
+                                final text = value?.trim() ?? '';
+                                if (text.isEmpty) {
+                                  return longitude.text.trim().isEmpty
+                                      ? null
+                                      : 'Required with longitude';
+                                }
+                                final parsed = double.tryParse(text);
+                                return parsed == null ||
+                                        parsed < -90 ||
+                                        parsed > 90
+                                    ? 'Use -90 to 90'
+                                    : null;
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextFormField(
+                              controller: longitude,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                      signed: true, decimal: true),
+                              decoration:
+                                  const InputDecoration(labelText: 'Longitude'),
+                              validator: (value) {
+                                final text = value?.trim() ?? '';
+                                if (text.isEmpty) {
+                                  return latitude.text.trim().isEmpty
+                                      ? null
+                                      : 'Required with latitude';
+                                }
+                                final parsed = double.tryParse(text);
+                                return parsed == null ||
+                                        parsed < -180 ||
+                                        parsed > 180
+                                    ? 'Use -180 to 180'
+                                    : null;
+                              },
+                            ),
+                          ),
+                        ]),
+                      ]),
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextFormField(
-                      controller: longitude,
-                      keyboardType: const TextInputType.numberWithOptions(
-                          signed: true, decimal: true),
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(labelText: 'Longitude'),
-                      validator: (value) {
-                        final text = value?.trim() ?? '';
-                        if (text.isEmpty) {
-                          return latitude.text.trim().isEmpty
-                              ? null
-                              : 'Required with latitude';
+                ),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(dialogContext, false),
+                      child: const Text('Cancel')),
+                  FilledButton(
+                      onPressed: () {
+                        if (formKey.currentState?.validate() ?? false) {
+                          Navigator.pop(dialogContext, true);
                         }
-                        final parsed = double.tryParse(text);
-                        return parsed == null || parsed < -180 || parsed > 180
-                            ? 'Use -180 to 180'
-                            : null;
                       },
-                    ),
-                  ),
-                ]),
-              ]),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () {
-                if (formKey.currentState?.validate() ?? false) {
-                  Navigator.pop(dialogContext, true);
-                }
-              },
-              child: const Text('Save')),
-        ],
-      ),
+                      child: const Text('Save')),
+                ],
+              )),
     );
     if (save != true) {
       shortDescription.dispose();
@@ -526,6 +578,7 @@ class _LguTouristSpotsPageState extends ConsumerState<LguTouristSpotsPage> {
       await ref.read(lguRepositoryProvider).updateTouristSpot(
         spot['id'].toString(),
         {
+          'category_id': categoryId,
           'short_description': shortDescription.text.trim(),
           'description': description.text.trim(),
           'aliases': aliases.text

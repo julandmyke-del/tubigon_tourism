@@ -280,12 +280,12 @@ class _MetricCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('$value',
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: AdminColors.textPrimary,
                         fontSize: 24,
                         fontWeight: FontWeight.w800)),
                 Text(title,
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: AdminColors.textSecondary, fontSize: 12)),
               ],
             ),
@@ -313,18 +313,18 @@ class _BreakdownPanel extends StatelessWidget {
       title: title,
       child: rows.isEmpty
           ? Text(emptyMessage,
-              style: const TextStyle(color: AdminColors.textSecondary))
+              style: TextStyle(color: AdminColors.textSecondary))
           : Wrap(
               spacing: 8,
               runSpacing: 8,
               children: rows
                   .map((row) => Chip(
                         backgroundColor: AdminColors.navy800,
-                        side: const BorderSide(color: AdminColors.border),
+                        side: BorderSide(color: AdminColors.border),
                         label: Text(
                           '${_label(row['label'])}: ${(row['total'] as num?)?.toInt() ?? 0}',
                           style:
-                              const TextStyle(color: AdminColors.textPrimary),
+                              TextStyle(color: AdminColors.textPrimary),
                         ),
                       ))
                   .toList(),
@@ -343,7 +343,7 @@ class _DestinationPanel extends StatelessWidget {
     return _AnalyticsPanel(
       title: 'Most reserved destinations',
       child: rows.isEmpty
-          ? const Text('No reservation destinations recorded.',
+          ? Text('No reservation destinations recorded.',
               style: TextStyle(color: AdminColors.textSecondary))
           : Column(
               children: rows
@@ -357,11 +357,11 @@ class _DestinationPanel extends StatelessWidget {
                             Expanded(
                               child: Text('${row['name'] ?? 'Unavailable'}',
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                       color: AdminColors.textPrimary)),
                             ),
                             Text('${(row['total'] as num?)?.toInt() ?? 0}',
-                                style: const TextStyle(
+                                style: TextStyle(
                                     color: AdminColors.textSecondary,
                                     fontWeight: FontWeight.bold)),
                           ],
@@ -396,7 +396,7 @@ class _ThirtyDayActivityPanel extends StatelessWidget {
                 style: TextStyle(color: color, fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
             if (recent.isEmpty)
-              const Text('No activity in this period.',
+              Text('No activity in this period.',
                   style: TextStyle(color: AdminColors.textSecondary))
             else
               ...recent.map((row) => Padding(
@@ -405,12 +405,12 @@ class _ThirtyDayActivityPanel extends StatelessWidget {
                       children: [
                         Expanded(
                           child: Text('${row['date'] ?? ''}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                   color: AdminColors.textSecondary,
                                   fontSize: 12)),
                         ),
                         Text('${(row['total'] as num?)?.toInt() ?? 0}',
-                            style: const TextStyle(
+                            style: TextStyle(
                                 color: AdminColors.textPrimary,
                                 fontWeight: FontWeight.bold)),
                       ],
@@ -458,12 +458,12 @@ class _AnalyticsPanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(title,
-              style: const TextStyle(
+              style: TextStyle(
                   color: AdminColors.textPrimary, fontWeight: FontWeight.bold)),
           if (subtitle != null) ...[
             const SizedBox(height: 4),
             Text(subtitle!,
-                style: const TextStyle(
+                style: TextStyle(
                     color: AdminColors.textSecondary, fontSize: 12)),
           ],
           const SizedBox(height: 12),

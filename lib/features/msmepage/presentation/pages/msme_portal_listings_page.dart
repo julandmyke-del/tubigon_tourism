@@ -60,7 +60,7 @@ class _ListingContent extends StatelessWidget {
       padding: const EdgeInsets.all(24),
       children: [
         Text('My Business Listing', style: MsmeTheme.headingLarge()),
-        const Text(
+        Text(
             'This is the single authoritative business record used by Tourist Explore, Smart Map, favorites, reviews, and reservations.',
             style: TextStyle(color: MsmeTheme.textMuted)),
         const SizedBox(height: 18),
@@ -89,7 +89,7 @@ class _ListingContent extends StatelessWidget {
                         style: MsmeTheme.headingMedium()),
                     Text(
                         '${business['category'] ?? 'Uncategorized'} · ${business['address'] ?? 'Location not set'}',
-                        style: const TextStyle(color: MsmeTheme.textMuted)),
+                        style: TextStyle(color: MsmeTheme.textMuted)),
                     const SizedBox(height: 10),
                     Wrap(spacing: 8, runSpacing: 8, children: [
                       MsmeBadge(
@@ -117,11 +117,11 @@ class _ListingContent extends StatelessWidget {
                     const SizedBox(height: 12),
                     Text(
                         'Rating: ${business['rating'] ?? 0} · ${business['review_count'] ?? 0} reviews',
-                        style: const TextStyle(color: MsmeTheme.textMuted)),
+                        style: TextStyle(color: MsmeTheme.textMuted)),
                     if (updated != null)
                       Text(
                           'Last updated ${DateFormat.yMMMd().add_jm().format(updated.toLocal())}',
-                          style: const TextStyle(
+                          style: TextStyle(
                               color: MsmeTheme.textDisabled, fontSize: 12)),
                     if (!verified) ...[
                       const SizedBox(height: 12),
@@ -143,10 +143,7 @@ class _ListingContent extends StatelessWidget {
                         label: const Text('Edit'),
                       ),
                       OutlinedButton.icon(
-                        onPressed: verified && business['integer_id'] != null
-                            ? () => context
-                                .push('/explore/msme/${business['integer_id']}')
-                            : null,
+                        onPressed: () => context.push('/msme-portal/preview'),
                         icon: const Icon(Icons.person_search_rounded),
                         label: const Text('Preview as Tourist'),
                       ),

@@ -6,6 +6,7 @@ import '../../../core/responsive/responsive_layout.dart';
 import '../../../core/theme/admin_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/widgets/app_logo.dart';
 import '../../authentication/auth_provider.dart';
 import '../../notifications/presentation/notification_bell_button.dart';
 import '../providers/admin_providers.dart';
@@ -99,7 +100,7 @@ class AdminShell extends ConsumerWidget {
     // Sidebar View
     final sidebar = Container(
       width: 260,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AdminColors.sidebarBg,
         border:
             Border(right: BorderSide(color: AdminColors.cardBorder, width: 1)),
@@ -110,28 +111,13 @@ class AdminShell extends ConsumerWidget {
           Container(
             padding: const EdgeInsets.symmetric(
                 horizontal: AppSpacing.lg, vertical: AppSpacing.lg),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(
                   bottom: BorderSide(color: AdminColors.cardBorder, width: 1)),
             ),
             child: Row(
               children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: AdminColors.orange,
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: const [
-                      BoxShadow(
-                          color: AdminColors.orangeGlow,
-                          blurRadius: 12,
-                          offset: Offset(0, 2)),
-                    ],
-                  ),
-                  child: const Icon(Icons.admin_panel_settings_rounded,
-                      color: Colors.white, size: 22),
-                ),
+                const AppLogo(size: 36, radius: 10),
                 const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: Column(
@@ -188,7 +174,7 @@ class AdminShell extends ConsumerWidget {
           // Logout Section at Bottom
           Container(
             padding: const EdgeInsets.all(AppSpacing.md),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(
                   top: BorderSide(color: AdminColors.cardBorder, width: 1)),
             ),
@@ -202,15 +188,15 @@ class AdminShell extends ConsumerWidget {
                   context: context,
                   builder: (ctx) => AlertDialog(
                     backgroundColor: AdminColors.navy900,
-                    title: const Text('Confirm Logout',
+                    title: Text('Confirm Logout',
                         style: TextStyle(color: AdminColors.textPrimary)),
-                    content: const Text(
+                    content: Text(
                         'Are you sure you want to end your administrator session?',
                         style: TextStyle(color: AdminColors.textSecondary)),
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.pop(ctx, false),
-                        child: const Text('Cancel',
+                        child: Text('Cancel',
                             style: TextStyle(color: AdminColors.textSecondary)),
                       ),
                       ElevatedButton(
@@ -257,7 +243,7 @@ class AdminShell extends ConsumerWidget {
     final topBar = Container(
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AdminColors.topbarBg,
         border:
             Border(bottom: BorderSide(color: AdminColors.cardBorder, width: 1)),
@@ -267,7 +253,7 @@ class AdminShell extends ConsumerWidget {
           if (!isDesktop)
             Builder(
               builder: (ctx) => IconButton(
-                icon: const Icon(Icons.menu_rounded,
+                icon: Icon(Icons.menu_rounded,
                     color: AdminColors.textPrimary),
                 onPressed: () => Scaffold.of(ctx).openDrawer(),
               ),
@@ -338,7 +324,7 @@ class AdminShell extends ConsumerWidget {
                         auth.role.name == 'admin'
                             ? 'Administrator'
                             : auth.role.name,
-                        style: const TextStyle(
+                        style: TextStyle(
                             color: AdminColors.textSecondary, fontSize: 11)),
                   ],
                 ),

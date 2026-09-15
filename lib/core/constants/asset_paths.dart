@@ -7,9 +7,9 @@ abstract final class AssetPaths {
   static const String _data = 'assets/data';
 
   // ─── Brand / Logo ─────────────────────────────────────────────────────────
-  static const String logo = '$_images/logo.png';
-  static const String logoWhite = '$_images/logo_white.png';
-  static const String logoSmall = '$_images/logo_small.png';
+  static const String logo = '$_images/TourTubigon_logo.png';
+  static const String logoWhite = logo;
+  static const String logoSmall = logo;
   static const String splash = '$_images/splash.png';
 
   // ─── Onboarding ───────────────────────────────────────────────────────────

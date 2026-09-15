@@ -60,6 +60,20 @@ class SyncController extends Controller
                 if ((string) $existing->user_id !== (string) $request->user()->id) {
                     abort(403, 'A synchronized record cannot replace another user\'s data.');
                 }
+                if ($table === 'reviews') {
+                    DB::transaction(function () use ($clean): void {
+                        DB::table('reviews')->where('id', $clean['id'])->update([
+                            'rating' => $clean['rating'],
+                            'content' => $clean['content'],
+                            'updated_at' => now(),
+                        ]);
+                        $this->refreshReviewAggregate(
+                            $clean['reviewable_type'],
+                            $clean['reviewable_id'],
+                        );
+                    });
+                    $synced++;
+                }
                 // Sync creates are immutable after acceptance; protected updates use feature APIs.
                 $syncedIds[] = $clean['id'];
 
@@ -117,14 +131,17 @@ class SyncController extends Controller
                 'msme' => DB::table('msmes')->where('id', $data['reservable_id'])
                     ->where('is_verified', true)
                     ->where('verification_status', 'verified')
-                    ->where('operational_status', 'open')
-                    ->when(
-                        Schema::hasColumn('msmes', 'booking_enabled'),
-                        fn ($query) => $query->where('booking_enabled', true),
-                    )->first(),
+                    ->first(),
                 'tourism_listing' => DB::table('tourism_listings')->where('id', $data['reservable_id'])->where('is_active', true)->where('approval_status', 'approved')->first(),
             };
             abort_if($source === null, 422, 'The selected destination is not available for reservations.');
+            if ($data['reservable_type'] === 'msme') {
+                abort_unless(
+                    (bool) $source->booking_enabled && $source->operational_status === 'open',
+                    422,
+                    'Reservations are currently unavailable for this business.',
+                );
+            }
 
             $bookingMoment = Carbon::parse($data['reservation_date'].' '.($data['start_time'] ?? '00:00'));
             abort_if($bookingMoment->isPast(), 422, 'The selected booking time has already passed.');
@@ -495,5 +512,24 @@ class SyncController extends Controller
                     'data' => ['waste_report_id' => $record['id'], 'route' => '/lgu/waste-reports/'.$record['id']],
                 ]));
         }
+    }
+
+    private function refreshReviewAggregate(string $type, string $targetId): void
+    {
+        $stats = DB::table('reviews')
+            ->where('reviewable_type', $type)
+            ->where('reviewable_id', $targetId)
+            ->whereNull('deleted_at')
+            ->selectRaw('AVG(rating) average, COUNT(*) total')
+            ->first();
+        $targetTable = match ($type) {
+            'spot' => 'tourist_spots',
+            'msme' => 'msmes',
+            'tourism_listing' => 'tourism_listings',
+        };
+        DB::table($targetTable)->where('id', $targetId)->update([
+            $type === 'msme' ? 'rating' : 'average_rating' => round((float) ($stats->average ?? 0), 2),
+            'review_count' => (int) ($stats->total ?? 0),
+        ]);
     }
 }

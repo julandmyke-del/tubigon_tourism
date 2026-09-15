@@ -5,6 +5,7 @@ import '../../../core/routes/route_names.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_spacing.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/widgets/app_logo.dart';
 import '../../authentication/auth_provider.dart';
 import '../../notifications/presentation/notification_bell_button.dart';
 
@@ -145,17 +146,7 @@ class _LguShellState extends ConsumerState<LguShell> {
                   ),
             title: Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.xs + 2),
-                  decoration: BoxDecoration(
-                    color: _accentOrange.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(8),
-                    border:
-                        Border.all(color: _accentOrange.withValues(alpha: 0.4)),
-                  ),
-                  child: const Icon(Icons.account_balance_rounded,
-                      color: _accentOrange, size: 20),
-                ),
+                const AppLogo(size: 36, radius: 10),
                 const SizedBox(width: AppSpacing.sm),
                 Text(
                   'Tubigon LGU Portal',

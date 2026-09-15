@@ -197,7 +197,7 @@ class _AdminSettingsPageState extends ConsumerState<AdminSettingsPage> {
                         _buildInputField('Support Contact', _supportCtrl,
                             Icons.support_agent_rounded),
                         const SizedBox(height: AppSpacing.xl),
-                        const Divider(color: AdminColors.cardBorder),
+                        Divider(color: AdminColors.cardBorder),
                         const SizedBox(height: AppSpacing.md),
                         const Text('Feature Controls',
                             style: TextStyle(
@@ -239,7 +239,7 @@ class _AdminSettingsPageState extends ConsumerState<AdminSettingsPage> {
                           ],
                         ),
                         const SizedBox(height: AppSpacing.xl),
-                        const Divider(color: AdminColors.cardBorder),
+                        Divider(color: AdminColors.cardBorder),
                         const SizedBox(height: AppSpacing.md),
                         const Text('Maintenance / Notice',
                             style: TextStyle(
@@ -251,7 +251,7 @@ class _AdminSettingsPageState extends ConsumerState<AdminSettingsPage> {
                             _maintenanceCtrl, Icons.info_outline,
                             maxLines: 3),
                         const SizedBox(height: AppSpacing.xl),
-                        const Divider(color: AdminColors.cardBorder),
+                        Divider(color: AdminColors.cardBorder),
                         const SizedBox(height: AppSpacing.md),
                         const Text('Municipal Terms & Privacy Policy Text',
                             style: TextStyle(
@@ -285,7 +285,7 @@ class _AdminSettingsPageState extends ConsumerState<AdminSettingsPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label,
-            style: const TextStyle(
+            style: TextStyle(
                 color: AdminColors.textSecondary,
                 fontSize: 13,
                 fontWeight: FontWeight.w600)),
@@ -293,7 +293,7 @@ class _AdminSettingsPageState extends ConsumerState<AdminSettingsPage> {
         TextFormField(
           controller: controller,
           maxLines: maxLines,
-          style: const TextStyle(color: AdminColors.textPrimary, fontSize: 14),
+          style: TextStyle(color: AdminColors.textPrimary, fontSize: 14),
           decoration: InputDecoration(
             prefixIcon: Icon(icon, color: AdminColors.textSecondary, size: 18),
             filled: true,
@@ -302,10 +302,10 @@ class _AdminSettingsPageState extends ConsumerState<AdminSettingsPage> {
                 const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: AdminColors.cardBorder)),
+                borderSide: BorderSide(color: AdminColors.cardBorder)),
             enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
-                borderSide: const BorderSide(color: AdminColors.cardBorder)),
+                borderSide: BorderSide(color: AdminColors.cardBorder)),
             focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
                 borderSide: const BorderSide(color: AdminColors.borderActive)),
@@ -334,7 +334,7 @@ class _AdminSettingsPageState extends ConsumerState<AdminSettingsPage> {
       child: SwitchListTile(
         title: Text(label,
             style:
-                const TextStyle(color: AdminColors.textPrimary, fontSize: 13)),
+                TextStyle(color: AdminColors.textPrimary, fontSize: 13)),
         value: value,
         onChanged: _saving ? null : changed,
         activeThumbColor: AdminColors.orange,
