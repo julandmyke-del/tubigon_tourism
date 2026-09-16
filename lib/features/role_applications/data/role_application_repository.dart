@@ -48,13 +48,16 @@ class RoleApplicationRepository {
   Future<RoleApplication> lguAction(String id, String action,
           {String? notes,
           Map<String, bool>? checklist,
-          String? recommendedMsmeCategoryId}) async =>
+          String? recommendedMsmeCategoryId,
+          DateTime? expectedUpdatedAt}) async =>
       _item(await _client
           .post(ApiEndpoints.lguRoleApplicationAction(id, action), data: {
         if (notes != null) 'notes': notes,
         if (checklist != null) 'checklist': checklist,
         if (recommendedMsmeCategoryId != null)
           'recommended_msme_category_id': recommendedMsmeCategoryId,
+        if (expectedUpdatedAt != null)
+          'expected_updated_at': expectedUpdatedAt.toUtc().toIso8601String(),
       }));
 
   Future<List<RoleApplication>> adminList(
@@ -73,12 +76,16 @@ class RoleApplicationRepository {
       }));
 
   Future<RoleApplication> adminAction(String id, String action,
-          {String? notes, String? finalMsmeCategoryId}) async =>
+          {String? notes,
+          String? finalMsmeCategoryId,
+          DateTime? expectedUpdatedAt}) async =>
       _item(await _client
           .post(ApiEndpoints.adminAccessRequestAction(id, action), data: {
         if (notes != null) 'notes': notes,
         if (finalMsmeCategoryId != null)
           'final_msme_category_id': finalMsmeCategoryId,
+        if (expectedUpdatedAt != null)
+          'expected_updated_at': expectedUpdatedAt.toUtc().toIso8601String(),
       }));
 
   Map<String, dynamic> _map(dynamic response) =>

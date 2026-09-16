@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\Setting;
 use App\Models\SystemSetting;
+use App\Support\StaleRecordGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -22,7 +23,7 @@ class SettingController extends Controller
             ['notifications_enabled' => true, 'location_enabled' => true, 'offline_mode' => false, 'language' => 'en']
         );
 
-        return response()->json(['status' => 'success', 'data' => $settings]);
+        return response()->json(['status' => 'success', 'data' => $settings->fresh()]);
     }
 
     /**
@@ -69,6 +70,7 @@ class SettingController extends Controller
     public function updateSystemSettings(Request $request, string $id): JsonResponse
     {
         $settings = SystemSetting::findOrFail($id);
+        $expectedUpdatedAt = StaleRecordGuard::expectedUpdatedAt($request);
         $validated = $request->validate([
             'app_name' => 'sometimes|string|max:255',
             'municipality_name' => 'sometimes|string|max:255',
@@ -88,19 +90,21 @@ class SettingController extends Controller
             'privacy_policy' => 'nullable|string',
             'terms_of_service' => 'nullable|string',
         ]);
-        DB::transaction(function () use ($request, $settings, $validated): void {
-            $settings->update([...$validated, 'updated_by' => $request->user()->id]);
+        DB::transaction(function () use ($request, $settings, $validated, $expectedUpdatedAt): void {
+            $locked = SystemSetting::whereKey($settings->id)->lockForUpdate()->firstOrFail();
+            StaleRecordGuard::assertCurrent($locked, $expectedUpdatedAt);
+            $locked->update([...$validated, 'updated_by' => $request->user()->id]);
             ActivityLog::create([
                 'user_id' => $request->user()->id,
                 'action' => 'System Settings updated',
                 'details' => json_encode([
                     'target_type' => 'system_settings',
-                    'target_id' => $settings->id,
+                    'target_id' => $locked->id,
                     'changed_keys' => array_keys($validated),
                 ]),
             ]);
         });
 
-        return response()->json(['status' => 'success', 'data' => $settings]);
+        return response()->json(['status' => 'success', 'data' => $settings->fresh()]);
     }
 }

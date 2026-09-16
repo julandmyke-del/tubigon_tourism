@@ -28,10 +28,7 @@ class _EmergencyContactsPageState extends ConsumerState<EmergencyContactsPage> {
     final offline = !ref.watch(isOnlineProvider);
     final cachedAt = EmergencyRepository.cacheUpdatedAt;
     return Scaffold(
-      backgroundColor: const Color(0xFF080F1A),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F172A),
-        foregroundColor: Colors.white,
         leading: IconButton(
           tooltip: 'Back',
           onPressed: () => context.canPop()
@@ -39,86 +36,94 @@ class _EmergencyContactsPageState extends ConsumerState<EmergencyContactsPage> {
               : context.goNamed(RouteNames.home),
           icon: const Icon(Icons.arrow_back_rounded),
         ),
-        title: Text(context.tr('emergency_contacts')),
+        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(context.tr('emergency_contacts')),
+          Text('Municipality of Tubigon',
+              style: Theme.of(context).textTheme.labelSmall),
+        ]),
       ),
       body: contacts.when(
-        loading: () => const Center(
-            child: CircularProgressIndicator(color: Color(0xFFF87171))),
+        loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => _EmergencyState(
           message:
               'Emergency contacts are unavailable. Check your connection and retry.',
           onRetry: () => ref.invalidate(emergencyContactsListProvider),
         ),
-        data: (items) => items.isEmpty
-            ? _EmergencyState(
-                message: 'No active emergency contacts are configured.',
-                onRetry: () => ref.invalidate(emergencyContactsListProvider),
-              )
-            : Builder(builder: (context) {
-                final categories = items
-                    .map((item) => item.category)
-                    .toSet()
-                    .toList(growable: false)
-                  ..sort();
-                final selected =
-                    _category == 'All' || categories.contains(_category)
-                        ? _category
-                        : 'All';
-                final visible = selected == 'All'
-                    ? items
-                    : items
-                        .where((item) => item.category == selected)
-                        .toList(growable: false);
-                return Column(
-                  children: [
-                    if (offline)
-                      Container(
-                        width: double.infinity,
-                        color: const Color(0xFFF59E0B),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
-                        child: Text(
-                          cachedAt == null
-                              ? '${context.tr('showing_saved_information')} — Offline copy'
-                              : 'Offline copy — last updated ${DateFormat.yMMMd().add_jm().format(cachedAt.toLocal())}',
-                          style: const TextStyle(
-                              color: Colors.black, fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                      child: Row(
-                        children: ['All', ...categories]
-                            .map((category) => Padding(
-                                  padding: const EdgeInsets.only(right: 8),
-                                  child: ChoiceChip(
-                                    label: Text(category),
-                                    selected: selected == category,
-                                    onSelected: (_) =>
-                                        setState(() => _category = category),
-                                  ),
-                                ))
-                            .toList(growable: false),
-                      ),
+        data: (items) {
+          final activeItems = items
+              .where((contact) => contact.isActive)
+              .toList(growable: false);
+          if (activeItems.isEmpty) {
+            return _EmergencyState(
+              message: 'No active emergency contacts are configured.',
+              onRetry: () => ref.invalidate(emergencyContactsListProvider),
+            );
+          }
+          return Builder(builder: (context) {
+            final categories = activeItems
+                .map((item) => item.category)
+                .toSet()
+                .toList(growable: false)
+              ..sort();
+            final selected =
+                _category == 'All' || categories.contains(_category)
+                    ? _category
+                    : 'All';
+            final visible = selected == 'All'
+                ? activeItems
+                : activeItems
+                    .where((item) => item.category == selected)
+                    .toList(growable: false);
+            return Column(
+              children: [
+                if (offline)
+                  Container(
+                    width: double.infinity,
+                    color: const Color(0xFFF59E0B),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Text(
+                      cachedAt == null
+                          ? '${context.tr('showing_saved_information')} — Offline copy'
+                          : 'Offline copy — last updated ${DateFormat.yMMMd().add_jm().format(cachedAt.toLocal())}',
+                      style: const TextStyle(
+                          color: Colors.black, fontWeight: FontWeight.w600),
                     ),
-                    Expanded(
-                      child: RefreshIndicator(
-                        onRefresh: () =>
-                            ref.refresh(emergencyContactsListProvider.future),
-                        child: ListView.separated(
-                          padding: const EdgeInsets.all(20),
-                          itemCount: visible.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 12),
-                          itemBuilder: (context, index) =>
-                              _EmergencyCard(contact: visible[index]),
-                        ),
-                      ),
+                  ),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  child: Row(
+                    children: ['All', ...categories]
+                        .map((category) => Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: ChoiceChip(
+                                label: Text(category),
+                                selected: selected == category,
+                                onSelected: (_) =>
+                                    setState(() => _category = category),
+                              ),
+                            ))
+                        .toList(growable: false),
+                  ),
+                ),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: () =>
+                        ref.refresh(emergencyContactsListProvider.future),
+                    child: ListView.separated(
+                      padding: const EdgeInsets.all(20),
+                      itemCount: visible.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) =>
+                          _EmergencyCard(contact: visible[index]),
                     ),
-                  ],
-                );
-              }),
+                  ),
+                ),
+              ],
+            );
+          });
+        },
       ),
     );
   }
@@ -154,7 +159,13 @@ class _EmergencyCard extends ConsumerWidget {
     );
     if (confirmed != true || !context.mounted) return;
     final clean = number.replaceAll(RegExp(r'[^\d+]'), '');
-    if (!await launchUrl(Uri(scheme: 'tel', path: clean)) && context.mounted) {
+    var launched = false;
+    try {
+      launched = await launchUrl(Uri(scheme: 'tel', path: clean));
+    } catch (_) {
+      launched = false;
+    }
+    if (!launched && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No phone application is available.')),
       );
@@ -180,6 +191,7 @@ class _EmergencyCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
     final updated = contact.updatedAt == null
         ? null
         : DateFormat.yMMMd().format(contact.updatedAt!.toLocal());
@@ -195,7 +207,7 @@ class _EmergencyCard extends ConsumerWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFF0F172A),
+          color: theme.colorScheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: contact.color.withValues(alpha: .35)),
         ),
@@ -215,8 +227,14 @@ class _EmergencyCard extends ConsumerWidget {
                             fontSize: 12,
                             fontWeight: FontWeight.w700)),
                     Text(contact.name,
-                        style: const TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.w700)),
+                        style: TextStyle(
+                            color: theme.colorScheme.onSurface,
+                            fontWeight: FontWeight.w700)),
+                    if (contact.contactLabel?.isNotEmpty == true)
+                      Text(contact.contactLabel!,
+                          style: TextStyle(
+                              color: contact.color,
+                              fontWeight: FontWeight.w700)),
                   ]),
             ),
             _VerificationBadge(
@@ -232,37 +250,44 @@ class _EmergencyCard extends ConsumerWidget {
                   fontWeight: FontWeight.w800)),
           if (contact.alternativePhone?.isNotEmpty == true)
             Text('Alternative: ${contact.alternativePhone}',
-                style: const TextStyle(color: Color(0xFFCBD5E1))),
+                style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
           if (contact.address?.isNotEmpty == true)
             Text(contact.address!,
-                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+                style: TextStyle(
+                    color: theme.colorScheme.onSurfaceVariant, fontSize: 12)),
           if (contact.barangay?.isNotEmpty == true)
             Text('Barangay ${contact.barangay}',
-                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+                style: TextStyle(
+                    color: theme.colorScheme.onSurfaceVariant, fontSize: 12)),
           if (contact.description?.isNotEmpty == true) ...[
             const SizedBox(height: 6),
             Text(contact.description!,
-                style: const TextStyle(color: Color(0xFFCBD5E1))),
+                style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
           ],
           if (contact.operatingHours?.isNotEmpty == true)
             Text('Hours: ${contact.operatingHours}',
-                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+                style: TextStyle(
+                    color: theme.colorScheme.onSurfaceVariant, fontSize: 12)),
           if (contact.availabilityNotes?.isNotEmpty == true)
             Text('Availability: ${contact.availabilityNotes}',
-                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+                style: TextStyle(
+                    color: theme.colorScheme.onSurfaceVariant, fontSize: 12)),
           if (contact.sourceName?.isNotEmpty == true)
             Text('Verified source: ${contact.sourceName}',
-                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11)),
+                style: TextStyle(
+                    color: theme.colorScheme.onSurfaceVariant, fontSize: 11)),
           if (contact.emergencyInstructions?.isNotEmpty == true) ...[
             const SizedBox(height: 8),
             Text(contact.emergencyInstructions!,
-                style: const TextStyle(
-                    color: Color(0xFFFDE68A), fontWeight: FontWeight.w600)),
+                style: TextStyle(
+                    color: theme.colorScheme.tertiary,
+                    fontWeight: FontWeight.w600)),
           ],
           if (updated != null) ...[
             const SizedBox(height: 6),
             Text('Last updated: $updated',
-                style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11)),
+                style: TextStyle(
+                    color: theme.colorScheme.onSurfaceVariant, fontSize: 11)),
           ],
           const SizedBox(height: 12),
           Wrap(spacing: 8, runSpacing: 8, children: [
@@ -303,22 +328,24 @@ class _VerificationBadge extends StatelessWidget {
   final bool verified;
 
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color:
-              (verified ? Colors.green : Colors.amber).withValues(alpha: .15),
-          borderRadius: BorderRadius.circular(20),
+  Widget build(BuildContext context) {
+    final base = verified ? Colors.green.shade700 : Colors.amber.shade800;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: base.withValues(alpha: .15),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        verified ? 'Verified' : 'Needs Verification',
+        style: TextStyle(
+          color: base,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
         ),
-        child: Text(
-          verified ? 'Verified' : 'Needs Verification',
-          style: TextStyle(
-            color: verified ? Colors.greenAccent : Colors.amberAccent,
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      );
+      ),
+    );
+  }
 }
 
 class _EmergencyState extends StatelessWidget {
@@ -336,7 +363,8 @@ class _EmergencyState extends StatelessWidget {
             const SizedBox(height: 12),
             Text(message,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Color(0xFFCBD5E1))),
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
             const SizedBox(height: 14),
             ElevatedButton.icon(
                 onPressed: onRetry,

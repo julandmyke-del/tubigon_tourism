@@ -71,6 +71,19 @@ final class ServerException extends AppException {
   });
 }
 
+/// Thrown when an optimistic-concurrency check detects a stale screen.
+final class ConflictException extends AppException {
+  const ConflictException({
+    super.message =
+        'This information was updated in another session. Please refresh and try again.',
+    super.code = 'stale_record',
+    super.statusCode = 409,
+    super.responseData,
+  });
+
+  bool get isStaleRecord => code == 'stale_record';
+}
+
 /// Thrown when there is a problem reading/writing local SQLite cache.
 final class CacheException extends AppException {
   const CacheException({

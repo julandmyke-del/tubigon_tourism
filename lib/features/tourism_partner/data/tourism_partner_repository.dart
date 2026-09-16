@@ -7,6 +7,13 @@ class TourismPartnerRepository {
   TourismPartnerRepository({required this.apiClient});
 
   final ApiClient apiClient;
+  final Map<String, String> _versions = <String, String>{};
+
+  void _rememberVersion(Map<String, dynamic> row) {
+    final id = row['id']?.toString();
+    final version = row['updated_at']?.toString();
+    if (id != null && version != null) _versions[id] = version;
+  }
 
   Future<Map<String, dynamic>> getDashboardStats() =>
       _map(ApiEndpoints.partnerDashboardStats);
@@ -37,7 +44,11 @@ class TourismPartnerRepository {
   ) =>
       _write(apiClient.patch(
         ApiEndpoints.partnerTouristSpot(spotId),
-        data: data,
+        data: {
+          ...data,
+          if (_versions[spotId] case final version?)
+            'expected_updated_at': version,
+        },
       ));
 
   Future<void> updateBookingAvailability(
@@ -53,6 +64,8 @@ class TourismPartnerRepository {
           if (!enabled) 'reason_code': reasonCode,
           if (!enabled && reason?.trim().isNotEmpty == true)
             'reason': reason!.trim(),
+          if (_versions[spotId] case final version?)
+            'expected_updated_at': version,
         },
       ));
 
@@ -65,7 +78,11 @@ class TourismPartnerRepository {
   ) =>
       _write(apiClient.put(
         ApiEndpoints.partnerListing(listingId),
-        data: listingData,
+        data: {
+          ...listingData,
+          if (_versions[listingId] case final version?)
+            'expected_updated_at': version,
+        },
       ));
 
   Future<void> submitListing(String listingId) =>
@@ -97,6 +114,9 @@ class TourismPartnerRepository {
     _assertSuccess(response);
     final rows = response.data['data'];
     if (rows is! List) throw const FormatException('Invalid API response.');
+    for (final row in rows.whereType<Map>()) {
+      _rememberVersion(Map<String, dynamic>.from(row));
+    }
     final meta = response.data['meta'];
     return {
       'items': rows
@@ -129,6 +149,8 @@ class TourismPartnerRepository {
         data: {
           'status_name': statusName.toLowerCase(),
           if (reason?.trim().isNotEmpty == true) 'reason': reason!.trim(),
+          if (_versions[reservationId] case final version?)
+            'expected_updated_at': version,
         },
       ));
 
@@ -234,7 +256,9 @@ class TourismPartnerRepository {
     _assertSuccess(response);
     final data = response.data['data'];
     if (data is! Map) throw const FormatException('Invalid API response.');
-    return Map<String, dynamic>.from(data);
+    final row = Map<String, dynamic>.from(data);
+    _rememberVersion(row);
+    return row;
   }
 
   Future<Map<String, dynamic>?> _nullableMap(String endpoint) async {
@@ -243,7 +267,9 @@ class TourismPartnerRepository {
     final data = response.data['data'];
     if (data == null) return null;
     if (data is! Map) throw const FormatException('Invalid API response.');
-    return Map<String, dynamic>.from(data);
+    final row = Map<String, dynamic>.from(data);
+    _rememberVersion(row);
+    return row;
   }
 
   Future<List<Map<String, dynamic>>> _list(
@@ -255,10 +281,14 @@ class TourismPartnerRepository {
     _assertSuccess(response);
     final data = response.data['data'];
     if (data is! List) throw const FormatException('Invalid API response.');
-    return data
+    final rows = data
         .whereType<Map>()
         .map((row) => Map<String, dynamic>.from(row))
         .toList(growable: false);
+    for (final row in rows) {
+      _rememberVersion(row);
+    }
+    return rows;
   }
 
   Future<void> _write(Future<Response<dynamic>> operation) async {

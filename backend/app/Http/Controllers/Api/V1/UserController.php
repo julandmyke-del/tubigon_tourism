@@ -15,6 +15,7 @@ use App\Models\TouristSpotPartnerAssignment;
 use App\Models\User;
 use App\Models\UserPreference;
 use App\Services\EmailNotificationService;
+use App\Support\StaleRecordGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -277,6 +278,7 @@ class UserController extends Controller
         $request->validate([
             'role_id' => ['required', Rule::exists('roles', 'id')->where(fn ($q) => $q->whereIn('name', self::MANAGEABLE_ROLES))],
         ]);
+        $expectedUpdatedAt = StaleRecordGuard::expectedUpdatedAt($request);
 
         $target = User::with('role')->findOrFail($id);
         $newRole = Role::findOrFail($request->role_id);
@@ -284,13 +286,15 @@ class UserController extends Controller
         $this->guardLastAdmin($target, $newRole);
         $this->guardOwnership($target, $newRole);
 
-        DB::transaction(function () use ($request, $target, $newRole): void {
-            $target->update(['role_id' => $newRole->id]);
-            Profile::where('id', $target->id)->update(['role_id' => $newRole->id]);
+        DB::transaction(function () use ($request, $target, $newRole, $expectedUpdatedAt): void {
+            $locked = User::whereKey($target->id)->lockForUpdate()->firstOrFail();
+            StaleRecordGuard::assertCurrent($locked, $expectedUpdatedAt, ['role_id' => $locked->role_id]);
+            $locked->update(['role_id' => $newRole->id]);
+            Profile::where('id', $locked->id)->update(['role_id' => $newRole->id]);
             ActivityLog::create([
                 'user_id' => $request->user()->id,
                 'action' => 'Role updated',
-                'details' => "Updated role of user ID {$target->id} to {$newRole->name}",
+                'details' => "Updated role of user ID {$locked->id} to {$newRole->name}",
             ]);
         });
 
@@ -302,10 +306,13 @@ class UserController extends Controller
         $validated = $request->validate([
             'tourist_spot_id' => 'nullable|uuid|exists:tourist_spots,id',
         ]);
+        $expectedUpdatedAt = StaleRecordGuard::expectedUpdatedAt($request);
         $target = User::with('role')->findOrFail($id);
         abort_unless($target->role?->name === 'tourism_partner', 422, 'Only Tourism Partner accounts can receive a destination assignment.');
 
-        [$assignment, $changed] = DB::transaction(function () use ($request, $target, $validated): array {
+        [$assignment, $changed] = DB::transaction(function () use ($request, $target, $validated, $expectedUpdatedAt): array {
+            $lockedTarget = User::whereKey($target->id)->lockForUpdate()->firstOrFail();
+            StaleRecordGuard::assertCurrent($lockedTarget, $expectedUpdatedAt);
             $current = TouristSpotPartnerAssignment::where('partner_profile_id', $target->id)
                 ->lockForUpdate()->first();
             $spotId = $validated['tourist_spot_id'] ?? null;
@@ -325,6 +332,7 @@ class UserController extends Controller
                     ['tourist_spot_id' => $spotId, 'is_primary' => true, 'assigned_by' => $request->user()->id, 'assigned_at' => now()],
                 )
                 : null;
+            $lockedTarget->touch();
             ActivityLog::create([
                 'user_id' => $request->user()->id,
                 'action' => $spotId ? 'Tourism Partner destination assigned' : 'Tourism Partner destination unassigned',
@@ -375,16 +383,19 @@ class UserController extends Controller
     public function updateVerification(Request $request, string $id): JsonResponse
     {
         $request->validate(['is_verified' => 'required|boolean']);
+        $expectedUpdatedAt = StaleRecordGuard::expectedUpdatedAt($request);
 
         $target = User::findOrFail($id);
         $action = $request->is_verified ? 'User verified' : 'User unverified';
-        DB::transaction(function () use ($request, $target, $action): void {
-            $target->update(['is_verified' => $request->boolean('is_verified')]);
-            Profile::where('id', $target->id)->update(['is_verified' => $request->boolean('is_verified')]);
+        DB::transaction(function () use ($request, $target, $action, $expectedUpdatedAt): void {
+            $locked = User::whereKey($target->id)->lockForUpdate()->firstOrFail();
+            StaleRecordGuard::assertCurrent($locked, $expectedUpdatedAt, ['is_verified' => (bool) $locked->is_verified]);
+            $locked->update(['is_verified' => $request->boolean('is_verified')]);
+            Profile::where('id', $locked->id)->update(['is_verified' => $request->boolean('is_verified')]);
             ActivityLog::create([
                 'user_id' => $request->user()->id,
                 'action' => $action,
-                'details' => "Updated verification state of user ID {$target->id}",
+                'details' => "Updated verification state of user ID {$locked->id}",
             ]);
         });
 
@@ -479,6 +490,7 @@ class UserController extends Controller
     public function updateStatus(Request $request, string $id): JsonResponse
     {
         $validated = $request->validate(['active' => 'required|boolean']);
+        $expectedUpdatedAt = StaleRecordGuard::expectedUpdatedAt($request);
         $target = User::withTrashed()->with('role')->findOrFail($id);
         if ((string) $request->user()->id === $id && ! $validated['active']) {
             throw ValidationException::withMessages(['active' => ['You cannot disable your own Admin account.']]);
@@ -487,7 +499,9 @@ class UserController extends Controller
             $this->guardLastAdmin($target, null);
         }
 
-        DB::transaction(function () use ($request, $target, $validated): void {
+        DB::transaction(function () use ($request, $target, $validated, $expectedUpdatedAt): void {
+            $target = User::withTrashed()->whereKey($target->id)->lockForUpdate()->firstOrFail();
+            StaleRecordGuard::assertCurrent($target, $expectedUpdatedAt, ['active' => ! $target->trashed()]);
             if ($validated['active']) {
                 $target->restore();
                 Profile::withTrashed()->where('id', $target->id)->restore();
@@ -553,6 +567,7 @@ class UserController extends Controller
             'registration_method' => $user->auth_provider ?: 'email',
             'status' => $user->trashed() ? 'Disabled' : 'Active',
             'created_at' => $user->created_at?->toIso8601String(),
+            'updated_at' => $user->updated_at?->toIso8601String(),
             'avatar_url' => $user->avatar_url,
             'phone' => $user->phone ?? $user->profile?->phone,
             'address' => $user->profile?->address,

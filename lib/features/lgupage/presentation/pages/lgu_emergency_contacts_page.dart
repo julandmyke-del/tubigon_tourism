@@ -20,7 +20,6 @@ class LguEmergencyContactsPage extends ConsumerStatefulWidget {
 
 class _LguEmergencyContactsPageState
     extends ConsumerState<LguEmergencyContactsPage> {
-  static const _navyDark = Color(0xFF0B132B);
   static const _orange = Color(0xFFF97316);
 
   List<EmergencyContact> _contacts = const [];
@@ -140,7 +139,7 @@ class _LguEmergencyContactsPageState
       ..sort();
     final filtered = _contacts.where((contact) {
       final matchesQuery =
-          '${contact.name} ${contact.phone} ${contact.address} ${contact.category}'
+          '${contact.name} ${contact.contactLabel} ${contact.phone} ${contact.address} ${contact.category}'
               .toLowerCase()
               .contains(_query);
       final matchesCategory =
@@ -150,7 +149,6 @@ class _LguEmergencyContactsPageState
       return matchesQuery && matchesCategory && matchesVerification;
     }).toList();
     return Scaffold(
-      backgroundColor: _navyDark,
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: _orange,
         foregroundColor: Colors.white,
@@ -163,18 +161,19 @@ class _LguEmergencyContactsPageState
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.md),
           children: [
-            const Text(
+            Text(
               'Emergency Contacts Management',
               style: TextStyle(
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 24,
                 fontWeight: FontWeight.w800,
               ),
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'LGU-managed directory. Changes are published through Laravel/MySQL to the Tourist page.',
-              style: TextStyle(color: AppColors.grey400),
+              style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: AppSpacing.lg),
             Wrap(spacing: 10, runSpacing: 10, children: [
@@ -312,6 +311,7 @@ class _ContactCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final updated = contact.updatedAt == null
         ? 'Not recorded'
         : DateFormat.yMMMd().add_jm().format(contact.updatedAt!.toLocal());
@@ -322,7 +322,7 @@ class _ContactCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1C2541),
+        color: theme.colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: contact.isActive
@@ -342,10 +342,17 @@ class _ContactCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(contact.name,
-                    style: const TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.w800)),
+                    style: TextStyle(
+                        color: theme.colorScheme.onSurface,
+                        fontWeight: FontWeight.w800)),
+                if (contact.contactLabel?.isNotEmpty == true)
+                  Text(contact.contactLabel!,
+                      style: const TextStyle(
+                          color: Color(0xFFF97316),
+                          fontWeight: FontWeight.w700)),
                 Text('${contact.category} • ${contact.phone}',
-                    style: const TextStyle(color: AppColors.grey400)),
+                    style:
+                        TextStyle(color: theme.colorScheme.onSurfaceVariant)),
               ],
             ),
           ),
@@ -356,10 +363,10 @@ class _ContactCard extends StatelessWidget {
         ]),
         if (contact.alternativePhone?.isNotEmpty == true)
           Text('Alternative: ${contact.alternativePhone}',
-              style: const TextStyle(color: AppColors.grey300)),
+              style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
         if (contact.address?.isNotEmpty == true)
           Text(contact.address!,
-              style: const TextStyle(color: AppColors.grey400)),
+              style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
         const SizedBox(height: 10),
         Wrap(spacing: 8, runSpacing: 8, children: [
           _Badge(
@@ -378,19 +385,28 @@ class _ContactCard extends StatelessWidget {
                 : 'Non-emergency',
             color: const Color(0xFFF97316),
           ),
+          _Badge(
+            label: 'Order ${contact.displayOrder}',
+            color: AppColors.secondary,
+          ),
         ]),
         const SizedBox(height: 10),
         Text('Last Updated: $updated',
-            style: const TextStyle(color: AppColors.grey400, fontSize: 12)),
+            style: TextStyle(
+                color: theme.colorScheme.onSurfaceVariant, fontSize: 12)),
         Text('Updated By: ${contact.updatedByName ?? 'System'}',
-            style: const TextStyle(color: AppColors.grey400, fontSize: 12)),
+            style: TextStyle(
+                color: theme.colorScheme.onSurfaceVariant, fontSize: 12)),
         Text('Last Verified: $verified',
-            style: const TextStyle(color: AppColors.grey400, fontSize: 12)),
+            style: TextStyle(
+                color: theme.colorScheme.onSurfaceVariant, fontSize: 12)),
         Text('Verified By: ${contact.verifiedByName ?? 'Not verified'}',
-            style: const TextStyle(color: AppColors.grey400, fontSize: 12)),
+            style: TextStyle(
+                color: theme.colorScheme.onSurfaceVariant, fontSize: 12)),
         if (contact.sourceName?.isNotEmpty == true)
           Text('Source: ${contact.sourceName}',
-              style: const TextStyle(color: AppColors.grey400, fontSize: 12)),
+              style: TextStyle(
+                  color: theme.colorScheme.onSurfaceVariant, fontSize: 12)),
         const SizedBox(height: 12),
         Wrap(spacing: 8, runSpacing: 8, children: [
           _ActionButton(
@@ -460,6 +476,9 @@ class _ContactFormDialogState extends State<_ContactFormDialog> {
     final c = widget.contact;
     _fields = {
       'name': TextEditingController(text: c?.name),
+      'contact_label': TextEditingController(text: c?.contactLabel),
+      'display_order':
+          TextEditingController(text: (c?.displayOrder ?? 100).toString()),
       'phone': TextEditingController(text: c?.phone),
       'alternative_phone': TextEditingController(text: c?.alternativePhone),
       'address': TextEditingController(text: c?.address),
@@ -501,6 +520,9 @@ class _ContactFormDialogState extends State<_ContactFormDialog> {
 
     Navigator.pop(context, <String, dynamic>{
       'name': _fields['name']!.text.trim(),
+      'contact_label': optional('contact_label'),
+      'display_order':
+          int.tryParse(_fields['display_order']!.text.trim()) ?? 100,
       'category': _category,
       'phone': _fields['phone']!.text.trim(),
       'alternative_phone': optional('alternative_phone'),
@@ -538,9 +560,8 @@ class _ContactFormDialogState extends State<_ContactFormDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        backgroundColor: const Color(0xFF1C2541),
         title: Text(widget.contact == null ? 'Add Contact' : 'Edit Contact',
-            style: const TextStyle(color: Colors.white)),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface)),
         content: SizedBox(
           width: 560,
           child: Form(
@@ -548,10 +569,11 @@ class _ContactFormDialogState extends State<_ContactFormDialog> {
             child: SingleChildScrollView(
               child: Column(children: [
                 _field('name', 'Contact / agency name', required: true),
+                _field('contact_label', 'Contact label (for example Smart)'),
+                _field('display_order', 'Display order',
+                    required: true, numeric: true),
                 DropdownButtonFormField<String>(
                   initialValue: _category,
-                  dropdownColor: const Color(0xFF1C2541),
-                  style: const TextStyle(color: Colors.white),
                   decoration: const InputDecoration(labelText: 'Category'),
                   items: _categories
                       .map((value) => DropdownMenuItem(
@@ -595,8 +617,6 @@ class _ContactFormDialogState extends State<_ContactFormDialog> {
                 _field('source_url', 'Source URL'),
                 DropdownButtonFormField<String>(
                   initialValue: _classification,
-                  dropdownColor: const Color(0xFF1C2541),
-                  style: const TextStyle(color: Colors.white),
                   decoration:
                       const InputDecoration(labelText: 'Classification'),
                   items: const [
@@ -610,21 +630,17 @@ class _ContactFormDialogState extends State<_ContactFormDialog> {
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Active',
-                      style: TextStyle(color: Colors.white)),
-                  subtitle: const Text(
-                      'Only active contacts appear to tourists.',
-                      style: TextStyle(color: AppColors.grey400)),
+                  title: const Text('Active'),
+                  subtitle:
+                      const Text('Only active contacts appear to tourists.'),
                   value: _isActive,
                   onChanged: (value) => setState(() => _isActive = value),
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Public directory',
-                      style: TextStyle(color: Colors.white)),
+                  title: const Text('Public directory'),
                   subtitle: const Text(
-                      'Publication still requires active and verified status.',
-                      style: TextStyle(color: AppColors.grey400)),
+                      'Publication still requires active and verified status.'),
                   value: _isPublic,
                   onChanged: (value) => setState(() => _isPublic = value),
                 ),
@@ -657,7 +673,6 @@ class _ContactFormDialogState extends State<_ContactFormDialog> {
               ? const TextInputType.numberWithOptions(decimal: true)
               : null,
           maxLines: lines,
-          style: const TextStyle(color: Colors.white),
           decoration: InputDecoration(labelText: label),
         ),
       );
@@ -705,7 +720,7 @@ class _StateCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(28),
         decoration: BoxDecoration(
-          color: const Color(0xFF1C2541),
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(children: [
@@ -714,7 +729,8 @@ class _StateCard extends StatelessWidget {
           const SizedBox(height: 10),
           Text(message,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: AppColors.grey300)),
+              style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant)),
           TextButton(onPressed: onRetry, child: const Text('Retry')),
         ]),
       );

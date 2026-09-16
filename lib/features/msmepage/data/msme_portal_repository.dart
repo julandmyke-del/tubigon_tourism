@@ -17,6 +17,13 @@ class MsmePortalRepository {
   MsmePortalRepository({required this.apiClient});
 
   final ApiClient apiClient;
+  final Map<String, String> _versions = <String, String>{};
+
+  void _rememberVersion(Map<String, dynamic> row) {
+    final id = row['id']?.toString();
+    final version = row['updated_at']?.toString();
+    if (id != null && version != null) _versions[id] = version;
+  }
 
   Future<Map<String, dynamic>> getDashboardStats() =>
       _map(ApiEndpoints.msmeDashboardStats);
@@ -53,6 +60,9 @@ class MsmePortalRepository {
           'status': statusFilter.toLowerCase(),
       },
     );
+    for (final row in rows) {
+      _rememberVersion(row);
+    }
     return rows.map((row) {
       final status = row['status'];
       final user = row['user'];
@@ -74,6 +84,7 @@ class MsmePortalRepository {
       data: {
         'status_name': status.toLowerCase(),
         if (reason != null) 'reason': reason,
+        if (_versions[id] case final version?) 'expected_updated_at': version,
       },
     ));
   }
@@ -137,6 +148,7 @@ class MsmePortalRepository {
         : data is Map
             ? Map<String, dynamic>.from(data)
             : null;
+    if (business != null) _rememberVersion(business);
     return CurrentMsmeState(
       business: business,
       profileRequired:
@@ -145,9 +157,16 @@ class MsmePortalRepository {
   }
 
   Future<void> updateProfile(Map<String, dynamic> profileData) async {
+    final id = profileData['id']?.toString() ??
+        (_versions.length == 1 ? _versions.keys.single : null);
+    final version = profileData['updated_at']?.toString() ??
+        (id == null ? null : _versions[id]);
     await _success(apiClient.put(
       ApiEndpoints.msmePortalProfile,
-      data: profileData,
+      data: {
+        ...profileData,
+        if (version != null) 'expected_updated_at': version,
+      },
     ));
   }
 

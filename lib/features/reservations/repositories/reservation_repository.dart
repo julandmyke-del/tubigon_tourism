@@ -249,10 +249,16 @@ class ReservationRepository {
   }
 
   /// Cancels a booking locally first.
-  Future<void> cancelReservation(String uuid) async {
+  Future<void> cancelReservation(String uuid,
+      {String? expectedUpdatedAt}) async {
     if (!DatabaseHelper.isSupported) {
-      final response =
-          await apiClient.put(ApiEndpoints.cancelReservation(uuid));
+      final response = await apiClient.put(
+        ApiEndpoints.cancelReservation(uuid),
+        data: {
+          if (expectedUpdatedAt != null)
+            'expected_updated_at': expectedUpdatedAt
+        },
+      );
       if (response.statusCode != 200 || response.data['status'] != 'success') {
         throw Exception('Unable to cancel the reservation. Please try again.');
       }
@@ -272,8 +278,12 @@ class ReservationRepository {
 
     if (SyncService.instance.isOnline) {
       try {
-        final response =
-            await apiClient.put(ApiEndpoints.cancelReservation(uuid));
+        final expected =
+            expectedUpdatedAt ?? localRow['updated_at']?.toString();
+        final response = await apiClient.put(
+          ApiEndpoints.cancelReservation(uuid),
+          data: {if (expected != null) 'expected_updated_at': expected},
+        );
         if (response.statusCode != 200 ||
             response.data['status'] != 'success') {
           throw Exception('The server did not accept this cancellation.');

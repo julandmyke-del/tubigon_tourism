@@ -16,6 +16,7 @@ use App\Models\TouristSpot;
 use App\Services\EmailNotificationService;
 use App\Services\TouristSpotBookingService;
 use App\Support\ReservationStatusTransitions;
+use App\Support\StaleRecordGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -218,14 +219,18 @@ class ReservationController extends Controller
     public function updateStatus(Request $request, string $id, EmailNotificationService $emailDelivery): JsonResponse
     {
         $request->validate(['status_id' => 'required|exists:reservation_status,id']);
+        $expectedUpdatedAt = StaleRecordGuard::expectedUpdatedAt($request);
 
         $status = ReservationStatus::findOrFail($request->status_id);
         $request->user()->loadMissing('role');
-        $reservation = DB::transaction(function () use ($request, $id, $status): Reservation {
+        $reservation = DB::transaction(function () use ($request, $id, $status, $expectedUpdatedAt): Reservation {
             $reservation = Reservation::with('status')->lockForUpdate()->findOrFail($id);
             if ($request->user()->role?->name === 'lgu_staff' && $reservation->reservable_type !== 'spot') {
                 abort(403, 'LGU staff may only manage municipal tourist-spot reservations.');
             }
+            StaleRecordGuard::assertCurrent($reservation, $expectedUpdatedAt, [
+                'status' => $reservation->status?->name,
+            ], 'This reservation was updated in another session. Refresh and try again.');
             if (! ReservationStatusTransitions::allows($reservation->status?->name, $status->name)) {
                 abort(response()->json([
                     'status' => 'error',
@@ -269,9 +274,13 @@ class ReservationController extends Controller
 
     public function cancel(Request $request, string $id, EmailNotificationService $emailDelivery): JsonResponse
     {
-        $reservation = DB::transaction(function () use ($request, $id): Reservation {
+        $expectedUpdatedAt = StaleRecordGuard::expectedUpdatedAt($request);
+        $reservation = DB::transaction(function () use ($request, $id, $expectedUpdatedAt): Reservation {
             $reservation = Reservation::with('status')->lockForUpdate()->findOrFail($id);
             $this->authorizeReservationAccess($request, $reservation);
+            StaleRecordGuard::assertCurrent($reservation, $expectedUpdatedAt, [
+                'status' => $reservation->status?->name,
+            ], 'This reservation was updated in another session. Refresh and try again.');
             abort_if(
                 in_array($reservation->status?->name, ['completed', 'cancelled', 'rejected'], true),
                 422,

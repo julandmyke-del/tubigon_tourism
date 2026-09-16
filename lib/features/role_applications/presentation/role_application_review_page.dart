@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
 
 import '../../../core/constants/app_constants.dart';
+import '../../../core/exceptions/app_exception.dart';
 import '../../admin/providers/admin_providers.dart';
 import '../../lgupage/providers/lgu_providers.dart';
 import '../models/role_application.dart';
@@ -511,6 +512,7 @@ class _ReviewDialogState extends ConsumerState<_ReviewDialog> {
       if (widget.admin) {
         await repository.adminAction(widget.application.id, action,
             notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+            expectedUpdatedAt: widget.application.updatedAt,
             finalMsmeCategoryId:
                 action == 'approve' && widget.application.type == 'msme_owner'
                     ? _reviewCategoryId
@@ -518,6 +520,7 @@ class _ReviewDialogState extends ConsumerState<_ReviewDialog> {
       } else {
         await repository.lguAction(widget.application.id, action,
             notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+            expectedUpdatedAt: widget.application.updatedAt,
             checklist: action == 'start-review' ? null : _checklist,
             recommendedMsmeCategoryId:
                 action == 'recommend' && widget.application.type == 'msme_owner'
@@ -534,6 +537,14 @@ class _ReviewDialogState extends ConsumerState<_ReviewDialog> {
       Navigator.pop(context);
     } catch (error) {
       if (!mounted) return;
+      if (error is ConflictException) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'This request was updated by another session. The latest record has been loaded.'),
+        ));
+        return;
+      }
       setState(() => _busy = false);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(error.toString().replaceFirst('Exception: ', ''))));

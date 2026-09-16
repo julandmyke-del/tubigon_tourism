@@ -16,6 +16,7 @@ use App\Models\SystemSetting;
 use App\Models\User;
 use App\Services\EmailNotificationService;
 use App\Support\ReservationStatusTransitions;
+use App\Support\StaleRecordGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -214,6 +215,7 @@ class MsmeController extends Controller
             return $this->profileRequiredMutation();
         }
         $validated = $this->validateBusiness($request, true);
+        $expectedUpdatedAt = StaleRecordGuard::expectedUpdatedAt($request);
         $this->validateTubigonCoordinates($validated, $msme->latitude, $msme->longitude);
         $before = $msme->toArray();
         $sensitive = ['name', 'category', 'phone', 'address', 'latitude', 'longitude'];
@@ -230,11 +232,13 @@ class MsmeController extends Controller
             $validated['reviewed_by'] = null;
         }
 
-        DB::transaction(function () use ($request, $msme, $validated, $before, $sensitiveChanged): void {
-            $msme->update($validated);
-            $this->log($request->user()->id, 'MSME business updated', $msme->id, $before, $msme->fresh()->toArray());
+        DB::transaction(function () use ($request, $msme, $validated, $before, $sensitiveChanged, $expectedUpdatedAt): void {
+            $locked = Msme::whereKey($msme->id)->lockForUpdate()->firstOrFail();
+            StaleRecordGuard::assertCurrent($locked, $expectedUpdatedAt);
+            $locked->update($validated);
+            $this->log($request->user()->id, 'MSME business updated', $locked->id, $before, $locked->fresh()->toArray());
             if ($sensitiveChanged) {
-                $this->notifyReviewers($msme->fresh());
+                $this->notifyReviewers($locked->fresh());
             }
         });
 
@@ -354,12 +358,16 @@ class MsmeController extends Controller
             'status_name' => 'required|in:confirmed,rejected,completed,cancelled',
             'reason' => 'nullable|required_if:status_name,rejected,cancelled|string|max:1000',
         ]);
+        $expectedUpdatedAt = StaleRecordGuard::expectedUpdatedAt($request);
         $msme = $this->currentBusiness($request);
         if (! $msme) {
             return $this->profileRequiredMutation();
         }
-        $reservation = DB::transaction(function () use ($request, $id, $validated, $msme): Reservation {
+        $reservation = DB::transaction(function () use ($request, $id, $validated, $msme, $expectedUpdatedAt): Reservation {
             $reservation = $this->ownedReservation($msme, $id, false, true);
+            StaleRecordGuard::assertCurrent($reservation, $expectedUpdatedAt, [
+                'status' => $reservation->status?->name,
+            ], 'This reservation was updated in another session. Refresh and try again.');
             if (! ReservationStatusTransitions::allows($reservation->status?->name, $validated['status_name'])) {
                 abort(response()->json([
                     'status' => 'error',
@@ -491,27 +499,32 @@ class MsmeController extends Controller
             'verification_status' => ['nullable', Rule::in(['pending', 'verified', 'needs_changes', 'rejected', 'suspended', 'archived'])],
             'notes' => 'nullable|string|max:2000',
         ]);
+        $expectedUpdatedAt = StaleRecordGuard::expectedUpdatedAt($request);
         $targetStatus = $validated['verification_status'] ?? ($request->boolean('is_verified') ? 'verified' : 'needs_changes');
         abort_if(! array_key_exists('verification_status', $validated) && ! $request->has('is_verified'), 422, 'A verification decision is required.');
         abort_if(in_array($targetStatus, ['needs_changes', 'rejected', 'suspended'], true) && blank($validated['notes'] ?? null), 422, 'Review notes are required for this decision.');
         $msme = Msme::findOrFail($id);
         $before = $msme->toArray();
 
-        DB::transaction(function () use ($request, $msme, $before, $targetStatus, $validated): void {
-            $msme->update([
+        DB::transaction(function () use ($request, $msme, $before, $targetStatus, $validated, $expectedUpdatedAt): void {
+            $locked = Msme::whereKey($msme->id)->lockForUpdate()->firstOrFail();
+            StaleRecordGuard::assertCurrent($locked, $expectedUpdatedAt, [
+                'verification_status' => $locked->verification_status,
+            ], 'This MSME verification was updated in another session. Refresh and try again.');
+            $locked->update([
                 'is_verified' => $targetStatus === 'verified',
                 'verification_status' => $targetStatus,
                 'verification_notes' => $validated['notes'] ?? null,
                 'reviewed_at' => now(),
                 'reviewed_by' => $request->user()->id,
             ]);
-            $this->log($request->user()->id, 'MSME review '.$targetStatus, $msme->id, $before, $msme->fresh()->toArray());
+            $this->log($request->user()->id, 'MSME review '.$targetStatus, $locked->id, $before, $locked->fresh()->toArray());
             Notification::create([
-                'user_id' => $msme->profile_id,
+                'user_id' => $locked->profile_id,
                 'type' => 'msme_'.$targetStatus,
                 'title' => $targetStatus === 'verified' ? 'Business Verified' : 'Business Review Updated',
                 'body' => $targetStatus === 'verified' ? 'Your business has been verified and is now public.' : ($validated['notes'] ?? 'Your business review status has changed.'),
-                'data' => ['msme_id' => $msme->id, 'status' => $targetStatus, 'route' => '/msme-portal/profile'],
+                'data' => ['msme_id' => $locked->id, 'status' => $targetStatus, 'route' => '/msme-portal/profile'],
             ]);
         });
 

@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\TouristSpot;
 use App\Services\TouristSpotBookingService;
+use App\Support\StaleRecordGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -177,6 +178,7 @@ class TouristSpotController extends Controller
     public function update(Request $request, string $id): JsonResponse
     {
         $spot = TouristSpot::findOrFail($id);
+        $expectedUpdatedAt = StaleRecordGuard::expectedUpdatedAt($request);
 
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
@@ -209,12 +211,14 @@ class TouristSpotController extends Controller
             (bool) $spot->is_preapproved,
         );
 
-        DB::transaction(function () use ($request, $spot, $validated): void {
-            $spot->update($validated);
+        DB::transaction(function () use ($request, $spot, $validated, $expectedUpdatedAt): void {
+            $locked = TouristSpot::whereKey($spot->id)->lockForUpdate()->firstOrFail();
+            StaleRecordGuard::assertCurrent($locked, $expectedUpdatedAt);
+            $locked->update($validated);
             ActivityLog::create([
                 'user_id' => $request->user()->id,
                 'action' => 'Tourist Spot updated',
-                'details' => "Updated tourist spot: {$spot->name}",
+                'details' => "Updated tourist spot: {$locked->name}",
             ]);
         });
 
@@ -224,6 +228,7 @@ class TouristSpotController extends Controller
     public function updateBooking(Request $request, string $id): JsonResponse
     {
         $spot = TouristSpot::findOrFail($id);
+        $expectedUpdatedAt = StaleRecordGuard::expectedUpdatedAt($request);
         $validated = $request->validate([
             'is_bookable' => 'required|boolean',
             'booking_mode' => ['required', Rule::in(['no_reservation', 'date_only', 'date_time_slot'])],
@@ -272,12 +277,14 @@ class TouristSpotController extends Controller
             $validated['booking_time_slots'] = null;
         }
 
-        DB::transaction(function () use ($request, $spot, $validated): void {
-            $spot->update($validated);
+        DB::transaction(function () use ($request, $spot, $validated, $expectedUpdatedAt): void {
+            $locked = TouristSpot::whereKey($spot->id)->lockForUpdate()->firstOrFail();
+            StaleRecordGuard::assertCurrent($locked, $expectedUpdatedAt);
+            $locked->update($validated);
             ActivityLog::create([
                 'user_id' => $request->user()->id,
                 'action' => 'Tourist Spot booking configuration updated',
-                'details' => "Updated booking configuration for: {$spot->name}",
+                'details' => "Updated booking configuration for: {$locked->name}",
             ]);
         });
 

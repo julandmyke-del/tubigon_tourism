@@ -1,11 +1,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/api_endpoints.dart';
 import '../../../core/network/api_client.dart';
+import '../../authentication/auth_provider.dart';
 import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
 
 final lguRepositoryProvider = Provider<LguRepository>((ref) {
+  ref.watch(
+      authProvider.select((auth) => (auth.isLoggedIn, auth.userId, auth.role)));
   final apiClient = ref.watch(apiClientProvider);
   return LguRepository(apiClient);
 });
@@ -13,8 +16,15 @@ final lguRepositoryProvider = Provider<LguRepository>((ref) {
 /// Official repository for the LGU Staff Module
 class LguRepository {
   final ApiClient _apiClient;
+  final Map<String, String> _versions = <String, String>{};
 
   LguRepository(this._apiClient);
+
+  void _rememberVersion(Map<String, dynamic> row) {
+    final id = row['id']?.toString();
+    final version = row['updated_at']?.toString();
+    if (id != null && version != null) _versions[id] = version;
+  }
 
   /// Fetch executive municipal dashboard counts & statistics
   Future<Map<String, dynamic>> getDashboardStats() async {
@@ -41,7 +51,11 @@ class LguRepository {
   Future<bool> updateSpotStatus(String spotId, String status) async {
     final response = await _apiClient.put(
       ApiEndpoints.lguUpdateSpotStatus(spotId),
-      data: {'status': status},
+      data: {
+        'status': status,
+        if (_versions[spotId] case final version?)
+          'expected_updated_at': version,
+      },
     );
     _map(response);
     return true;
@@ -69,6 +83,8 @@ class LguRepository {
         'verification_status':
             status ?? (isVerified ? 'verified' : 'needs_changes'),
         if (notes != null) 'notes': notes,
+        if (_versions[msmeId] case final version?)
+          'expected_updated_at': version,
       },
     );
     _map(response);
@@ -98,6 +114,8 @@ class LguRepository {
         if (assignedTo != null) 'assigned_to': assignedTo,
         if (priority != null) 'priority': priority,
         if (severity != null) 'severity': severity,
+        if (_versions[reportId] case final version?)
+          'expected_updated_at': version,
       },
     );
     _map(response);
@@ -300,6 +318,7 @@ class LguRepository {
     _map(await _apiClient.put(ApiEndpoints.lguReviewTourismListing(id), data: {
       'approval_status': status,
       if (notes != null) 'notes': notes,
+      if (_versions[id] case final version?) 'expected_updated_at': version,
     }));
   }
 
@@ -316,7 +335,7 @@ class LguRepository {
   Future<List<Map<String, dynamic>>> getEmergencyContacts() async {
     final response = await _apiClient.get(ApiEndpoints.lguEmergencyContacts);
     if (response.statusCode == 200 && response.data['status'] == 'success') {
-      return List<Map<String, dynamic>>.from(response.data['data'] as List);
+      return _list(response);
     }
     throw Exception('Unable to load emergency contacts.');
   }
@@ -331,32 +350,45 @@ class LguRepository {
 
   Future<bool> updateEmergencyContact(
       String id, Map<String, dynamic> data) async {
-    _map(
-        await _apiClient.put(ApiEndpoints.lguEmergencyContact(id), data: data));
+    _map(await _apiClient.put(ApiEndpoints.lguEmergencyContact(id), data: {
+      ...data,
+      if (_versions[id] case final version?) 'expected_updated_at': version,
+    }));
     return true;
   }
 
   Future<bool> setEmergencyContactActive(String id, bool isActive) async {
-    _map(await _apiClient.patch(ApiEndpoints.lguEmergencyContactStatus(id),
-        data: {'is_active': isActive}));
+    _map(await _apiClient
+        .patch(ApiEndpoints.lguEmergencyContactStatus(id), data: {
+      'is_active': isActive,
+      if (_versions[id] case final version?) 'expected_updated_at': version,
+    }));
     return true;
   }
 
   Future<bool> verifyEmergencyContact(String id) async {
-    _map(await _apiClient.patch(ApiEndpoints.lguVerifyEmergencyContact(id)));
+    _map(await _apiClient
+        .patch(ApiEndpoints.lguVerifyEmergencyContact(id), data: {
+      if (_versions[id] case final version?) 'expected_updated_at': version,
+    }));
     return true;
   }
 
   Future<bool> setEmergencyContactVerification(String id, String status) async {
     _map(await _apiClient.patch(
       ApiEndpoints.lguEmergencyContactVerification(id),
-      data: {'verification_status': status},
+      data: {
+        'verification_status': status,
+        if (_versions[id] case final version?) 'expected_updated_at': version,
+      },
     ));
     return true;
   }
 
   Future<bool> archiveEmergencyContact(String id) async {
-    _map(await _apiClient.delete(ApiEndpoints.lguEmergencyContact(id)));
+    _map(await _apiClient.delete(ApiEndpoints.lguEmergencyContact(id), data: {
+      if (_versions[id] case final version?) 'expected_updated_at': version,
+    }));
     return true;
   }
 
@@ -373,7 +405,9 @@ class LguRepository {
     final data = response.data['data'];
     if (data == null) return <String, dynamic>{};
     if (data is! Map) throw const FormatException('Invalid API response.');
-    return Map<String, dynamic>.from(data);
+    final row = Map<String, dynamic>.from(data);
+    _rememberVersion(row);
+    return row;
   }
 
   List<Map<String, dynamic>> _list(dynamic response) {
@@ -386,9 +420,13 @@ class LguRepository {
     }
     final data = response.data['data'];
     if (data is! List) throw const FormatException('Invalid API response.');
-    return data
+    final rows = data
         .whereType<Map>()
         .map((row) => Map<String, dynamic>.from(row))
         .toList(growable: false);
+    for (final row in rows) {
+      _rememberVersion(row);
+    }
+    return rows;
   }
 }

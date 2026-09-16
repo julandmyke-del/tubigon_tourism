@@ -24,6 +24,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
+use App\Support\StaleRecordGuard;
 
 class LguController extends Controller
 {
@@ -129,6 +130,7 @@ class LguController extends Controller
     public function updateSpotStatus(Request $request, string $id): JsonResponse
     {
         $validated = $request->validate(['status' => ['required', Rule::in(['active', 'maintenance', 'inactive', 'archived'])]]);
+        $expectedUpdatedAt = StaleRecordGuard::expectedUpdatedAt($request);
         $status = $validated['status'] === 'archived' ? 'inactive' : $validated['status'];
         $spot = TouristSpot::with('partnerAssignments')->findOrFail($id);
         $before = $spot->toArray();
@@ -137,16 +139,20 @@ class LguController extends Controller
             $changes['operational_status'] = $status;
         }
 
-        DB::transaction(function () use ($request, $spot, $before, $changes, $status): void {
-            $spot->update($changes);
-            $this->log($request->user()->id, 'Tourist spot '.$status, 'tourist_spot', $spot->id, $before, $spot->fresh()->toArray());
-            foreach ($spot->partnerAssignments as $assignment) {
+        DB::transaction(function () use ($request, $spot, $before, $changes, $status, $expectedUpdatedAt): void {
+            $locked = TouristSpot::with('partnerAssignments')->whereKey($spot->id)->lockForUpdate()->firstOrFail();
+            StaleRecordGuard::assertCurrent($locked, $expectedUpdatedAt, [
+                'status' => $locked->operational_status ?? ($locked->is_active ? 'active' : 'inactive'),
+            ]);
+            $locked->update($changes);
+            $this->log($request->user()->id, 'Tourist spot '.$status, 'tourist_spot', $locked->id, $before, $locked->fresh()->toArray());
+            foreach ($locked->partnerAssignments as $assignment) {
                 PartnerNotification::create([
                     'user_id' => $assignment->partner_profile_id,
                     'type' => 'tourist_spot_status_changed',
                     'title' => 'Destination Status Updated',
-                    'body' => "{$spot->name} is now marked {$status} by LGU staff.",
-                    'data' => ['tourist_spot_id' => $spot->id, 'status' => $status, 'route' => '/tourism-partner'],
+                    'body' => "{$locked->name} is now marked {$status} by LGU staff.",
+                    'data' => ['tourist_spot_id' => $locked->id, 'status' => $status, 'route' => '/tourism-partner'],
                 ]);
             }
         });
@@ -174,6 +180,7 @@ class LguController extends Controller
             'resolution_evidence' => 'nullable|array|max:10',
             'resolution_evidence.*' => 'string|max:2048',
         ]);
+        $expectedUpdatedAt = StaleRecordGuard::expectedUpdatedAt($request);
         $report = WasteReport::findOrFail($id);
         $current = $report->status === 'pending' ? 'submitted' : $report->status;
         $allowed = [
@@ -220,32 +227,38 @@ class LguController extends Controller
             if (Schema::hasColumn('waste_reports', 'resolved_by')) $changes['resolved_by'] = null;
         }
 
-        DB::transaction(function () use ($request, $report, $before, $changes, $validated, $publicNote, $internalNote): void {
-            $report->update($changes);
+        DB::transaction(function () use ($request, $report, $before, $changes, $validated, $publicNote, $internalNote, $expectedUpdatedAt, $allowed): void {
+            $locked = WasteReport::whereKey($report->id)->lockForUpdate()->firstOrFail();
+            StaleRecordGuard::assertCurrent($locked, $expectedUpdatedAt, [
+                'status' => $locked->status,
+            ]);
+            $lockedCurrent = $locked->status === 'pending' ? 'submitted' : $locked->status;
+            abort_unless($validated['status'] === $lockedCurrent || in_array($validated['status'], $allowed[$lockedCurrent] ?? [], true), 422, "A {$lockedCurrent} report cannot transition to {$validated['status']}.");
+            $locked->update($changes);
             if (Schema::hasTable('waste_report_history')) {
                 WasteReportHistory::create([
-                    'waste_report_id' => $report->id,
+                    'waste_report_id' => $locked->id,
                     'changed_by' => $request->user()->id,
                     'from_status' => $before['status'] ?? null,
                     'to_status' => $validated['status'],
                     'notes' => $publicNote,
                     'metadata' => [
-                        'priority' => $report->priority,
-                        'severity' => $report->severity ?? null,
-                        'assigned_personnel' => $report->assigned_personnel,
+                        'priority' => $locked->priority,
+                        'severity' => $locked->severity ?? null,
+                        'assigned_personnel' => $locked->assigned_personnel,
                         'internal_note' => $internalNote,
                     ],
                     ...(Schema::hasColumn('waste_report_history', 'is_public') ? ['is_public' => true] : []),
                 ]);
             }
-            $this->log($request->user()->id, 'Waste report '.$validated['status'], 'waste_report', $report->id, $before, $report->fresh()->toArray());
-            if ($report->user_id) {
+            $this->log($request->user()->id, 'Waste report '.$validated['status'], 'waste_report', $locked->id, $before, $locked->fresh()->toArray());
+            if ($locked->user_id) {
                 Notification::create([
-                    'user_id' => $report->user_id,
+                    'user_id' => $locked->user_id,
                     'type' => 'waste_report_'.$validated['status'],
                     'title' => 'Waste Report '.str_replace('_', ' ', ucfirst($validated['status'])),
                     'body' => 'Your waste report is now '.str_replace('_', ' ', $validated['status']).'.',
-                    'data' => ['waste_report_id' => $report->id, 'status' => $validated['status'], 'route' => '/waste-reports'],
+                    'data' => ['waste_report_id' => $locked->id, 'status' => $validated['status'], 'route' => '/waste-reports'],
                 ]);
             }
         });

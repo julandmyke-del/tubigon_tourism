@@ -475,6 +475,56 @@ class AuthFlowTest extends TestCase
         }
     }
 
+    public function test_same_tourist_can_hold_two_independent_tokens_and_logout_one_only(): void
+    {
+        $user = $this->makeUser();
+        $credentials = ['email' => $user->email, 'password' => 'safe-password'];
+
+        $tokenA = $this->postJson('/api/v1/auth/login', $credentials)->assertOk()->json('data.token');
+        $tokenB = $this->postJson('/api/v1/auth/login', $credentials)->assertOk()->json('data.token');
+
+        $this->assertNotSame($tokenA, $tokenB);
+        $this->assertDatabaseCount('personal_access_tokens', 2);
+        $this->withToken($tokenA)->getJson('/api/v1/auth/me')->assertOk();
+        Auth::forgetGuards();
+        $this->withToken($tokenB)->getJson('/api/v1/auth/me')->assertOk();
+        Auth::forgetGuards();
+
+        $this->withToken($tokenA)->postJson('/api/v1/auth/logout')->assertOk();
+        Auth::forgetGuards();
+        $this->withToken($tokenA)->getJson('/api/v1/auth/me')->assertUnauthorized();
+        Auth::forgetGuards();
+        $this->withToken($tokenB)->getJson('/api/v1/auth/me')->assertOk();
+    }
+
+    public function test_same_msme_owner_can_hold_two_independent_tokens(): void
+    {
+        $role = Role::create(['name' => 'msme_owner']);
+        $user = $this->makeUser(['email' => 'owner@gmail.com', 'role_id' => $role->id]);
+        $credentials = ['email' => $user->email, 'password' => 'safe-password'];
+
+        $tokenA = $this->postJson('/api/v1/auth/login', $credentials)->assertOk()->json('data.token');
+        $tokenB = $this->postJson('/api/v1/auth/login', $credentials)->assertOk()->json('data.token');
+
+        $this->assertNotSame($tokenA, $tokenB);
+        $this->assertDatabaseCount('personal_access_tokens', 2);
+    }
+
+    public function test_logout_other_sessions_keeps_current_token_only(): void
+    {
+        $user = $this->makeUser();
+        $credentials = ['email' => $user->email, 'password' => 'safe-password'];
+        $tokenA = $this->postJson('/api/v1/auth/login', $credentials)->assertOk()->json('data.token');
+        $tokenB = $this->postJson('/api/v1/auth/login', $credentials)->assertOk()->json('data.token');
+
+        $this->withToken($tokenB)->postJson('/api/v1/auth/logout-other-sessions')->assertOk();
+        Auth::forgetGuards();
+        $this->withToken($tokenA)->getJson('/api/v1/auth/me')->assertUnauthorized();
+        Auth::forgetGuards();
+        $this->withToken($tokenB)->getJson('/api/v1/auth/me')->assertOk();
+        $this->assertDatabaseCount('personal_access_tokens', 1);
+    }
+
     public function test_google_auth_rejects_invalid_identity_token(): void
     {
         $this->mock(GoogleIdTokenVerifier::class, function (MockInterface $mock) {

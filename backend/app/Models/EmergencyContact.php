@@ -12,6 +12,8 @@ class EmergencyContact extends Model
 
     protected $fillable = [
         'name',
+        'contact_label',
+        'display_order',
         'category',
         'phone',
         'alternative_phone',
@@ -33,6 +35,7 @@ class EmergencyContact extends Model
         'verified_by',
         'verified_at',
         'last_verified_at',
+        'created_by',
         'updated_by',
         'archived_by',
         'latitude',
@@ -45,6 +48,7 @@ class EmergencyContact extends Model
         'is_active' => 'boolean',
         'is_public' => 'boolean',
         'is_verified' => 'boolean',
+        'display_order' => 'integer',
         'verified_at' => 'datetime',
         'last_verified_at' => 'datetime',
     ];

@@ -17,6 +17,7 @@ sealed class Failure {
         ValidationFailure(message: e.message, errors: e.errors),
       ServerException() =>
         ServerFailure(message: e.message, statusCode: e.statusCode),
+      ConflictException() => ConflictFailure(message: e.message, code: e.code),
       CacheException() => CacheFailure(message: e.message),
       SyncException() => SyncFailure(message: e.message),
       NotFoundException() => NotFoundFailure(message: e.message),
@@ -54,6 +55,13 @@ final class ServerFailure extends Failure {
 
 final class CacheFailure extends Failure {
   const CacheFailure({super.message = 'Local data error.'});
+}
+
+final class ConflictFailure extends Failure {
+  const ConflictFailure({
+    super.message = 'This record was updated in another session.',
+    super.code = 'stale_record',
+  });
 }
 
 final class SyncFailure extends Failure {

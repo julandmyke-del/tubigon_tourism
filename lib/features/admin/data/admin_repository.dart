@@ -9,6 +9,17 @@ class AdminRepository {
   AdminRepository({required this.apiClient});
 
   final ApiClient apiClient;
+  final Map<String, String> _versions = <String, String>{};
+
+  List<Map<String, dynamic>> _rememberVersions(
+      List<Map<String, dynamic>> rows) {
+    for (final row in rows) {
+      final id = row['id']?.toString();
+      final version = row['updated_at']?.toString();
+      if (id != null && version != null) _versions[id] = version;
+    }
+    return rows;
+  }
 
   // ─── Dashboard Stats & Recent Activities ───────────────────────────
 
@@ -59,10 +70,10 @@ class AdminRepository {
               ? payload['data'] as List
               : null;
       if (rows != null) {
-        return rows
+        return _rememberVersions(rows
             .whereType<Map>()
             .map((row) => Map<String, dynamic>.from(row))
-            .toList(growable: false);
+            .toList(growable: false));
       }
     }
     throw FormatException('The $resource response has an invalid format.');
@@ -90,7 +101,11 @@ class AdminRepository {
     try {
       await apiClient.put(
         ApiEndpoints.adminUpdateUserRole(userId),
-        data: {'role_id': roleId},
+        data: {
+          'role_id': roleId,
+          if (_versions[userId] case final version?)
+            'expected_updated_at': version,
+        },
       );
       return true;
     } catch (e) {
@@ -104,7 +119,11 @@ class AdminRepository {
   ) async {
     final response = await apiClient.put(
       ApiEndpoints.adminUpdatePartnerAssignment(userId),
-      data: {'tourist_spot_id': touristSpotId},
+      data: {
+        'tourist_spot_id': touristSpotId,
+        if (_versions[userId] case final version?)
+          'expected_updated_at': version,
+      },
     );
     if (response.statusCode != 200 || response.data['status'] != 'success') {
       throw Exception('Unable to update the Partner assignment.');
@@ -115,7 +134,11 @@ class AdminRepository {
     try {
       await apiClient.put(
         ApiEndpoints.adminUpdateUserVerification(userId),
-        data: {'is_verified': isVerified},
+        data: {
+          'is_verified': isVerified,
+          if (_versions[userId] case final version?)
+            'expected_updated_at': version,
+        },
       );
       return true;
     } catch (e) {
@@ -126,7 +149,11 @@ class AdminRepository {
   Future<void> updateUserStatus(String userId, bool active) async {
     await apiClient.put(
       ApiEndpoints.adminUpdateUserStatus(userId),
-      data: {'active': active},
+      data: {
+        'active': active,
+        if (_versions[userId] case final version?)
+          'expected_updated_at': version,
+      },
     );
   }
 
@@ -149,7 +176,8 @@ class AdminRepository {
     try {
       final response = await apiClient.get(ApiEndpoints.adminMsmes);
       if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return List<Map<String, dynamic>>.from(response.data['data']);
+        return _rememberVersions(
+            List<Map<String, dynamic>>.from(response.data['data']));
       }
       throw Exception('Failed to fetch MSMEs');
     } catch (e) {
@@ -166,7 +194,11 @@ class AdminRepository {
               isVerified == 'verified');
       await apiClient.put(
         ApiEndpoints.adminUpdateMsmeVerification(msmeId),
-        data: {'is_verified': verified},
+        data: {
+          'is_verified': verified,
+          if (_versions[msmeId] case final version?)
+            'expected_updated_at': version,
+        },
       );
       return true;
     } catch (e) {
@@ -204,7 +236,10 @@ class AdminRepository {
       {String? id}) async {
     try {
       if (id != null) {
-        await apiClient.put(ApiEndpoints.adminUpdateSpot(id), data: spotData);
+        await apiClient.put(ApiEndpoints.adminUpdateSpot(id), data: {
+          ...spotData,
+          if (_versions[id] case final version?) 'expected_updated_at': version,
+        });
       } else {
         await apiClient.post(ApiEndpoints.adminCreateSpot, data: spotData);
       }
@@ -226,7 +261,10 @@ class AdminRepository {
       String id, Map<String, dynamic> configuration) async {
     final response = await apiClient.put(
       ApiEndpoints.adminUpdateSpotBooking(id),
-      data: configuration,
+      data: {
+        ...configuration,
+        if (_versions[id] case final version?) 'expected_updated_at': version,
+      },
     );
     if (response.statusCode != 200 || response.data['status'] != 'success') {
       throw Exception('Failed to update tourist spot booking configuration.');
@@ -296,6 +334,28 @@ class AdminRepository {
       await apiClient.delete(ApiEndpoints.adminFerrySchedule(id));
     } catch (e) {
       throw Exception('Failed to delete ferry schedule: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getFerryOperators() async {
+    final response = await apiClient.get(ApiEndpoints.adminFerryOperators);
+    return _decodeCollection(response, 'ferry operators');
+  }
+
+  Future<void> saveFerryOperator(Map<String, dynamic> data,
+      {String? id}) async {
+    if (id == null) {
+      await apiClient.post(ApiEndpoints.adminFerryOperators, data: data);
+    } else {
+      await apiClient.put(ApiEndpoints.adminFerryOperator(id), data: data);
+    }
+  }
+
+  Future<void> saveFerryVessel(Map<String, dynamic> data, {String? id}) async {
+    if (id == null) {
+      await apiClient.post(ApiEndpoints.adminFerryVessels, data: data);
+    } else {
+      await apiClient.put(ApiEndpoints.adminFerryVessel(id), data: data);
     }
   }
 
@@ -369,7 +429,8 @@ class AdminRepository {
     try {
       final response = await apiClient.get(ApiEndpoints.reservations);
       if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return List<Map<String, dynamic>>.from(response.data['data']);
+        return _rememberVersions(
+            List<Map<String, dynamic>>.from(response.data['data']));
       }
       throw Exception('Failed to fetch all reservations');
     } catch (e) {
@@ -403,7 +464,11 @@ class AdminRepository {
     try {
       await apiClient.put(
         ApiEndpoints.adminUpdateReservationStatus(reservationId),
-        data: {'status_id': statusId},
+        data: {
+          'status_id': statusId,
+          if (_versions[reservationId] case final version?)
+            'expected_updated_at': version,
+        },
       );
     } catch (e) {
       throw Exception('Failed to update reservation status: $e');
@@ -416,7 +481,8 @@ class AdminRepository {
     try {
       final response = await apiClient.get(ApiEndpoints.adminReviews);
       if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return List<Map<String, dynamic>>.from(response.data['data']);
+        return _rememberVersions(
+            List<Map<String, dynamic>>.from(response.data['data']));
       }
       throw Exception('Failed to fetch reviews');
     } catch (e) {
@@ -436,6 +502,8 @@ class AdminRepository {
           'reason_code': reasonCode,
           if (reasonDetail?.trim().isNotEmpty == true)
             'reason_detail': reasonDetail!.trim(),
+          if (_versions[reviewId] case final version?)
+            'expected_updated_at': version,
         },
       );
       return true;
@@ -450,7 +518,8 @@ class AdminRepository {
     try {
       final response = await apiClient.get(ApiEndpoints.wasteReports);
       if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return List<Map<String, dynamic>>.from(response.data['data']);
+        return _rememberVersions(
+            List<Map<String, dynamic>>.from(response.data['data']));
       }
       throw Exception('Failed to fetch waste reports');
     } catch (e) {
@@ -462,7 +531,11 @@ class AdminRepository {
     try {
       await apiClient.put(
         ApiEndpoints.adminUpdateWasteReportStatus(reportId),
-        data: {'status': status},
+        data: {
+          'status': status,
+          if (_versions[reportId] case final version?)
+            'expected_updated_at': version,
+        },
       );
       return true;
     } catch (e) {
@@ -531,7 +604,9 @@ class AdminRepository {
     try {
       final response = await apiClient.get(ApiEndpoints.systemSettings);
       if (response.statusCode == 200 && response.data['status'] == 'success') {
-        return Map<String, dynamic>.from(response.data['data']);
+        final row = Map<String, dynamic>.from(response.data['data']);
+        _rememberVersions([row]);
+        return row;
       }
       throw Exception('Invalid system settings response.');
     } catch (e) {
@@ -542,8 +617,11 @@ class AdminRepository {
   Future<bool> updateSystemSettings(
       Map<String, dynamic> data, String settingsId) async {
     try {
-      await apiClient.put(ApiEndpoints.adminSystemSettings(settingsId),
-          data: data);
+      await apiClient.put(ApiEndpoints.adminSystemSettings(settingsId), data: {
+        ...data,
+        if (_versions[settingsId] case final version?)
+          'expected_updated_at': version,
+      });
       return true;
     } catch (e) {
       throw Exception('Failed to update system settings: $e');

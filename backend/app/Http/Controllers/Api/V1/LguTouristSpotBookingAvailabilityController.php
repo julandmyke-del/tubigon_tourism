@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Actions\UpdateTouristSpotBookingAvailabilityAction;
 use App\Http\Controllers\Controller;
 use App\Models\TouristSpot;
+use App\Support\StaleRecordGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -28,6 +29,7 @@ class LguTouristSpotBookingAvailabilityController extends Controller
             ],
             'reason' => 'nullable|string|max:2000',
         ]);
+        $expectedUpdatedAt = StaleRecordGuard::expectedUpdatedAt($request);
 
         return response()->json([
             'status' => 'success',
@@ -37,6 +39,7 @@ class LguTouristSpotBookingAvailabilityController extends Controller
                 (bool) $validated['booking_enabled'],
                 $validated['reason_code'] ?? null,
                 $validated['reason'] ?? null,
+                $expectedUpdatedAt,
             ),
         ]);
     }

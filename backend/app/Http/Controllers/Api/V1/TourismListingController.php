@@ -16,6 +16,7 @@ use App\Models\TouristSpotPartnerAssignment;
 use App\Models\User;
 use App\Models\ActivityLog;
 use App\Support\ReservationStatusTransitions;
+use App\Support\StaleRecordGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -231,6 +232,7 @@ class TourismListingController extends Controller
             'available_days.*' => 'in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
             'booking_cutoff_hours' => 'nullable|integer|min:0|max:720',
         ]);
+        $expectedUpdatedAt = StaleRecordGuard::expectedUpdatedAt($request);
         $this->validateTubigonCoordinates(
             $validated,
             $listing->latitude !== null ? (float) $listing->latitude : null,
@@ -249,8 +251,14 @@ class TourismListingController extends Controller
             $validated['reviewed_by'] = null;
             $validated['published_at'] = null;
         }
-        $listing->update($validated);
-        $this->log($request->user()->id, 'Partner listing updated', $listing->id, $before, $listing->fresh()->toArray());
+        DB::transaction(function () use ($request, $listing, $validated, $before, $expectedUpdatedAt): void {
+            $locked = TourismListing::whereKey($listing->id)
+                ->where('owner_id', $request->user()->id)
+                ->lockForUpdate()->firstOrFail();
+            StaleRecordGuard::assertCurrent($locked, $expectedUpdatedAt);
+            $locked->update($validated);
+            $this->log($request->user()->id, 'Partner listing updated', $locked->id, $before, $locked->fresh()->toArray());
+        });
 
         return response()->json(['status' => 'success', 'data' => $listing]);
     }
@@ -295,6 +303,7 @@ class TourismListingController extends Controller
             'approval_status' => 'required|in:approved,needs_changes,rejected,suspended,archived',
             'notes' => 'nullable|string|max:2000',
         ]);
+        $expectedUpdatedAt = StaleRecordGuard::expectedUpdatedAt($request);
         if (in_array($validated['approval_status'], ['needs_changes', 'rejected', 'suspended'], true)) {
             abort_if(blank($validated['notes'] ?? null), 422, 'Review notes are required for this decision.');
         }
@@ -302,8 +311,13 @@ class TourismListingController extends Controller
         abort_if($validated['approval_status'] === 'approved' && $listing->approval_status !== 'submitted', 422, 'Only a submitted listing can be approved.');
         $before = $listing->toArray();
         $isApproved = $validated['approval_status'] === 'approved';
-        DB::transaction(function () use ($request, $validated, $listing, $before, $isApproved): void {
-            $listing->update([
+        DB::transaction(function () use ($request, $validated, $listing, $before, $isApproved, $expectedUpdatedAt): void {
+            $locked = TourismListing::whereKey($listing->id)->lockForUpdate()->firstOrFail();
+            StaleRecordGuard::assertCurrent($locked, $expectedUpdatedAt, [
+                'approval_status' => $locked->approval_status,
+            ]);
+            abort_if($validated['approval_status'] === 'approved' && $locked->approval_status !== 'submitted', 422, 'Only a submitted listing can be approved.');
+            $locked->update([
                 'approval_status' => $validated['approval_status'],
                 'status' => $isApproved ? 'approved' : $validated['approval_status'],
                 'is_active' => $isApproved,
@@ -312,13 +326,13 @@ class TourismListingController extends Controller
                 'reviewed_by' => $request->user()->id,
                 'published_at' => $isApproved ? now() : null,
             ]);
-            $this->log($request->user()->id, 'Partner listing '.$validated['approval_status'], $listing->id, $before, $listing->fresh()->toArray());
+            $this->log($request->user()->id, 'Partner listing '.$validated['approval_status'], $locked->id, $before, $locked->fresh()->toArray());
             PartnerNotification::create([
-                'user_id' => $listing->owner_id,
+                'user_id' => $locked->owner_id,
                 'type' => 'listing_'.$validated['approval_status'],
                 'title' => $isApproved ? 'Listing Approved' : 'Listing Review Updated',
-                'body' => $isApproved ? "{$listing->listing_name} is now public." : ($validated['notes'] ?? 'Your listing review status changed.'),
-                'data' => ['listing_id' => $listing->id, 'route' => '/tourism-partner/listings'],
+                'body' => $isApproved ? "{$locked->listing_name} is now public." : ($validated['notes'] ?? 'Your listing review status changed.'),
+                'data' => ['listing_id' => $locked->id, 'route' => '/tourism-partner/listings'],
             ]);
         });
         return response()->json(['status' => 'success', 'message' => 'Listing review saved.', 'data' => $listing->fresh()]);

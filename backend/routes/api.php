@@ -69,6 +69,7 @@ Route::prefix('v1')->group(function () {
     Route::get('/tourism-listings/{id}', [TourismListingController::class, 'publicShow']);
 
     Route::get('/ferry-schedules', [FerryScheduleController::class, 'index']);
+    Route::get('/ferry-operators', [FerryScheduleController::class, 'operators']);
     Route::get('/ferry-catalogs', [FerryScheduleController::class, 'catalogs']);
     Route::get('/announcements/public', [AnnouncementController::class, 'publicIndex']);
     Route::get('/concern-categories', [ConcernController::class, 'categories']);
@@ -87,6 +88,7 @@ Route::prefix('v1')->group(function () {
 
         // Auth
         Route::post('/auth/logout', [AuthController::class, 'logout']);
+        Route::post('/auth/logout-other-sessions', [AuthController::class, 'logoutOtherSessions']);
         Route::get('/auth/me', [AuthController::class, 'me']);
         Route::put('/auth/password', [AuthController::class, 'updatePassword']);
         Route::get('/map/locations/authenticated', [MapController::class, 'authenticatedIndex']);
@@ -312,6 +314,11 @@ Route::prefix('v1')->group(function () {
             Route::post('/ferry-schedules', [FerryScheduleController::class, 'store']);
             Route::put('/ferry-schedules/{id}', [FerryScheduleController::class, 'update']);
             Route::delete('/ferry-schedules/{id}', [FerryScheduleController::class, 'destroy']);
+            Route::get('/ferry-operators', [FerryScheduleController::class, 'managementOperators']);
+            Route::post('/ferry-operators', [FerryScheduleController::class, 'storeOperator']);
+            Route::put('/ferry-operators/{operator}', [FerryScheduleController::class, 'updateOperator']);
+            Route::post('/ferry-vessels', [FerryScheduleController::class, 'storeVessel']);
+            Route::put('/ferry-vessels/{vessel}', [FerryScheduleController::class, 'updateVessel']);
             Route::post('/ferry-ports', [FerryScheduleController::class, 'storePort']);
             Route::put('/ferry-ports/{port}', [FerryScheduleController::class, 'updatePort']);
             Route::post('/ferry-routes', [FerryScheduleController::class, 'storeRoute']);

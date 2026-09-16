@@ -5,6 +5,8 @@ class EmergencyContact {
   final int id;
   final String uuid;
   final String name;
+  final String? contactLabel;
+  final int displayOrder;
   final String category;
   final String phone;
   final String? alternativePhone;
@@ -38,6 +40,8 @@ class EmergencyContact {
     required this.id,
     required this.uuid,
     required this.name,
+    this.contactLabel,
+    this.displayOrder = 100,
     required this.category,
     required this.phone,
     this.alternativePhone,
@@ -108,9 +112,11 @@ class EmergencyContact {
       id: _asInt(json['integer_id']) ?? _asInt(json['id']) ?? 0,
       uuid: json['uuid']?.toString() ??
           (json['id'] is String ? json['id'].toString() : ''),
-      name: json['name'] as String? ?? 'Agency',
+      name: (json['name'] ?? json['agency_name'])?.toString() ?? 'Agency',
+      contactLabel: json['contact_label']?.toString(),
+      displayOrder: _asInt(json['display_order']) ?? 100,
       category: cat,
-      phone: json['phone'] as String? ?? '',
+      phone: (json['phone'] ?? json['phone_number'])?.toString() ?? '',
       alternativePhone: json['alternative_phone'] as String?,
       address: json['address'] as String?,
       barangay: json['barangay'] as String?,
@@ -165,6 +171,8 @@ class EmergencyContact {
       'id': id,
       'uuid': uuid,
       'name': name,
+      'contact_label': contactLabel,
+      'display_order': displayOrder,
       'category': category,
       'phone': phone,
       'alternative_phone': alternativePhone,

@@ -166,6 +166,11 @@ class EmergencyContactManagementTest extends TestCase
             ->assertJsonValidationErrors('phone');
 
         $this->postJson('/api/v1/lgu/emergency-contacts', $this->payload([
+            'name' => ' ',
+        ]))->assertUnprocessable()
+            ->assertJsonValidationErrors('name');
+
+        $this->postJson('/api/v1/lgu/emergency-contacts', $this->payload([
             'latitude' => 9.9515,
         ]))->assertUnprocessable()
             ->assertJsonValidationErrors(['latitude', 'longitude']);
@@ -177,16 +182,94 @@ class EmergencyContactManagementTest extends TestCase
         $seeder->run();
         $seeder->run();
 
-        $this->assertDatabaseCount('emergency_contacts', 6);
-        $this->assertSame(6, EmergencyContact::where('is_active', true)->count());
-        $this->assertSame(2, EmergencyContact::where('is_verified', true)->count());
-        $this->assertDatabaseHas('emergency_contacts', [
-            'name' => 'Emergency Hotline',
-            'phone' => '911',
-            'category' => 'National Emergency Hotline',
+        $official = [
+            ['Tubigon Police', null, '0998-598-6445', 10],
+            ['Bureau of Fire', null, '0963-774-5972', 20],
+            ['Control Smart', null, '0930-785-0653', 30],
+            ['Waterworks', null, '0966-749-6659', 40],
+            ['TERSSU', 'Smart', '0930-785-0655', 50],
+            ['TERSSU', 'Globe', '0927-454-5496', 60],
+            ['MSWDO', null, '0912-887-7120', 70],
+            ['Coast Guard', null, '0927-429-7581', 80],
+        ];
+
+        $this->assertDatabaseCount('emergency_contacts', 8);
+        $this->assertSame(8, EmergencyContact::where('is_active', true)->count());
+        $this->assertSame(8, EmergencyContact::where('is_verified', true)->count());
+        foreach ($official as [$name, $label, $phone, $order]) {
+            $this->assertDatabaseHas('emergency_contacts', [
+                'name' => $name,
+                'contact_label' => $label,
+                'phone' => $phone,
+                'display_order' => $order,
+                'is_active' => true,
+                'is_public' => true,
+                'verification_status' => 'verified',
+            ]);
+        }
+        $this->getJson('/api/v1/emergency-contacts')
+            ->assertOk()
+            ->assertJsonCount(8, 'data')
+            ->assertJsonPath('data.0.agency_name', 'Tubigon Police')
+            ->assertJsonPath('data.0.phone_number', '0998-598-6445')
+            ->assertJsonPath('data.4.contact_label', 'Smart')
+            ->assertJsonPath('data.5.contact_label', 'Globe')
+            ->assertJsonPath('data.7.name', 'Coast Guard');
+    }
+
+    public function test_stale_management_write_returns_conflict_with_current_record(): void
+    {
+        Sanctum::actingAs($this->user($this->lguRole));
+        $created = $this->postJson('/api/v1/lgu/emergency-contacts', $this->payload())
+            ->assertCreated()
+            ->json('data');
+
+        EmergencyContact::whereKey($created['id'])->update(['updated_at' => now()->addMinute()]);
+
+        $this->putJson("/api/v1/lgu/emergency-contacts/{$created['id']}", [
+            'phone' => '0999-111-2222',
+            'expected_updated_at' => $created['updated_at'],
+        ])->assertConflict()
+            ->assertJsonPath('code', 'stale_record')
+            ->assertJsonPath('current.id', $created['id']);
+    }
+
+    public function test_duplicate_agency_label_and_phone_is_rejected(): void
+    {
+        Sanctum::actingAs($this->user($this->lguRole));
+        $this->postJson('/api/v1/lgu/emergency-contacts', $this->payload())
+            ->assertCreated();
+        $this->postJson('/api/v1/lgu/emergency-contacts', $this->payload())
+            ->assertUnprocessable();
+    }
+
+    public function test_seed_preserves_unrelated_records_and_only_deactivates_confirmed_legacy_seed(): void
+    {
+        $unrelated = $this->contact([
+            'name' => 'Barangay Volunteer Hotline',
+            'phone' => '0912-000-0000',
+            'source_url' => 'https://example.gov.test/volunteer',
             'is_verified' => true,
         ]);
-        $this->getJson('/api/v1/emergency-contacts')->assertOk()->assertJsonCount(2, 'data');
+        $legacy = $this->contact([
+            'name' => 'Tubigon Municipal Police Station',
+            'phone' => '(038) 510-6094',
+            'source_url' => 'https://itms.pnp.gov.ph/wp-content/uploads/2025/04/PRO-7.pdf',
+            'is_verified' => true,
+        ]);
+
+        (new EmergencyContactSeeder)->run();
+
+        $this->assertTrue($unrelated->fresh()->is_active);
+        $this->assertTrue($unrelated->fresh()->is_verified);
+        $this->assertFalse($legacy->fresh()->is_active);
+        $this->assertFalse($legacy->fresh()->is_public);
+        $this->assertSame('inactive', $legacy->fresh()->verification_status);
+        $this->assertDatabaseHas('emergency_contacts', [
+            'name' => 'Tubigon Police',
+            'phone' => '0998-598-6445',
+            'is_active' => true,
+        ]);
     }
 
     /** @param array<string, mixed> $overrides */
@@ -216,6 +299,7 @@ class EmergencyContactManagementTest extends TestCase
         $values['verification_status'] ??= ! ($values['is_active'] ?? true)
             ? 'inactive'
             : (($values['is_verified'] ?? false) ? 'verified' : 'draft');
+
         return EmergencyContact::create($values);
     }
 
@@ -257,12 +341,17 @@ class EmergencyContactManagementTest extends TestCase
             $table->uuid('id')->primary();
             $table->unsignedInteger('integer_id')->nullable()->unique();
             $table->string('name');
+            $table->string('contact_label')->nullable();
+            $table->unsignedInteger('display_order')->default(100);
             $table->string('category');
             $table->string('phone');
             $table->string('alternative_phone')->nullable();
             $table->text('address')->nullable();
+            $table->string('barangay')->nullable();
             $table->text('description')->nullable();
             $table->string('operating_hours')->nullable();
+            $table->text('availability_notes')->nullable();
+            $table->text('emergency_instructions')->nullable();
             $table->string('classification')->default('emergency');
             $table->boolean('is_active')->default(true);
             $table->boolean('is_verified')->default(false);
@@ -275,6 +364,7 @@ class EmergencyContactManagementTest extends TestCase
             $table->uuid('verified_by')->nullable();
             $table->timestamp('verified_at')->nullable();
             $table->timestamp('last_verified_at')->nullable();
+            $table->uuid('created_by')->nullable();
             $table->uuid('updated_by')->nullable();
             $table->uuid('archived_by')->nullable();
             $table->double('latitude')->nullable();

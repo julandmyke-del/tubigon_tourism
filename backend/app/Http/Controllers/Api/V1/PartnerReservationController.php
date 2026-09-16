@@ -14,6 +14,7 @@ use App\Models\TouristSpot;
 use App\Models\TouristSpotPartnerAssignment;
 use App\Services\EmailNotificationService;
 use App\Support\ReservationStatusTransitions;
+use App\Support\StaleRecordGuard;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -97,10 +98,14 @@ class PartnerReservationController extends Controller
             'status_name' => 'required|string|in:approved,confirmed,rejected,completed,cancelled',
             'reason' => 'nullable|required_if:status_name,rejected|string|max:1000',
         ]);
+        $expectedUpdatedAt = StaleRecordGuard::expectedUpdatedAt($request);
 
-        $reservation = DB::transaction(function () use ($request, $id, $validated): Reservation {
+        $reservation = DB::transaction(function () use ($request, $id, $validated, $expectedUpdatedAt): Reservation {
             $reservation = Reservation::with('status')->lockForUpdate()->findOrFail($id);
             $this->authorizeOwnership($request, $reservation);
+            StaleRecordGuard::assertCurrent($reservation, $expectedUpdatedAt, [
+                'status' => $reservation->status?->name,
+            ], 'This reservation was updated in another session. Refresh and try again.');
             $status = ReservationStatus::where('name', $validated['status_name'])->firstOrFail();
 
             if (! ReservationStatusTransitions::allows($reservation->status?->name, $status->name)) {

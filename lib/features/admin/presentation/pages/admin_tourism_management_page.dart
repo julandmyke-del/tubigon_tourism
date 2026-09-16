@@ -135,7 +135,7 @@ class _AdminTourismManagementPageState
                   // Tab 2: Categories
                   _buildCategoriesTab(catsAsync),
                   // Tab 3: Ferry Schedules
-                  const LguFerryManagementPage(),
+                  const LguFerryManagementPage(adminMode: true),
                   // Tab 4: Emergency Contacts
                   _buildEmergencyTab(emergencyAsync),
                   // Tab 5: Eco Guidelines
@@ -156,8 +156,7 @@ class _AdminTourismManagementPageState
           children: [
             Expanded(
               child: TextField(
-                style: TextStyle(
-                    color: AdminColors.textPrimary, fontSize: 14),
+                style: TextStyle(color: AdminColors.textPrimary, fontSize: 14),
                 decoration: InputDecoration(
                   hintText: 'Search tourist spots by name or location...',
                   hintStyle: TextStyle(color: AdminColors.textMuted),
@@ -169,12 +168,10 @@ class _AdminTourismManagementPageState
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide:
-                          BorderSide(color: AdminColors.cardBorder)),
+                      borderSide: BorderSide(color: AdminColors.cardBorder)),
                   enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide:
-                          BorderSide(color: AdminColors.cardBorder)),
+                      borderSide: BorderSide(color: AdminColors.cardBorder)),
                 ),
                 onChanged: (v) => setState(() => _searchQuery = v),
               ),
@@ -456,8 +453,7 @@ class _AdminTourismManagementPageState
                               color: AdminColors.textPrimary,
                               fontWeight: FontWeight.bold)),
                       subtitle: Text(slug.isEmpty ? 'No slug' : slug,
-                          style: TextStyle(
-                              color: AdminColors.textSecondary)),
+                          style: TextStyle(color: AdminColors.textSecondary)),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -662,8 +658,7 @@ class _AdminTourismManagementPageState
         child: ferryAsync.when(
           data: (list) => ListView.separated(
             itemCount: list.length,
-            separatorBuilder: (_, __) =>
-                Divider(color: AdminColors.cardBorder),
+            separatorBuilder: (_, __) => Divider(color: AdminColors.cardBorder),
             itemBuilder: (ctx, i) {
               final f = list[i];
               return ListTile(
@@ -732,8 +727,7 @@ class _AdminTourismManagementPageState
         child: emergencyAsync.when(
           data: (list) => ListView.separated(
             itemCount: list.length,
-            separatorBuilder: (_, __) =>
-                Divider(color: AdminColors.cardBorder),
+            separatorBuilder: (_, __) => Divider(color: AdminColors.cardBorder),
             itemBuilder: (ctx, i) {
               final e = list[i];
               return ListTile(
@@ -769,8 +763,7 @@ class _AdminTourismManagementPageState
       child: ecoTipsAsync.when(
         data: (list) => ListView.separated(
           itemCount: list.length,
-          separatorBuilder: (_, __) =>
-              Divider(color: AdminColors.cardBorder),
+          separatorBuilder: (_, __) => Divider(color: AdminColors.cardBorder),
           itemBuilder: (ctx, i) {
             final tip = list[i];
             return ListTile(

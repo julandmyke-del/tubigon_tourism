@@ -9,7 +9,7 @@ class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._privateConstructor();
 
   static const String _dbName = 'tubigon_tourism.db';
-  static const int _dbVersion = 11;
+  static const int _dbVersion = 13;
 
   /// Native SQLite is intentionally unavailable in browsers. Repositories
   /// use this single capability boundary to select their Laravel API path.
@@ -157,6 +157,8 @@ class DatabaseHelper {
           uuid TEXT UNIQUE NOT NULL,
           profile_id TEXT,
           name TEXT NOT NULL,
+          contact_label TEXT,
+          display_order INTEGER DEFAULT 100,
           category TEXT NOT NULL,
           tagline TEXT,
           description TEXT,
@@ -290,13 +292,18 @@ class DatabaseHelper {
           id INTEGER PRIMARY KEY,
           uuid TEXT UNIQUE NOT NULL,
           operator TEXT NOT NULL,
+          operator_id TEXT,
           route TEXT NOT NULL,
           origin TEXT,
           destination TEXT,
           vessel_name TEXT,
+          vessel_id TEXT,
           departure_date TEXT,
+          effective_from TEXT,
+          effective_until TEXT,
           departure_time TEXT NOT NULL,
           arrival_time TEXT,
+          arrival_next_day INTEGER DEFAULT 0,
           fare REAL,
           status TEXT DEFAULT 'on_time',
           days_of_week TEXT,
@@ -664,6 +671,35 @@ class DatabaseHelper {
         try {
           await db.execute(
               'ALTER TABLE emergency_contacts ADD COLUMN ${entry.key} ${entry.value}');
+        } catch (_) {}
+      }
+    }
+    if (oldVersion < 12) {
+      const ferryColumns = <String, String>{
+        'operator_id': 'TEXT',
+        'vessel_id': 'TEXT',
+        'effective_from': 'TEXT',
+        'effective_until': 'TEXT',
+        'arrival_next_day': 'INTEGER DEFAULT 0',
+      };
+      for (final entry in ferryColumns.entries) {
+        try {
+          await db.execute(
+            'ALTER TABLE ferry_schedules ADD COLUMN ${entry.key} ${entry.value}',
+          );
+        } catch (_) {}
+      }
+    }
+    if (oldVersion < 13) {
+      const emergencyDirectoryColumns = <String, String>{
+        'contact_label': 'TEXT',
+        'display_order': 'INTEGER DEFAULT 100',
+      };
+      for (final entry in emergencyDirectoryColumns.entries) {
+        try {
+          await db.execute(
+            'ALTER TABLE emergency_contacts ADD COLUMN ${entry.key} ${entry.value}',
+          );
         } catch (_) {}
       }
     }

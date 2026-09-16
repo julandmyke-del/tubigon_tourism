@@ -1,12 +1,15 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:async';
 import '../../../core/network/api_client.dart';
+import '../../authentication/auth_provider.dart';
 import '../data/tourism_partner_repository.dart';
 
 // ─── Repository ──────────────────────────────────────────────────────────────
 
 final tourismPartnerRepositoryProvider =
     Provider<TourismPartnerRepository>((ref) {
+  ref.watch(
+      authProvider.select((auth) => (auth.isLoggedIn, auth.userId, auth.role)));
   final apiClient = ref.watch(apiClientProvider);
   return TourismPartnerRepository(apiClient: apiClient);
 });

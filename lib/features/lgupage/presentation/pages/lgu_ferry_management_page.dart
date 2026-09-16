@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../ferry/repositories/ferry_repository.dart';
+import '../../../admin/providers/admin_providers.dart';
 import '../../providers/lgu_providers.dart';
 
 const _weekdays = <String>[
@@ -17,7 +18,9 @@ const _weekdays = <String>[
 ];
 
 class LguFerryManagementPage extends ConsumerWidget {
-  const LguFerryManagementPage({super.key});
+  const LguFerryManagementPage({super.key, this.adminMode = false});
+
+  final bool adminMode;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -32,18 +35,27 @@ class LguFerryManagementPage extends ConsumerWidget {
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            const Expanded(
-                child: Text('Ferry Schedule Management',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 25,
-                        fontWeight: FontWeight.w800))),
-            OutlinedButton.icon(
-                onPressed: () => _manageCatalogs(context, ref),
-                icon: const Icon(Icons.alt_route_rounded),
-                label: const Text('Routes / Ports'))
-          ]),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              const Text('Ferry Schedule Management',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 25,
+                      fontWeight: FontWeight.w800)),
+              OutlinedButton.icon(
+                  onPressed: () => _manageCatalogs(context, ref),
+                  icon: const Icon(Icons.alt_route_rounded),
+                  label: const Text('Routes / Ports')),
+              if (adminMode)
+                OutlinedButton.icon(
+                    onPressed: () => _manageOperators(context, ref),
+                    icon: const Icon(Icons.directions_boat_filled_rounded),
+                    label: const Text('Operators / Vessels')),
+            ],
+          ),
           const Text(
             'Publish date-specific or recurring services and operational advisories.',
             style: TextStyle(color: Color(0xFF94A3B8)),
@@ -448,6 +460,265 @@ class LguFerryManagementPage extends ConsumerWidget {
     );
     name.dispose();
   }
+
+  Future<void> _manageOperators(BuildContext context, WidgetRef ref) async {
+    List<Map<String, dynamic>> operators;
+    try {
+      operators = await ref.read(adminRepositoryProvider).getFerryOperators();
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Unable to load ferry operators.')));
+      }
+      return;
+    }
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Ferry Operators & Vessels'),
+        content: SizedBox(
+          width: 680,
+          height: 480,
+          child: operators.isEmpty
+              ? const Center(child: Text('No ferry operators yet.'))
+              : ListView(
+                  children: operators.map((operator) {
+                    final vessels = (operator['vessels'] as List? ?? const [])
+                        .whereType<Map>()
+                        .toList();
+                    final active = operator['is_active'] != false &&
+                        operator['is_active'] != 0;
+                    return ExpansionTile(
+                      title: Text(operator['name']?.toString() ?? 'Operator'),
+                      subtitle: Text(active ? 'Active' : 'Inactive'),
+                      trailing: IconButton(
+                        tooltip: 'Edit operator',
+                        icon: const Icon(Icons.edit_outlined),
+                        onPressed: () async {
+                          Navigator.pop(dialogContext);
+                          await _editOperator(context, ref, operator);
+                          if (context.mounted) _manageOperators(context, ref);
+                        },
+                      ),
+                      children: [
+                        if (vessels.isEmpty)
+                          const ListTile(title: Text('No vessels recorded.')),
+                        ...vessels.map((vessel) => ListTile(
+                              leading: const Icon(Icons.sailing_rounded),
+                              title: Text(vessel['vessel_name']?.toString() ??
+                                  'Vessel'),
+                              subtitle: Text(vessel['is_active'] == false ||
+                                      vessel['is_active'] == 0
+                                  ? 'Inactive'
+                                  : 'Active'),
+                              trailing: IconButton(
+                                tooltip: 'Edit vessel',
+                                icon: const Icon(Icons.edit_outlined),
+                                onPressed: () async {
+                                  Navigator.pop(dialogContext);
+                                  await _editVessel(context, ref, operators,
+                                      existing: vessel);
+                                  if (context.mounted) {
+                                    _manageOperators(context, ref);
+                                  }
+                                },
+                              ),
+                            )),
+                      ],
+                    );
+                  }).toList(),
+                ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Close')),
+          OutlinedButton.icon(
+            onPressed: operators.isEmpty
+                ? null
+                : () async {
+                    Navigator.pop(dialogContext);
+                    await _editVessel(context, ref, operators);
+                    if (context.mounted) _manageOperators(context, ref);
+                  },
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('Add Vessel'),
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              await _editOperator(context, ref, null);
+              if (context.mounted) _manageOperators(context, ref);
+            },
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('Add Operator'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _editOperator(BuildContext context, WidgetRef ref,
+      Map<String, dynamic>? existing) async {
+    final name = TextEditingController(text: existing?['name']?.toString());
+    final description =
+        TextEditingController(text: existing?['description']?.toString());
+    final contact =
+        TextEditingController(text: existing?['contact_number']?.toString());
+    final website =
+        TextEditingController(text: existing?['website']?.toString());
+    var active = existing == null ||
+        (existing['is_active'] != false && existing['is_active'] != 0);
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (_, setState) => AlertDialog(
+          title: Text(existing == null ? 'Add Operator' : 'Edit Operator'),
+          content: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                TextField(
+                    controller: name,
+                    onChanged: (_) => setState(() {}),
+                    decoration:
+                        const InputDecoration(labelText: 'Operator name *')),
+                TextField(
+                    controller: description,
+                    maxLines: 3,
+                    decoration:
+                        const InputDecoration(labelText: 'Description')),
+                TextField(
+                    controller: contact,
+                    decoration:
+                        const InputDecoration(labelText: 'Contact number')),
+                TextField(
+                    controller: website,
+                    decoration: const InputDecoration(labelText: 'Website')),
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  value: active,
+                  onChanged: (value) => setState(() => active = value),
+                  title: const Text('Active'),
+                ),
+              ]),
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel')),
+            FilledButton(
+              onPressed: name.text.trim().length < 2
+                  ? null
+                  : () async {
+                      await ref
+                          .read(adminRepositoryProvider)
+                          .saveFerryOperator({
+                        'name': name.text.trim(),
+                        'description': description.text.trim().isEmpty
+                            ? null
+                            : description.text.trim(),
+                        'contact_number': contact.text.trim().isEmpty
+                            ? null
+                            : contact.text.trim(),
+                        'website': website.text.trim().isEmpty
+                            ? null
+                            : website.text.trim(),
+                        'is_active': active,
+                        if (existing?['updated_at'] != null)
+                          'expected_updated_at': existing!['updated_at'],
+                      }, id: existing?['id']?.toString());
+                      _invalidateCatalogs(ref);
+                      if (dialogContext.mounted) Navigator.pop(dialogContext);
+                    },
+              child: const Text('Save Operator'),
+            ),
+          ],
+        ),
+      ),
+    );
+    name.dispose();
+    description.dispose();
+    contact.dispose();
+    website.dispose();
+  }
+
+  Future<void> _editVessel(
+      BuildContext context, WidgetRef ref, List<Map<String, dynamic>> operators,
+      {Map<dynamic, dynamic>? existing}) async {
+    final name =
+        TextEditingController(text: existing?['vessel_name']?.toString());
+    var operatorId = existing?['ferry_operator_id']?.toString() ??
+        (operators.isEmpty ? null : operators.first['id']?.toString());
+    var active = existing == null ||
+        (existing['is_active'] != false && existing['is_active'] != 0);
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (_, setState) => AlertDialog(
+          title: Text(existing == null ? 'Add Vessel' : 'Edit Vessel'),
+          content: SizedBox(
+            width: 480,
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              DropdownButtonFormField<String>(
+                initialValue: operatorId,
+                decoration: const InputDecoration(labelText: 'Operator *'),
+                items: operators
+                    .map((operator) => DropdownMenuItem(
+                          value: operator['id'].toString(),
+                          child: Text(operator['name'].toString()),
+                        ))
+                    .toList(),
+                onChanged: (value) => setState(() => operatorId = value),
+              ),
+              TextField(
+                  controller: name,
+                  onChanged: (_) => setState(() {}),
+                  decoration:
+                      const InputDecoration(labelText: 'Vessel name *')),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: active,
+                onChanged: (value) => setState(() => active = value),
+                title: const Text('Active'),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel')),
+            FilledButton(
+              onPressed: operatorId == null || name.text.trim().length < 2
+                  ? null
+                  : () async {
+                      await ref.read(adminRepositoryProvider).saveFerryVessel({
+                        'ferry_operator_id': operatorId,
+                        'vessel_name': name.text.trim(),
+                        'is_active': active,
+                        if (existing?['updated_at'] != null)
+                          'expected_updated_at': existing!['updated_at'],
+                      }, id: existing?['id']?.toString());
+                      _invalidateCatalogs(ref);
+                      if (dialogContext.mounted) Navigator.pop(dialogContext);
+                    },
+              child: const Text('Save Vessel'),
+            ),
+          ],
+        ),
+      ),
+    );
+    name.dispose();
+  }
+
+  void _invalidateCatalogs(WidgetRef ref) {
+    ref.invalidate(lguFerryCatalogsProvider);
+    ref.invalidate(ferryOperatorsProvider);
+    ref.invalidate(lguFerrySchedulesProvider);
+    ref.invalidate(ferrySchedulesListProvider);
+  }
 }
 
 class _ScheduleCard extends StatelessWidget {
@@ -489,6 +760,14 @@ class _ScheduleCard extends StatelessWidget {
             if (item['departure_date'] != null)
               Text('Service date: ${item['departure_date']}',
                   style: const TextStyle(color: Color(0xFF94A3B8))),
+            if ((item['effective_from'] ?? item['valid_from']) != null)
+              Text(
+                  'Effective: ${item['effective_from'] ?? item['valid_from']}'
+                  '${(item['effective_until'] ?? item['valid_until']) == null ? '' : ' to ${item['effective_until'] ?? item['valid_until']}'}',
+                  style: const TextStyle(color: Color(0xFF94A3B8))),
+            if (item['vessel_name'] != null)
+              Text('Vessel: ${item['vessel_name']}',
+                  style: const TextStyle(color: Color(0xFF94A3B8))),
             if (item['advisory']?.toString().isNotEmpty == true)
               Text('Advisory: ${item['advisory']}',
                   maxLines: 2,
@@ -496,7 +775,17 @@ class _ScheduleCard extends StatelessWidget {
                   style: const TextStyle(color: Color(0xFFFDE68A))),
           ]),
         ),
-        Chip(label: Text(_label(status))),
+        Column(children: [
+          Chip(label: Text(_label(status))),
+          Text(
+            item['is_active'] == false || item['is_active'] == 0
+                ? 'Inactive'
+                : (item['is_published'] == false || item['is_published'] == 0
+                    ? 'Draft'
+                    : 'Published'),
+            style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+          ),
+        ]),
         IconButton(
             tooltip: 'Edit schedule',
             onPressed: onEdit,
@@ -534,13 +823,20 @@ class _FerryFormDialogState extends ConsumerState<_FerryFormDialog> {
   late final TextEditingController _advisory;
   late final TextEditingController _contact;
   late final TextEditingController _reference;
+  late final TextEditingController _sourceReference;
   late String _departure;
   String? _arrival;
   DateTime? _date;
+  DateTime? _effectiveFrom;
+  DateTime? _effectiveUntil;
   late String _status;
   String? _routeId;
+  String? _operatorId;
+  String? _vesselId;
   late Set<String> _days;
   late bool _published;
+  late bool _active;
+  late bool _arrivalNextDay;
   bool _saving = false;
 
   @override
@@ -562,14 +858,27 @@ class _FerryFormDialogState extends ConsumerState<_FerryFormDialog> {
         TextEditingController(text: value['contact_information']?.toString());
     _reference =
         TextEditingController(text: value['reference_url']?.toString());
+    _sourceReference =
+        TextEditingController(text: value['source_reference']?.toString());
     _departure = value['departure_time']?.toString() ?? '08:00';
     _arrival = value['arrival_time']?.toString();
     _date = DateTime.tryParse(value['departure_date']?.toString() ?? '');
+    _effectiveFrom = DateTime.tryParse(
+        (value['effective_from'] ?? value['valid_from'])?.toString() ?? '');
+    _effectiveUntil = DateTime.tryParse(
+        (value['effective_until'] ?? value['valid_until'])?.toString() ?? '');
     _status = value['status']?.toString() ?? 'scheduled';
     _routeId = value['ferry_route_id']?.toString();
+    _operatorId =
+        (value['operator_id'] ?? value['ferry_operator_id'])?.toString();
+    _vesselId = (value['vessel_id'] ?? value['ferry_vessel_id'])?.toString();
     _published = value.isEmpty ||
         value['is_published'] == true ||
         value['is_published'] == 1;
+    _active =
+        value.isEmpty || value['is_active'] == true || value['is_active'] == 1;
+    _arrivalNextDay =
+        value['arrival_next_day'] == true || value['arrival_next_day'] == 1;
     final days = value['days_of_week'];
     _days = days is List
         ? days.map((item) => item.toString().toLowerCase()).toSet()
@@ -587,6 +896,7 @@ class _FerryFormDialogState extends ConsumerState<_FerryFormDialog> {
       _advisory,
       _contact,
       _reference,
+      _sourceReference,
     ]) {
       controller.dispose();
     }
@@ -616,34 +926,107 @@ class _FerryFormDialogState extends ConsumerState<_FerryFormDialog> {
                           return const Text(
                               'No structured ferry route exists yet. Add ports/routes through the LGU API before publishing new schedules.');
                         }
-                        return DropdownButtonFormField<String>(
-                          initialValue:
-                              routes.any((r) => r['id']?.toString() == _routeId)
-                                  ? _routeId
-                                  : null,
-                          decoration:
-                              const InputDecoration(labelText: 'Ferry Route *'),
-                          items: routes
-                              .map((r) => DropdownMenuItem(
-                                  value: r['id'].toString(),
-                                  child:
-                                      Text(r['name']?.toString() ?? 'Route')))
-                              .toList(),
-                          onChanged: _saving
-                              ? null
-                              : (value) => setState(() => _routeId = value),
-                          validator: (value) => value == null
-                              ? 'Select a structured route.'
-                              : null,
-                        );
+                        final operators =
+                            (catalogs['operators'] as List? ?? const [])
+                                .whereType<Map>()
+                                .toList();
+                        Map<dynamic, dynamic>? selectedOperator;
+                        for (final operator in operators) {
+                          if (operator['id']?.toString() == _operatorId) {
+                            selectedOperator = operator;
+                            break;
+                          }
+                        }
+                        final vessels =
+                            (selectedOperator?['vessels'] as List? ?? const [])
+                                .whereType<Map>()
+                                .toList();
+                        return Column(children: [
+                          DropdownButtonFormField<String>(
+                            initialValue: routes
+                                    .any((r) => r['id']?.toString() == _routeId)
+                                ? _routeId
+                                : null,
+                            decoration: const InputDecoration(
+                                labelText: 'Ferry Route *'),
+                            items: routes
+                                .map((r) => DropdownMenuItem(
+                                    value: r['id'].toString(),
+                                    child:
+                                        Text(r['name']?.toString() ?? 'Route')))
+                                .toList(),
+                            onChanged: _saving
+                                ? null
+                                : (value) => setState(() => _routeId = value),
+                            validator: (value) => value == null
+                                ? 'Select a structured route.'
+                                : null,
+                          ),
+                          const SizedBox(height: 10),
+                          DropdownButtonFormField<String>(
+                            initialValue: operators.any((operator) =>
+                                    operator['id']?.toString() == _operatorId)
+                                ? _operatorId
+                                : null,
+                            decoration:
+                                const InputDecoration(labelText: 'Operator *'),
+                            items: operators
+                                .map((operator) => DropdownMenuItem(
+                                      value: operator['id'].toString(),
+                                      child: Text(operator['name'].toString()),
+                                    ))
+                                .toList(),
+                            onChanged: _saving
+                                ? null
+                                : (value) => setState(() {
+                                      _operatorId = value;
+                                      _vesselId = null;
+                                      final selected = operators.firstWhere(
+                                          (item) =>
+                                              item['id']?.toString() == value);
+                                      _operator.text =
+                                          selected['name']?.toString() ?? '';
+                                      _vessel.clear();
+                                    }),
+                            validator: (value) => value == null
+                                ? 'Select a ferry operator.'
+                                : null,
+                          ),
+                          const SizedBox(height: 10),
+                          DropdownButtonFormField<String?>(
+                            key: ValueKey(_operatorId),
+                            initialValue: vessels.any((vessel) =>
+                                    vessel['id']?.toString() == _vesselId)
+                                ? _vesselId
+                                : null,
+                            decoration: const InputDecoration(
+                                labelText: 'Vessel (optional)'),
+                            items: [
+                              const DropdownMenuItem<String?>(
+                                  value: null, child: Text('No vessel')),
+                              ...vessels.map((vessel) =>
+                                  DropdownMenuItem<String?>(
+                                    value: vessel['id'].toString(),
+                                    child:
+                                        Text(vessel['vessel_name'].toString()),
+                                  )),
+                            ],
+                            onChanged: _saving
+                                ? null
+                                : (value) => setState(() {
+                                      _vesselId = value;
+                                      _vessel.text = value == null
+                                          ? ''
+                                          : vessels
+                                              .firstWhere((item) =>
+                                                  item['id']?.toString() ==
+                                                  value)['vessel_name']
+                                              .toString();
+                                    }),
+                          ),
+                        ]);
                       },
                     ),
-                const SizedBox(height: 10),
-                Row(children: [
-                  Expanded(child: _requiredField(_operator, 'Operator *')),
-                  const SizedBox(width: 10),
-                  Expanded(child: _field(_vessel, 'Vessel (optional)')),
-                ]),
                 const SizedBox(height: 10),
                 Row(children: [
                   Expanded(
@@ -655,22 +1038,62 @@ class _FerryFormDialogState extends ConsumerState<_FerryFormDialog> {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _saving ? null : () => _pickTime(false),
-                      icon: const Icon(Icons.schedule_outlined),
-                      label: Text('Arrival: ${_arrival ?? 'Unknown'}'),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _saving ? null : () => _pickTime(false),
+                            icon: const Icon(Icons.schedule_outlined),
+                            label: Text('Arrival: ${_arrival ?? 'Unknown'}'),
+                          ),
+                        ),
+                        if (_arrival != null)
+                          IconButton(
+                            tooltip: 'Clear arrival time',
+                            onPressed: _saving
+                                ? null
+                                : () => setState(() {
+                                      _arrival = null;
+                                      _arrivalNextDay = false;
+                                    }),
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                      ],
                     ),
                   ),
                 ]),
+                if (_arrival != null)
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    value: _arrivalNextDay,
+                    onChanged: _saving
+                        ? null
+                        : (value) => setState(() => _arrivalNextDay = value),
+                    title: const Text('Arrival is on the next day'),
+                  ),
                 const SizedBox(height: 10),
                 Row(children: [
                   Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: _saving ? null : _pickDate,
-                      icon: const Icon(Icons.event_rounded),
-                      label: Text(_date == null
-                          ? 'No specific date'
-                          : DateFormat.yMMMd().format(_date!)),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _saving ? null : _pickDate,
+                            icon: const Icon(Icons.event_rounded),
+                            label: Text(_date == null
+                                ? 'No specific date'
+                                : DateFormat.yMMMd().format(_date!)),
+                          ),
+                        ),
+                        if (_date != null)
+                          IconButton(
+                            tooltip: 'Clear schedule date',
+                            onPressed: _saving
+                                ? null
+                                : () => setState(() => _date = null),
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -689,6 +1112,32 @@ class _FerryFormDialogState extends ConsumerState<_FerryFormDialog> {
                           value!.isNotEmpty && double.tryParse(value) == null
                               ? 'Enter a valid amount.'
                               : null,
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: 10),
+                Row(children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _saving
+                          ? null
+                          : () => _pickEffectiveDate(start: true),
+                      icon: const Icon(Icons.today_rounded),
+                      label: Text(_effectiveFrom == null
+                          ? 'Effective from'
+                          : DateFormat.yMMMd().format(_effectiveFrom!)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _saving
+                          ? null
+                          : () => _pickEffectiveDate(start: false),
+                      icon: const Icon(Icons.event_available_rounded),
+                      label: Text(_effectiveUntil == null
+                          ? 'No end date'
+                          : DateFormat.yMMMd().format(_effectiveUntil!)),
                     ),
                   ),
                 ]),
@@ -740,6 +1189,9 @@ class _FerryFormDialogState extends ConsumerState<_FerryFormDialog> {
                 const SizedBox(height: 10),
                 _field(_contact, 'Contact / reference information'),
                 const SizedBox(height: 10),
+                _field(_sourceReference, 'Source / reference note',
+                    maxLines: 2),
+                const SizedBox(height: 10),
                 TextFormField(
                   controller: _reference,
                   keyboardType: TextInputType.url,
@@ -764,6 +1216,17 @@ class _FerryFormDialogState extends ConsumerState<_FerryFormDialog> {
                   subtitle: const Text(
                     'Draft schedules remain available to LGU and Admin staff only.',
                   ),
+                ),
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  value: _active,
+                  onChanged: _saving
+                      ? null
+                      : (value) => setState(() => _active = value),
+                  title:
+                      Text(_active ? 'Active schedule' : 'Inactive schedule'),
+                  subtitle: const Text(
+                      'Inactive schedules are hidden from travelers but remain editable.'),
                 ),
               ]),
             ),
@@ -792,16 +1255,6 @@ class _FerryFormDialogState extends ConsumerState<_FerryFormDialog> {
           textCapitalization: TextCapitalization.sentences,
           decoration: InputDecoration(labelText: label));
 
-  Widget _requiredField(TextEditingController controller, String label) =>
-      TextFormField(
-        controller: controller,
-        textCapitalization: TextCapitalization.words,
-        decoration: InputDecoration(labelText: label),
-        validator: (value) => (value?.trim().length ?? 0) < 2
-            ? 'Enter at least 2 characters.'
-            : null,
-      );
-
   Future<void> _pickTime(bool departure) async {
     final raw = departure ? _departure : _arrival;
     final parts = raw?.split(':');
@@ -821,19 +1274,47 @@ class _FerryFormDialogState extends ConsumerState<_FerryFormDialog> {
     final today = DateUtils.dateOnly(DateTime.now());
     final value = await showDatePicker(
       context: context,
-      firstDate: today,
+      firstDate: DateTime(2020),
       lastDate: today.add(const Duration(days: 730)),
-      initialDate: _date == null || _date!.isBefore(today) ? today : _date!,
+      initialDate: _date ?? today,
     );
-    if (value != null && mounted) setState(() => _date = value);
+    if (value != null && mounted) {
+      setState(() {
+        _date = value;
+        _effectiveFrom = null;
+        _effectiveUntil = null;
+      });
+    }
+  }
+
+  Future<void> _pickEffectiveDate({required bool start}) async {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final current = start ? _effectiveFrom : _effectiveUntil;
+    final value = await showDatePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: today.add(const Duration(days: 3650)),
+      initialDate: current ?? _effectiveFrom ?? today,
+    );
+    if (value == null || !mounted) return;
+    setState(() {
+      _date = null;
+      if (start) {
+        _effectiveFrom = value;
+        if (_effectiveUntil != null && _effectiveUntil!.isBefore(value)) {
+          _effectiveUntil = null;
+        }
+      } else {
+        _effectiveUntil = value;
+      }
+    });
   }
 
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    if (_date == null && _days.isEmpty) {
+    if (_effectiveUntil != null && _effectiveFrom == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content:
-              Text('Choose a service date or at least one operating day.')));
+          content: Text('Choose an effective start date first.')));
       return;
     }
     setState(() => _saving = true);
@@ -842,11 +1323,16 @@ class _FerryFormDialogState extends ConsumerState<_FerryFormDialog> {
         if (_routeId != null) 'ferry_route_id': _routeId,
         if (_routeId == null) 'origin': _origin.text.trim(),
         if (_routeId == null) 'destination': _destination.text.trim(),
+        'ferry_operator_id': _operatorId,
         'operator': _operator.text.trim(),
+        'ferry_vessel_id': _vesselId,
         'vessel_name': _vessel.text.trim().isEmpty ? null : _vessel.text.trim(),
         'departure_date': _date?.toIso8601String().split('T').first,
+        'valid_from': _effectiveFrom?.toIso8601String().split('T').first,
+        'valid_until': _effectiveUntil?.toIso8601String().split('T').first,
         'departure_time': _departure,
         'arrival_time': _arrival,
+        'arrival_next_day': _arrivalNextDay,
         'fare':
             _fare.text.trim().isEmpty ? null : double.parse(_fare.text.trim()),
         'status': _status,
@@ -857,8 +1343,13 @@ class _FerryFormDialogState extends ConsumerState<_FerryFormDialog> {
             _contact.text.trim().isEmpty ? null : _contact.text.trim(),
         'reference_url':
             _reference.text.trim().isEmpty ? null : _reference.text.trim(),
-        'is_active': true,
+        'source_reference': _sourceReference.text.trim().isEmpty
+            ? null
+            : _sourceReference.text.trim(),
+        'is_active': _active,
         'is_published': _published,
+        if (widget.existing?['updated_at'] != null)
+          'expected_updated_at': widget.existing!['updated_at'],
       }, id: widget.existing?['id']?.toString());
       widget.onSaved();
       if (mounted) Navigator.pop(context);

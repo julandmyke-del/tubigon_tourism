@@ -26,6 +26,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use App\Support\StaleRecordGuard;
 
 class RoleApplicationController extends Controller
 {
@@ -289,9 +290,13 @@ class RoleApplicationController extends Controller
             ];
         }
         $validated = $request->validate($rules);
+        $expectedUpdatedAt = StaleRecordGuard::expectedUpdatedAt($request);
 
-        $application = DB::transaction(function () use ($request, $id, $validated): RoleApplication {
+        $application = DB::transaction(function () use ($request, $id, $validated, $expectedUpdatedAt): RoleApplication {
             $application = RoleApplication::whereKey($id)->lockForUpdate()->firstOrFail();
+            StaleRecordGuard::assertCurrent($application, $expectedUpdatedAt, [
+                'status' => $application->status,
+            ], 'This request was updated in another session. Refresh and try again.');
             abort_unless($application->canTransitionTo(RoleApplication::STATUS_APPROVED), 422, 'Only LGU-recommended applications can be approved.');
             $applicant = User::with('role')->whereKey($application->applicant_user_id)->lockForUpdate()->firstOrFail();
             abort_unless($applicant->role?->name === 'tourist', 422, 'The applicant is no longer eligible for this role.');
@@ -363,9 +368,13 @@ class RoleApplicationController extends Controller
     public function adminReject(Request $request, string $id, EmailNotificationService $emailDelivery): JsonResponse
     {
         $validated = $request->validate(['notes' => 'required|string|max:3000']);
+        $expectedUpdatedAt = StaleRecordGuard::expectedUpdatedAt($request);
 
-        $application = DB::transaction(function () use ($request, $id, $validated): RoleApplication {
+        $application = DB::transaction(function () use ($request, $id, $validated, $expectedUpdatedAt): RoleApplication {
             $application = RoleApplication::whereKey($id)->lockForUpdate()->firstOrFail();
+            StaleRecordGuard::assertCurrent($application, $expectedUpdatedAt, [
+                'status' => $application->status,
+            ], 'This request was updated in another session. Refresh and try again.');
             abort_unless($application->canTransitionTo(RoleApplication::STATUS_REJECTED), 422, 'Only LGU-recommended applications can be rejected by Admin.');
             $from = $application->status;
             $application->update([
@@ -400,9 +409,13 @@ class RoleApplicationController extends Controller
         if (isset($input['checklist'])) {
             $this->validateChecklist($input['checklist']);
         }
+        $expectedUpdatedAt = StaleRecordGuard::expectedUpdatedAt($request);
 
-        $application = DB::transaction(function () use ($request, $id, $target, $action, $input): RoleApplication {
+        $application = DB::transaction(function () use ($request, $id, $target, $action, $input, $expectedUpdatedAt): RoleApplication {
             $application = RoleApplication::whereKey($id)->lockForUpdate()->firstOrFail();
+            StaleRecordGuard::assertCurrent($application, $expectedUpdatedAt, [
+                'status' => $application->status,
+            ], 'This request was updated in another session. Refresh and try again.');
             abort_unless($application->canTransitionTo($target), 422, 'That review action is not valid for the current application state.');
             if ($target === RoleApplication::STATUS_RECOMMENDED) {
                 $this->assertCompleteChecklist($application, $input['checklist'] ?? []);

@@ -10,10 +10,15 @@ class Ferry {
     required this.fare,
     required this.status,
     required this.days,
+    this.operatorId,
+    this.vesselId,
     this.origin,
     this.destination,
     this.vessel,
     this.departureDate,
+    this.effectiveFrom,
+    this.effectiveUntil,
+    this.arrivalNextDay = false,
     this.advisory,
     this.contactInformation,
     this.referenceUrl,
@@ -23,9 +28,11 @@ class Ferry {
   final int id;
   final String uuid;
   final String operator;
+  final String? operatorId;
+  final String? vesselId;
   final String route;
   final String departure;
-  final String arrival;
+  final String? arrival;
   final String duration;
   final double? fare;
   final String status;
@@ -34,6 +41,9 @@ class Ferry {
   final String? destination;
   final String? vessel;
   final DateTime? departureDate;
+  final DateTime? effectiveFrom;
+  final DateTime? effectiveUntil;
+  final bool arrivalNextDay;
   final String? advisory;
   final String? contactInformation;
   final String? referenceUrl;
@@ -58,9 +68,7 @@ class Ferry {
     final dep = json['departure_time']?.toString() ??
         json['departure']?.toString() ??
         'Time unavailable';
-    final arr = json['arrival_time']?.toString() ??
-        json['arrival']?.toString() ??
-        'Time unavailable';
+    final arr = json['arrival_time']?.toString() ?? json['arrival']?.toString();
     var parsedDays = <String>[];
     final rawDays = json['days_of_week'] ?? json['days'];
     if (rawDays is String && rawDays.isNotEmpty) {
@@ -73,16 +81,29 @@ class Ferry {
       id: _asInt(json['integer_id']) ?? _asInt(json['id']) ?? 0,
       uuid: json['uuid']?.toString() ??
           (json['id'] is String ? json['id'].toString() : ''),
-      operator: json['operator']?.toString() ?? 'Operator unavailable',
+      operator: json['operator_name']?.toString() ??
+          json['operator']?.toString() ??
+          'Operator unavailable',
+      operatorId: json['operator_id']?.toString() ??
+          json['ferry_operator_id']?.toString(),
+      vesselId:
+          json['vessel_id']?.toString() ?? json['ferry_vessel_id']?.toString(),
       route: json['route']?.toString() ?? 'Route unavailable',
       origin: json['origin']?.toString(),
       destination: json['destination']?.toString(),
       vessel: json['vessel_name']?.toString(),
-      departureDate:
-          DateTime.tryParse(json['departure_date']?.toString() ?? ''),
+      departureDate: DateTime.tryParse(
+          (json['schedule_date'] ?? json['departure_date'])?.toString() ?? ''),
+      effectiveFrom: DateTime.tryParse(
+          (json['effective_from'] ?? json['valid_from'])?.toString() ?? ''),
+      effectiveUntil: DateTime.tryParse(
+          (json['effective_until'] ?? json['valid_until'])?.toString() ?? ''),
+      arrivalNextDay:
+          json['arrival_next_day'] == true || json['arrival_next_day'] == 1,
       departure: dep,
       arrival: arr,
-      duration: json['duration']?.toString() ?? _durationBetween(dep, arr),
+      duration: json['duration']?.toString() ??
+          (arr == null ? 'Duration unavailable' : _durationBetween(dep, arr)),
       fare: (json['fare'] as num?)?.toDouble(),
       status: json['status']?.toString() ?? 'scheduled',
       days: parsedDays,
@@ -124,13 +145,18 @@ class Ferry {
         'id': id,
         'uuid': uuid,
         'operator': operator,
+        'operator_id': operatorId,
+        'vessel_id': vesselId,
         'route': route,
         'origin': origin,
         'destination': destination,
         'vessel_name': vessel,
         'departure_date': departureDate?.toIso8601String().split('T').first,
+        'effective_from': effectiveFrom?.toIso8601String().split('T').first,
+        'effective_until': effectiveUntil?.toIso8601String().split('T').first,
         'departure_time': departure,
         'arrival_time': arrival,
+        'arrival_next_day': arrivalNextDay ? 1 : 0,
         'fare': fare,
         'status': status,
         'days_of_week': days.join(','),
@@ -140,4 +166,38 @@ class Ferry {
         'is_active': 1,
         'updated_at': updatedAt?.toIso8601String(),
       };
+}
+
+class FerryOperator {
+  const FerryOperator({
+    required this.id,
+    required this.name,
+    this.vessels = const [],
+  });
+
+  final String id;
+  final String name;
+  final List<FerryVessel> vessels;
+
+  factory FerryOperator.fromJson(Map<String, dynamic> json) => FerryOperator(
+        id: json['id']?.toString() ?? '',
+        name: json['name']?.toString() ?? 'Operator unavailable',
+        vessels: (json['vessels'] as List? ?? const [])
+            .whereType<Map>()
+            .map(
+                (item) => FerryVessel.fromJson(Map<String, dynamic>.from(item)))
+            .toList(growable: false),
+      );
+}
+
+class FerryVessel {
+  const FerryVessel({required this.id, required this.name});
+
+  final String id;
+  final String name;
+
+  factory FerryVessel.fromJson(Map<String, dynamic> json) => FerryVessel(
+        id: json['id']?.toString() ?? '',
+        name: json['vessel_name']?.toString() ?? 'Vessel unavailable',
+      );
 }

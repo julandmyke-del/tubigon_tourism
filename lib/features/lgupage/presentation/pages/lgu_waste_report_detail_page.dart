@@ -312,6 +312,7 @@ class _State extends ConsumerState<LguWasteReportDetailPage> {
       _refresh();
       if (mounted) _message('Waste report updated.', success: true);
     } catch (error) {
+      _refresh();
       if (mounted) _message(_friendly(error));
     } finally {
       team.dispose();

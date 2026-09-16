@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\TouristSpot;
 use App\Models\TouristSpotPartnerAssignment;
+use App\Support\StaleRecordGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -94,15 +95,19 @@ class PartnerTouristSpotController extends Controller
             'amenities.*' => 'string|max:255|distinct:ignore_case',
             'booking_instructions' => 'sometimes|nullable|string|max:5000',
         ]);
+        $expectedUpdatedAt = StaleRecordGuard::expectedUpdatedAt($request);
 
-        DB::transaction(function () use ($request, $spot, $validated): void {
-            $spot->update($validated);
+        DB::transaction(function () use ($request, $spot, $validated, $expectedUpdatedAt): void {
+            $locked = TouristSpot::whereKey($spot->id)->lockForUpdate()->firstOrFail();
+            Gate::forUser($request->user())->authorize('updateManagedContent', $locked);
+            StaleRecordGuard::assertCurrent($locked, $expectedUpdatedAt);
+            $locked->update($validated);
             ActivityLog::create([
                 'user_id' => $request->user()->id,
                 'action' => 'Partner tourist spot content updated',
                 'details' => json_encode([
-                    'tourist_spot_id' => $spot->id,
-                    'tourist_spot_name' => $spot->name,
+                    'tourist_spot_id' => $locked->id,
+                    'tourist_spot_name' => $locked->name,
                     'updated_fields' => array_keys($validated),
                 ], JSON_THROW_ON_ERROR),
             ]);
@@ -122,6 +127,7 @@ class PartnerTouristSpotController extends Controller
         $spot = TouristSpot::findOrFail($id);
         Gate::forUser($request->user())->authorize('manageBookingAvailability', $spot);
         $validated = $this->validateAvailability($request);
+        $expectedUpdatedAt = StaleRecordGuard::expectedUpdatedAt($request);
 
         return response()->json([
             'status' => 'success',
@@ -131,6 +137,7 @@ class PartnerTouristSpotController extends Controller
                 (bool) $validated['booking_enabled'],
                 $validated['reason_code'] ?? null,
                 $validated['reason'] ?? null,
+                $expectedUpdatedAt,
             ),
         ]);
     }

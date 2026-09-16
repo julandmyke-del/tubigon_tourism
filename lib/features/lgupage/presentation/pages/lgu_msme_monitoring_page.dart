@@ -374,6 +374,8 @@ class _State extends ConsumerState<LguMsmeMonitoringPage> {
       }
     } catch (error) {
       if (mounted) {
+        ref.invalidate(lguMsmesProvider);
+        ref.invalidate(lguDashboardStatsProvider);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             backgroundColor: AppColors.error, content: Text(error.toString())));
       }

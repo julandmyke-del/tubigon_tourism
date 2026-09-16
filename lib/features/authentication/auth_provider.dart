@@ -870,6 +870,12 @@ class AuthNotifier extends Notifier<AuthState> {
   /// Alias for signOut
   Future<void> logout() => signOut();
 
+  /// Revokes every Sanctum token for this account except this client token.
+  Future<void> logoutOtherSessions() async {
+    final apiClient = ref.read(apiClientProvider);
+    await apiClient.post(ApiEndpoints.logoutOtherSessions);
+  }
+
   /// Reload active profile information from Laravel API
   Future<void> reloadProfile() async {
     await _verifySession();

@@ -1,8 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
+import '../../authentication/auth_provider.dart';
 import '../data/admin_repository.dart';
 
 final adminRepositoryProvider = Provider<AdminRepository>((ref) {
+  ref.watch(
+      authProvider.select((auth) => (auth.isLoggedIn, auth.userId, auth.role)));
   final apiClient = ref.watch(apiClientProvider);
   return AdminRepository(apiClient: apiClient);
 });

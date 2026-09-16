@@ -186,6 +186,18 @@ class ApiClient {
             responseData: _responseData(data),
           );
         }
+        if (statusCode == 409) {
+          return ConflictException(
+            message: _extractMessage(
+              data,
+              'This information was updated in another session. Please refresh and try again.',
+            ),
+            code: data is Map
+                ? data['code']?.toString() ?? 'stale_record'
+                : 'stale_record',
+            responseData: _responseData(data),
+          );
+        }
         if (statusCode == 422) {
           return ValidationException(
             message: _extractMessage(

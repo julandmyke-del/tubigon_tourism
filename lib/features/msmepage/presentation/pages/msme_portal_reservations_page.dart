@@ -90,8 +90,8 @@ class _MsmePortalReservationsPageState
               decoration: InputDecoration(
                 hintText: 'Search by guest, business, or booking reference...',
                 hintStyle: GoogleFonts.inter(color: MsmeTheme.textDisabled),
-                prefixIcon: Icon(Icons.search_rounded,
-                    color: MsmeTheme.textMuted),
+                prefixIcon:
+                    Icon(Icons.search_rounded, color: MsmeTheme.textMuted),
                 filled: true,
                 fillColor: MsmeTheme.surfaceDark,
                 border: OutlineInputBorder(
@@ -349,6 +349,8 @@ class _MsmePortalReservationsPageState
           content: Text('Reservation $status.')));
     } catch (error) {
       if (mounted) {
+        ref.invalidate(msmePortalReservationsProvider(_statusFilter));
+        ref.invalidate(msmePortalDashboardStatsProvider);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             backgroundColor: MsmeTheme.red,
             content: Text(friendlyMsmeError(

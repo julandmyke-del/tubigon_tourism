@@ -28,6 +28,8 @@ class FerrySchedule extends Model
         'is_active',
         'updated_by',
         'ferry_route_id', 'origin_port_id', 'destination_port_id',
+        'ferry_operator_id', 'ferry_vessel_id', 'arrival_next_day',
+        'source_reference', 'created_by',
         'valid_from', 'valid_until', 'fare_notes', 'is_published',
         'published_at', 'archived_at',
     ];
@@ -38,6 +40,7 @@ class FerrySchedule extends Model
         'departure_date' => 'date:Y-m-d',
         'is_active' => 'boolean',
         'is_published' => 'boolean',
+        'arrival_next_day' => 'boolean',
         'valid_from' => 'date:Y-m-d', 'valid_until' => 'date:Y-m-d',
         'published_at' => 'datetime', 'archived_at' => 'datetime',
     ];
@@ -45,6 +48,16 @@ class FerrySchedule extends Model
     public function ferryRoute()
     {
         return $this->belongsTo(FerryRoute::class);
+    }
+
+    public function ferryOperator()
+    {
+        return $this->belongsTo(FerryOperator::class);
+    }
+
+    public function ferryVessel()
+    {
+        return $this->belongsTo(FerryVessel::class);
     }
 
     public function originPort()

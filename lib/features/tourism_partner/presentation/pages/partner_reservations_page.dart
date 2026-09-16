@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/exceptions/app_exception.dart';
 import '../../../connected_operations/presentation/reservation_conversation.dart';
 
 import '../../providers/tourism_partner_providers.dart';
@@ -278,9 +279,16 @@ class _PartnerReservationsState extends ConsumerState<PartnerReservationsPage> {
       ref.invalidate(partnerAnalyticsProvider);
       ref.invalidate(partnerNotificationsProvider);
       _message('Reservation $status.');
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
-        _message("We couldn't update this reservation.", error: true);
+        ref.invalidate(partnerReservationQueueProvider);
+        ref.invalidate(partnerReservationsProvider);
+        _message(
+          error is ConflictException
+              ? 'This reservation was updated in another session. The latest status has been loaded.'
+              : "We couldn't update this reservation.",
+          error: true,
+        );
       }
     } finally {
       if (mounted) setState(() => _busy = null);

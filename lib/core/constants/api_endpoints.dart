@@ -9,6 +9,7 @@ abstract final class ApiEndpoints {
   static const String register = '$_base/auth/register';
   static const String googleAuth = '$_base/auth/google';
   static const String logout = '$_base/auth/logout';
+  static const String logoutOtherSessions = '$_base/auth/logout-other-sessions';
   static const String refreshToken = '$_base/auth/refresh';
   static const String forgotPassword = '$_base/auth/forgot-password';
   static const String resetPassword = '$_base/auth/reset-password';
@@ -87,6 +88,8 @@ abstract final class ApiEndpoints {
 
   // ─── Ferry Schedules ──────────────────────────────────────────────────────
   static const String ferrySchedules = '$_base/ferry-schedules';
+  static const String ferryOperators = '$_base/ferry-operators';
+  static const String ferryCatalogs = '$_base/ferry-catalogs';
   static String ferryScheduleById(String id) => '$_base/ferry-schedules/$id';
 
   // ─── Eco Tips ─────────────────────────────────────────────────────────────
@@ -177,6 +180,10 @@ abstract final class ApiEndpoints {
       '$_base/admin/waste-reports/$id/status';
   static const String adminFerrySchedules = '$_base/admin/ferry-schedules';
   static String adminFerrySchedule(String id) => '$adminFerrySchedules/$id';
+  static const String adminFerryOperators = '$_base/admin/ferry-operators';
+  static String adminFerryOperator(String id) => '$adminFerryOperators/$id';
+  static const String adminFerryVessels = '$_base/admin/ferry-vessels';
+  static String adminFerryVessel(String id) => '$adminFerryVessels/$id';
   static const String adminEcoTips = '$_base/admin/eco-tips';
   static String adminEcoTip(String id) => '$adminEcoTips/$id';
   static const String adminAnnouncements = '$_base/admin/announcements';
@@ -335,7 +342,6 @@ abstract final class ApiEndpoints {
   static String announcementRead(String id) => '$_base/announcements/$id/read';
   static String announcementDismiss(String id) =>
       '$_base/announcements/$id/dismiss';
-  static const String ferryCatalogs = '$_base/ferry-catalogs';
   static String lguTouristSpotBookingAvailability(String id) =>
       '$_base/lgu/tourist-spots/$id/booking-availability';
   static const String tourismListings = '$_base/tourism-listings';

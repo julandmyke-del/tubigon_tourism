@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
+use App\Support\StaleRecordGuard;
 use Illuminate\Validation\ValidationException;
 
 class ReviewController extends Controller
@@ -153,7 +154,7 @@ class ReviewController extends Controller
 
     public function destroy(Request $request, string $id): JsonResponse
     {
-        $review = Review::findOrFail($id);
+        $review = Review::withTrashed()->findOrFail($id);
         $user = $request->user();
         $user->loadMissing('role');
         $isAdmin = $user->role?->name === 'admin';
@@ -164,8 +165,18 @@ class ReviewController extends Controller
             'reason_code' => ['required', Rule::in(self::MODERATION_REASONS)],
             'reason_detail' => 'nullable|required_if:reason_code,other|string|max:1000',
         ]) : [];
+        $expectedUpdatedAt = StaleRecordGuard::expectedUpdatedAt($request);
 
-        DB::transaction(function () use ($request, $review, $isAdmin, $moderation): void {
+        DB::transaction(function () use ($request, $review, $isAdmin, $moderation, $expectedUpdatedAt): void {
+            $review = Review::withTrashed()->lockForUpdate()->findOrFail($review->id);
+            if ($review->trashed()) {
+                abort(response()->json([
+                    'status' => 'error',
+                    'message' => 'This review has already been processed.',
+                    'code' => 'already_processed',
+                ], 409));
+            }
+            StaleRecordGuard::assertCurrent($review, $expectedUpdatedAt);
             $type = $review->reviewable_type;
             $targetId = $review->reviewable_id;
             $review->delete();

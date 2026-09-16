@@ -18,6 +18,21 @@ class FerryRepository {
   final dbHelper = DatabaseHelper.instance;
   static const _webCacheKey = 'ferry_schedules_public_cache_v1';
 
+  Future<List<FerryOperator>> getFerryOperators() async {
+    final response = await apiClient.get(ApiEndpoints.ferryOperators);
+    if (response.statusCode != 200 || response.data['status'] != 'success') {
+      throw const FormatException('Invalid ferry operator response.');
+    }
+    final rows = response.data['data'];
+    if (rows is! List) {
+      throw const FormatException('Invalid ferry operator data.');
+    }
+    return rows
+        .whereType<Map<String, dynamic>>()
+        .map(FerryOperator.fromJson)
+        .toList(growable: false);
+  }
+
   Future<List<Ferry>> getFerrySchedules() async {
     if (!DatabaseHelper.isSupported) {
       if (await checkConnectivity()) {
@@ -28,7 +43,10 @@ class FerryRepository {
             jsonEncode(remote.map((item) => item.toJson()).toList()),
           );
           return remote;
-        } catch (_) {}
+        } catch (_) {
+          final cached = LocalStorageService.instance.getString(_webCacheKey);
+          if (cached == null) rethrow;
+        }
       }
       final raw = LocalStorageService.instance.getString(_webCacheKey);
       if (raw == null) return const [];
@@ -62,6 +80,7 @@ class FerryRepository {
         items = updatedLocal.map(Ferry.fromJson).toList();
       } catch (error) {
         debugPrint('Error syncing ferry schedules from API: $error');
+        if (items.isEmpty) rethrow;
       }
     }
 
@@ -93,3 +112,7 @@ final ferrySchedulesListProvider = FutureProvider<List<Ferry>>((ref) async {
 });
 
 final ferrySchedulesProvider = ferrySchedulesListProvider;
+
+final ferryOperatorsProvider = FutureProvider<List<FerryOperator>>((ref) async {
+  return ref.watch(ferryRepositoryProvider).getFerryOperators();
+});

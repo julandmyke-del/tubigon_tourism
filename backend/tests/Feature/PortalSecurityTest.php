@@ -344,6 +344,9 @@ class PortalSecurityTest extends TestCase
         $this->deleteJson("/api/v1/reviews/{$reviewId}", [
             'reason_code' => 'spam',
         ])->assertOk();
+        $this->deleteJson("/api/v1/reviews/{$reviewId}", [
+            'reason_code' => 'spam',
+        ])->assertStatus(409)->assertJsonPath('code', 'already_processed');
 
         $this->assertSoftDeleted('reviews', ['id' => $reviewId]);
         $this->assertDatabaseHas('msmes', [
@@ -379,6 +382,78 @@ class PortalSecurityTest extends TestCase
         $this->assertDatabaseMissing('notifications', [
             'user_id' => $owner->id,
             'type' => 'review_removed',
+        ]);
+    }
+
+    public function test_stale_partner_reservation_decision_is_rejected_without_side_effects(): void
+    {
+        $partner = $this->user('stale-partner', $this->partnerRole);
+        $tourist = $this->user('stale-tourist', $this->touristRole);
+        $listing = $this->listing($partner, 'Concurrent Tour');
+        $reservation = $this->reservation($tourist, $partner, $listing, 'pending');
+        $expected = $reservation->updated_at->toIso8601String();
+
+        Schema::getConnection()->table('reservations')->where('id', $reservation->id)->update([
+            'status_id' => $this->reservationStatus('confirmed')->id,
+            'updated_at' => now()->addMinute(),
+        ]);
+
+        Sanctum::actingAs($partner);
+        $this->putJson("/api/v1/partner/reservations/{$reservation->id}/status", [
+            'status_name' => 'rejected',
+            'reason' => 'Stale rejection must not win.',
+            'expected_updated_at' => $expected,
+        ])->assertStatus(409)
+            ->assertJsonPath('code', 'stale_record')
+            ->assertJsonPath('current.status', 'confirmed');
+
+        $this->assertDatabaseHas('reservations', [
+            'id' => $reservation->id,
+            'status_id' => $this->reservationStatus('confirmed')->id,
+        ]);
+        $this->assertDatabaseMissing('activity_logs', [
+            'user_id' => $partner->id,
+            'action' => 'Partner reservation updated',
+        ]);
+    }
+
+    public function test_stale_msme_business_edit_and_lgu_verification_are_rejected(): void
+    {
+        $owner = $this->user('stale-owner', $this->msmeRole);
+        $lgu = $this->user('stale-lgu', $this->lguRole);
+        $businessId = $this->msme(false, $owner->id);
+        $business = Msme::findOrFail($businessId);
+        $expected = $business->updated_at->toIso8601String();
+
+        Schema::getConnection()->table('msmes')->where('id', $businessId)->update([
+            'description' => 'Newer session value',
+            'updated_at' => now()->addMinute(),
+        ]);
+
+        Sanctum::actingAs($owner);
+        $this->putJson('/api/v1/msme/profile', [
+            'description' => 'Stale owner value',
+            'expected_updated_at' => $expected,
+        ])->assertStatus(409)->assertJsonPath('code', 'stale_record');
+        $this->assertDatabaseHas('msmes', ['id' => $businessId, 'description' => 'Newer session value']);
+
+        $verificationVersion = Msme::findOrFail($businessId)->updated_at->toIso8601String();
+        Schema::getConnection()->table('msmes')->where('id', $businessId)->update([
+            'verification_status' => 'verified',
+            'is_verified' => true,
+            'updated_at' => now()->addMinutes(2),
+        ]);
+
+        Sanctum::actingAs($lgu);
+        $this->putJson("/api/v1/lgu/msmes/{$businessId}/verify", [
+            'verification_status' => 'needs_changes',
+            'notes' => 'Old review decision.',
+            'expected_updated_at' => $verificationVersion,
+        ])->assertStatus(409)->assertJsonPath('code', 'stale_record');
+        $this->assertDatabaseHas('msmes', [
+            'id' => $businessId,
+            'verification_status' => 'verified',
+            'is_verified' => true,
         ]);
     }
 

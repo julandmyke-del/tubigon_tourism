@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Profile;
 use App\Models\Role;
+use App\Models\RoleApplication;
 use App\Models\SystemSetting;
 use App\Models\TouristSpot;
 use App\Models\User;
@@ -174,6 +175,45 @@ class RoleApplicationWorkflowTest extends TestCase
         $this->getJson('/api/v1/lgu/role-applications')->assertForbidden();
         $this->postJson("/api/v1/admin/access-requests/$id/approve")->assertForbidden();
         $this->postJson('/api/v1/role-applications', ['application_type' => 'admin'])->assertUnprocessable();
+    }
+
+    public function test_stale_admin_final_decision_is_rejected_before_provisioning(): void
+    {
+        $application = RoleApplication::create([
+            'applicant_user_id' => $this->tourist->id,
+            'application_type' => RoleApplication::TYPE_MSME,
+            'status' => RoleApplication::STATUS_RECOMMENDED,
+            'active_slot' => true,
+            'payload' => [
+                'business_name' => 'Concurrent Business',
+                'business_category' => 'Food & Dining',
+                'business_address' => 'Tubigon, Bohol',
+                'business_phone' => '09170000000',
+                'business_description' => 'A local business.',
+                'latitude' => 9.9515,
+                'longitude' => 123.9618,
+            ],
+        ]);
+        $expected = $application->updated_at->toIso8601String();
+        Schema::getConnection()->table('role_applications')->where('id', $application->id)->update([
+            'lgu_notes' => 'A newer review note.',
+            'updated_at' => now()->addMinute(),
+        ]);
+
+        Sanctum::actingAs($this->admin);
+        $this->postJson("/api/v1/admin/access-requests/{$application->id}/approve", [
+            'expected_updated_at' => $expected,
+        ])->assertStatus(409)
+            ->assertJsonPath('code', 'stale_record')
+            ->assertJsonPath('current.status', RoleApplication::STATUS_RECOMMENDED);
+
+        $this->assertDatabaseHas('users', [
+            'id' => $this->tourist->id,
+            'role_id' => $this->roles['tourist']->id,
+        ]);
+        $this->assertDatabaseMissing('activity_logs', [
+            'action' => 'Role application approved and provisioned',
+        ]);
     }
 
     private function submitPartner(User $user, string $spotId): string

@@ -10,6 +10,7 @@ use App\Models\Reservation;
 use App\Models\TouristSpot;
 use App\Models\TouristSpotBookingAvailabilityHistory;
 use App\Models\User;
+use App\Support\StaleRecordGuard;
 use Illuminate\Support\Facades\DB;
 
 class UpdateTouristSpotBookingAvailabilityAction
@@ -20,10 +21,14 @@ class UpdateTouristSpotBookingAvailabilityAction
         bool $enabled,
         ?string $reasonCode,
         ?string $reason,
+        ?string $expectedUpdatedAt = null,
     ): TouristSpot {
-        return DB::transaction(function () use ($spot, $actor, $enabled, $reasonCode, $reason): TouristSpot {
+        return DB::transaction(function () use ($spot, $actor, $enabled, $reasonCode, $reason, $expectedUpdatedAt): TouristSpot {
             /** @var TouristSpot $locked */
             $locked = TouristSpot::query()->lockForUpdate()->findOrFail($spot->id);
+            StaleRecordGuard::assertCurrent($locked, $expectedUpdatedAt, [
+                'booking_enabled' => (bool) $locked->booking_enabled,
+            ]);
 
             abort_if($enabled && ! $locked->is_bookable, 422, 'This destination is not configured to support reservations.');
 

@@ -508,6 +508,21 @@ class AuthController extends Controller
         return response()->json(['status' => 'success', 'message' => 'Logged out successfully']);
     }
 
+    public function logoutOtherSessions(Request $request): JsonResponse
+    {
+        $currentToken = $request->user()->currentAccessToken();
+        abort_if($currentToken === null, 401, 'An authenticated token is required.');
+
+        $request->user()->tokens()
+            ->where('id', '!=', $currentToken->getKey())
+            ->delete();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Other sessions logged out successfully.',
+        ]);
+    }
+
     public function me(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -621,6 +636,7 @@ class AuthController extends Controller
             'is_verified' => (bool) $user->is_verified,
             'auth_provider' => $user->auth_provider ?: 'email',
             'created_at' => $user->created_at?->toIso8601String(),
+            'updated_at' => $user->updated_at?->toIso8601String(),
         ];
     }
 

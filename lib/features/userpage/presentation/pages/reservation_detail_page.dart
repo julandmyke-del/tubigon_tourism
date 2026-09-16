@@ -414,7 +414,10 @@ class ReservationDetailPage extends ConsumerWidget {
                       if (confirm == true) {
                         await ref
                             .read(reservationRepositoryProvider)
-                            .cancelReservation(reservation.id);
+                            .cancelReservation(
+                              reservation.id,
+                              expectedUpdatedAt: reservation.updatedAt,
+                            );
                         ref.invalidate(reservationsListProvider);
                         ref.invalidate(
                             reservationDetailProvider(reservation.id));

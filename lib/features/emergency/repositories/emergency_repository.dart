@@ -19,9 +19,11 @@ class EmergencyRepository {
   static const _webCacheKey = 'emergency_contacts_public_cache_v1';
   static const _cacheUpdatedKey = 'emergency_contacts_cache_updated_at_v1';
 
-  static DateTime? get cacheUpdatedAt => DateTime.tryParse(
-        LocalStorageService.instance.getString(_cacheUpdatedKey) ?? '',
-      );
+  static DateTime? get cacheUpdatedAt => !LocalStorageService.isInitialized
+      ? null
+      : DateTime.tryParse(
+          LocalStorageService.instance.getString(_cacheUpdatedKey) ?? '',
+        );
 
   Future<void> _recordCacheRefresh() => LocalStorageService.instance.setString(
         _cacheUpdatedKey,
@@ -31,6 +33,7 @@ class EmergencyRepository {
   /// Fetches the current active directory and replaces the local safety cache.
   Future<List<EmergencyContact>> getEmergencyContacts() async {
     if (!DatabaseHelper.isSupported) {
+      Object? refreshError;
       if (await checkConnectivity()) {
         try {
           final remote = await _fetchRemote();
@@ -40,18 +43,28 @@ class EmergencyRepository {
           );
           await _recordCacheRefresh();
           return remote;
-        } catch (_) {}
+        } catch (error) {
+          refreshError = error;
+        }
       }
       final raw = LocalStorageService.instance.getString(_webCacheKey);
-      if (raw == null) return const [];
-      return (jsonDecode(raw) as List<dynamic>)
+      if (raw == null) {
+        throw StateError(refreshError == null
+            ? 'No saved emergency directory is available offline.'
+            : 'Emergency contacts could not be refreshed and no saved copy is available.');
+      }
+      final cached = (jsonDecode(raw) as List<dynamic>)
           .whereType<Map>()
           .map((item) => EmergencyContact.fromJson(
                 Map<String, dynamic>.from(item),
               ))
+          .where((item) => item.isActive)
           .toList(growable: false);
+      cached.sort(_compareDisplayOrder);
+      return cached;
     }
 
+    Object? refreshError;
     if (SyncService.instance.isOnline) {
       try {
         final parsed = await _fetchRemote();
@@ -70,6 +83,7 @@ class EmergencyRepository {
         await _recordCacheRefresh();
         return parsed;
       } catch (error) {
+        refreshError = error;
         debugPrint('Error refreshing emergency contacts from API: $error');
       }
     }
@@ -78,8 +92,13 @@ class EmergencyRepository {
       'emergency_contacts',
       where: 'is_active = ?',
       whereArgs: const [1],
-      orderBy: 'category ASC, name ASC',
+      orderBy: 'display_order ASC, name ASC',
     );
+    if (localMaps.isEmpty) {
+      throw StateError(refreshError == null
+          ? 'No saved emergency directory is available offline.'
+          : 'Emergency contacts could not be refreshed and no saved copy is available.');
+    }
     return localMaps.map(EmergencyContact.fromJson).toList(growable: false);
   }
 
@@ -92,10 +111,18 @@ class EmergencyRepository {
     if (rows is! List) {
       throw const FormatException('Invalid emergency contact data.');
     }
-    return rows
+    final contacts = rows
         .whereType<Map<String, dynamic>>()
         .map(EmergencyContact.fromJson)
+        .where((item) => item.isActive)
         .toList(growable: false);
+    contacts.sort(_compareDisplayOrder);
+    return contacts;
+  }
+
+  static int _compareDisplayOrder(EmergencyContact a, EmergencyContact b) {
+    final order = a.displayOrder.compareTo(b.displayOrder);
+    return order != 0 ? order : a.name.compareTo(b.name);
   }
 }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../../../../core/exceptions/app_exception.dart';
 
 import '../../../../core/theme/admin_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
@@ -77,8 +78,8 @@ class _AdminReviewManagementPageState
                 builder: (context, constraints) {
                   final compact = constraints.maxWidth < 640;
                   final search = TextField(
-                    style: TextStyle(
-                        color: AdminColors.textPrimary, fontSize: 14),
+                    style:
+                        TextStyle(color: AdminColors.textPrimary, fontSize: 14),
                     decoration: InputDecoration(
                       hintText:
                           'Search reviews by reviewer name or comment text...',
@@ -426,8 +427,14 @@ class _AdminReviewManagementPageState
                         ref.invalidate(adminReviewsProvider);
                         if (ctx.mounted) Navigator.pop(ctx);
                         _feedback('Review removed and owner notified.');
-                      } catch (_) {
-                        _feedback('Unable to remove this review.', error: true);
+                      } catch (error) {
+                        ref.invalidate(adminReviewsProvider);
+                        _feedback(
+                          error is ConflictException
+                              ? 'This review was already updated by another session. The latest queue has been loaded.'
+                              : 'Unable to remove this review.',
+                          error: true,
+                        );
                       }
                     },
               child: const Text('Remove Review'),

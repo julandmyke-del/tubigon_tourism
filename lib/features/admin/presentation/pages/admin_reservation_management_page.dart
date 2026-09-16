@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/exceptions/app_exception.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
@@ -83,8 +84,7 @@ class _AdminReservationManagementPageState
                       decoration: InputDecoration(
                         hintText:
                             'Search by reservation ID, tourist name, or destination...',
-                        hintStyle:
-                            TextStyle(color: AdminColors.textMuted),
+                        hintStyle: TextStyle(color: AdminColors.textMuted),
                         prefixIcon: Icon(Icons.search_rounded,
                             color: AdminColors.textSecondary, size: 20),
                         filled: true,
@@ -93,12 +93,12 @@ class _AdminReservationManagementPageState
                             horizontal: 14, vertical: 10),
                         border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(
-                                color: AdminColors.cardBorder)),
+                            borderSide:
+                                BorderSide(color: AdminColors.cardBorder)),
                         enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(
-                                color: AdminColors.cardBorder)),
+                            borderSide:
+                                BorderSide(color: AdminColors.cardBorder)),
                         focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
                             borderSide: const BorderSide(
@@ -341,9 +341,13 @@ class _AdminReservationManagementPageState
                                             adminReservationsProvider);
                                         _feedback(
                                             'Reservation status updated.');
-                                      } catch (_) {
+                                      } catch (error) {
+                                        ref.invalidate(
+                                            adminReservationsProvider);
                                         _feedback(
-                                            'Unable to update this reservation.',
+                                            error is ConflictException
+                                                ? 'This reservation was updated in another session. The latest status has been loaded.'
+                                                : 'Unable to update this reservation.',
                                             error: true);
                                       }
                                     },

@@ -1,8 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
+import '../../authentication/auth_provider.dart';
 import '../data/msme_portal_repository.dart';
 
 final msmePortalRepositoryProvider = Provider<MsmePortalRepository>((ref) {
+  ref.watch(
+      authProvider.select((auth) => (auth.isLoggedIn, auth.userId, auth.role)));
   final client = ref.watch(apiClientProvider);
   return MsmePortalRepository(apiClient: client);
 });
